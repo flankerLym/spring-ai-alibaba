@@ -13,9 +13,9 @@ management:
   otlp:
     tracing:
       export:
-        enabled: true
+        enabled: false
       # 支持通过环境变量 MANAGEMENT_OTLP_TRACING_EXPORT_ENDPOINT 覆盖，默认值在各个 profile 中定义
-      endpoint: ${MANAGEMENT_OTLP_TRACING_EXPORT_ENDPOINT}
+      #endpoint: ${MANAGEMENT_OTLP_TRACING_EXPORT_ENDPOINT}
     metrics:
       export:
         enabled: false
@@ -70,12 +70,12 @@ spring:
       - classpath:elasticsearch.yml
   datasource:
     type: com.alibaba.druid.pool.DruidDataSource
-    driver-class-name: com.mysql.cj.jdbc.Driver
+    driver-class-name: org.postgresql.Driver
     # 支持通过环境变量覆盖，默认值在各个 profile 中定义
     # SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD
-    url: ${SPRING_DATASOURCE_URL}
-    username: ${SPRING_DATASOURCE_USERNAME}
-    password: ${SPRING_DATASOURCE_PASSWORD}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://172.16.20.231:5432/saa}
+    username: ${SPRING_DATASOURCE_USERNAME:psy_dev}
+    password: ${SPRING_DATASOURCE_PASSWORD:znxl_dev_123}
     druid:
       initial-size: 5
       min-idle: 5
@@ -94,8 +94,9 @@ spring:
     redis:
       # 支持通过环境变量覆盖，默认值在各个 profile 中定义
       # SPRING_REDIS_HOST, SPRING_REDIS_PORT, SPRING_REDIS_DATABASE
-      host: ${SPRING_REDIS_HOST}
-      port: ${SPRING_REDIS_PORT}
+      host: ${SPRING_REDIS_HOST:172.16.20.230}
+      port: ${SPRING_REDIS_PORT:6379}
+      password: bjdx_icode
       database: ${SPRING_REDIS_DATABASE:0}
   freemarker:
     cache: false
@@ -104,13 +105,9 @@ spring:
     enabled: true
     content-type: text/html
     template-loader-path: classpath:/templates/
-  elasticsearch:
-    # Spring Boot 默认 Elasticsearch 配置（如果使用 Spring Data Elasticsearch）
-    # 注意：自定义 ElasticsearchClient 的配置在 elasticsearch.yml 中
-    # 支持通过环境变量 SPRING_ELASTICSEARCH_URIS 覆盖，默认值在各个 profile 中定义
-    uris: ${SPRING_ELASTICSEARCH_URIS}
+
   jpa:
-    database-platform: org.hibernate.dialect.MySQLDialect
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
       ddl-auto: none
     show-sql: false
@@ -121,10 +118,10 @@ spring:
         persistence:
           jdbc:
             # 使用与 datasource 相同的配置，通过环境变量覆盖
-            url: ${SPRING_DATASOURCE_URL}
-            user: ${SPRING_DATASOURCE_USERNAME}
-            password: ${SPRING_DATASOURCE_PASSWORD}
-            driver: com.mysql.cj.jdbc.Driver
+            url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://172.16.20.231:5432/saa}
+            user: ${SPRING_DATASOURCE_USERNAME:psy_dev}
+            password: ${SPRING_DATASOURCE_PASSWORD:znxl_dev_123}
+            driver: org.postgresql.Driver
 mybatis:
   mapper-locations: classpath:mapper/*.xml
   type-aliases-package: com.alibaba.cloud.ai.studio.admin.entity

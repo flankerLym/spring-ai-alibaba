@@ -46,7 +46,7 @@ import static com.alibaba.cloud.ai.studio.core.utils.LogUtils.SUCCESS;
  *
  * @since 1.0.0.3
  */
-@Component
+//@Component
 @RequiredArgsConstructor
 @Slf4j
 public class DocumentIndexHandler implements MqConsumerHandler<MqMessage> {

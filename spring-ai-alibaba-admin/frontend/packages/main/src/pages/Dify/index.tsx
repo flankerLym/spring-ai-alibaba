@@ -81,7 +81,7 @@ const DifyConverter: React.FC = () => {
       const fileContent = await readFileContent(selectedFile);
 
       const params = {
-        dependencies: 'spring-ai-alibaba-graph,web,spring-ai-alibaba-starter-dashscope',
+        dependencies:'spring-ai-alibaba-graph,web,spring-ai-openai-compatible,spring-ai-alibaba-starter-builtin-nodes',
         appMode: 'workflow',
         dslDialectType: 'dify',
         type: 'maven-project',

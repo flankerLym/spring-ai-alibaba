@@ -42,9 +42,9 @@ import java.util.Objects;
  *
  * @since 1.0.0.3
  */
-@RestController
+//@RestController
 @Tag(name = "rag_chunk")
-@RequestMapping("/console/v1/documents")
+//@RequestMapping("/console/v1/documents")
 public class DocumentChunkController {
 
 	/** Service for handling document operations */

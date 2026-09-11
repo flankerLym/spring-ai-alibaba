@@ -78,7 +78,7 @@ import java.util.Optional;
  * @since 1.0.0.3
  */
 
-@Service
+//@Service
 public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, DocumentEntity> implements DocumentService {
 
 	/** Message queue producer manager for handling async operations */

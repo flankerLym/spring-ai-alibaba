@@ -2,9 +2,12 @@ initializr:
   group-id:
     value: com.alibaba.cloud.ai
   bootVersions:
+    - name: 3.5.0
+      id: 3.5.0
+      default: true
     - name: 3.4.5
       id: 3.4.5
-      default: true
+      default: false
     - name: 3.3.11
       id: 3.3.11
       default: false
@@ -75,7 +78,7 @@ initializr:
         versionProperty: spring-ai.version
         mappings:
           - compatibilityRange: "[3.4.0,3.6.0-M1)"
-            version: 1.0.0-RC1
+            version: 1.1.2
       spring-cloud:
         groupId: org.springframework.cloud
         artifactId: spring-cloud-dependencies
@@ -208,14 +211,20 @@ initializr:
           id: spring-ai-alibaba-graph
           group-id: com.alibaba.cloud.ai
           artifact-id: spring-ai-alibaba-graph-core
-          version: 1.0.0.4-SNAPSHOT
+          version: 1.1.2.2
           description: Building agent using Spring AI Alibaba Graph
-        - name: Spring AI Alibaba Dashscope
-          id: spring-ai-alibaba-starter-dashscope
+        - name: Spring AI OpenAI Compatible
+          id: spring-ai-openai-compatible
+          group-id: org.springframework.ai
+          artifact-id: spring-ai-starter-model-openai
+          bom: spring-ai
+          description: OpenAI compatible model starter
+        - name: Spring AI Alibaba Builtin Nodes
+          id: spring-ai-alibaba-starter-builtin-nodes
           group-id: com.alibaba.cloud.ai
-          artifact-id: spring-ai-alibaba-starter-dashscope
-          version: 1.0.0.4-SNAPSHOT
-          description: DashScope Model adapted Starter
+          artifact-id: spring-ai-alibaba-starter-builtin-nodes
+          version: 1.1.2.2
+          description: Spring AI Alibaba built-in graph nodes
         - name: Spring AI Starter MCP Client
           id: spring-ai-starter-mcp-client
           group-id: org.springframework.ai

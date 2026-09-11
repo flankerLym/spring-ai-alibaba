@@ -43,9 +43,9 @@ import java.util.Objects;
  *
  * @since 1.0.0.3
  */
-@RestController
+//@RestController
 @Tag(name = "rag_document")
-@RequestMapping("/console/v1/knowledge-bases")
+//@RequestMapping("/console/v1/knowledge-bases")
 public class DocumentController {
 
 	/** Service for handling document operations */

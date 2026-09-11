@@ -26,8 +26,8 @@ import org.springframework.context.annotation.Configuration;
  * @since 1.0.0.3
  */
 @Data
-@Configuration
-@ConfigurationProperties(prefix = "rocketmq")
+//@Configuration
+//@ConfigurationProperties(prefix = "rocketmq")
 public class MqConfigProperties {
 
 	/** RocketMQ server endpoints */

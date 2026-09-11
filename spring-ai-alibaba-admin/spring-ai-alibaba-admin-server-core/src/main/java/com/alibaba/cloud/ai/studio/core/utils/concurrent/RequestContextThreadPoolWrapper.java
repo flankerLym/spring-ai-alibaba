@@ -232,9 +232,9 @@ public class RequestContextThreadPoolWrapper implements ExecutorService {
 	 * @return the underlying ThreadPoolExecutor, or null if the delegate is not a
 	 * ThreadPoolExecutor
 	 */
-	public ThreadPoolExecutor getThreadPoolExecutor() {
-		if (delegate instanceof ThreadPoolExecutor) {
-			return (ThreadPoolExecutor) delegate;
+	public java.util.concurrent.ThreadPoolExecutor getThreadPoolExecutor() {
+		if (delegate instanceof java.util.concurrent.ThreadPoolExecutor) {
+			return (java.util.concurrent.ThreadPoolExecutor) delegate;
 		}
 		return null;
 	}

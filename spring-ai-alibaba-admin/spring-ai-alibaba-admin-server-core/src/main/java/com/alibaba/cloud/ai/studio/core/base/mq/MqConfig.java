@@ -33,7 +33,7 @@ import org.springframework.context.annotation.Configuration;
  * @since 1.0.0.3
  */
 @Data
-@Configuration
+//@Configuration
 public class MqConfig {
 
 	/**
