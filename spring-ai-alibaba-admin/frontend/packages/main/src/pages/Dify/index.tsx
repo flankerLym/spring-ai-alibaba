@@ -19,8 +19,6 @@ const DifyConverter: React.FC = () => {
 
   const handleFileChange = (info: any) => {
     const { file } = info;
-
-    // beforeUpload returns false, so we handle file selection here
     if (file) {
       setSelectedFile(file.originFileObj || file);
       message.success(
@@ -41,6 +39,7 @@ const DifyConverter: React.FC = () => {
       file.type === 'text/yaml' ||
       file.name.endsWith('.yaml') ||
       file.name.endsWith('.yml');
+
     if (!isYaml) {
       message.error(
         $i18n.get({
@@ -62,7 +61,6 @@ const DifyConverter: React.FC = () => {
       ),
     );
 
-    // Prevent auto upload; selection only
     return false;
   };
 
@@ -81,7 +79,8 @@ const DifyConverter: React.FC = () => {
       const fileContent = await readFileContent(selectedFile);
 
       const params = {
-        dependencies:'spring-ai-alibaba-graph,web,spring-ai-openai-compatible,spring-ai-alibaba-starter-builtin-nodes',
+        dependencies:
+          'spring-ai-alibaba-graph,web,spring-ai-openai-compatible,spring-ai-alibaba-starter-builtin-nodes',
         appMode: 'workflow',
         dslDialectType: 'dify',
         type: 'maven-project',
@@ -116,6 +115,7 @@ const DifyConverter: React.FC = () => {
           dm: '转换成功！项目文件已开始下载',
         }),
       );
+
       setConvertResult([
         $i18n.get({
           id: 'main.pages.Dify.index.resultProjectGenerated',
@@ -131,7 +131,7 @@ const DifyConverter: React.FC = () => {
         }),
         $i18n.get({
           id: 'main.pages.Dify.index.resultDependencies',
-          dm: '包含依赖: spring-ai-alibaba-graph, web, spring-ai-alibaba-starter-dashscope',
+          dm: '包含依赖: graph, web, OpenAI-compatible, builtin-nodes',
         }),
         $i18n.get({
           id: 'main.pages.Dify.index.resultAppMode',
@@ -162,10 +162,12 @@ const DifyConverter: React.FC = () => {
   const readFileContent = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
+
       reader.onload = (e) => {
         const content = e.target?.result as string;
         resolve(content);
       };
+
       reader.onerror = () => {
         reject(
           new Error(
@@ -176,6 +178,7 @@ const DifyConverter: React.FC = () => {
           ),
         );
       };
+
       reader.readAsText(file, 'utf-8');
     });
   };
@@ -215,6 +218,7 @@ const DifyConverter: React.FC = () => {
               dm: '操作说明',
             })}
           </h3>
+
           <div className={styles.instructionList}>
             <div className={styles.instruction}>
               <span className={styles.step}>1.</span>
@@ -225,6 +229,7 @@ const DifyConverter: React.FC = () => {
                 })}
               </span>
             </div>
+
             <div className={styles.instruction}>
               <span className={styles.step}>2.</span>
               <span>
@@ -234,6 +239,7 @@ const DifyConverter: React.FC = () => {
                 })}
               </span>
             </div>
+
             <div className={styles.instruction}>
               <span className={styles.step}>3.</span>
               <span>
@@ -243,6 +249,7 @@ const DifyConverter: React.FC = () => {
                 })}
               </span>
             </div>
+
             <div className={styles.instruction}>
               <span className={styles.step}>4.</span>
               <span>
@@ -262,6 +269,7 @@ const DifyConverter: React.FC = () => {
               dm: '选择 Dify DSL 文件',
             })}
           </h3>
+
           <Dragger
             name="file"
             multiple={false}
@@ -329,6 +337,7 @@ const DifyConverter: React.FC = () => {
                 dm: '转换结果',
               })}
             </h3>
+
             <div className={styles.resultContent}>
               <p className={styles.successText}>
                 {$i18n.get({
@@ -336,6 +345,7 @@ const DifyConverter: React.FC = () => {
                   dm: '✅ 转换成功！生成的文件如下：',
                 })}
               </p>
+
               <div className={styles.fileList}>
                 {convertResult.map((filePath, index) => (
                   <div key={index} className={styles.fileItem}>

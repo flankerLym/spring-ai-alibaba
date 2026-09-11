@@ -2,16 +2,6 @@
  * Copyright 2024-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
 package com.alibaba.cloud.ai.studio.admin.builder.generator.model.workflow.nodedata;
 
@@ -26,97 +16,102 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
-/**
- * @author HeYQ
- * @since 2024-12-12 21:26
- */
 public class QuestionClassifierNodeData extends NodeData {
 
-	public static Variable getDefaultOutputSchema(DSLDialectType dialectType) {
-		return switch (dialectType) {
-			case DIFY -> new Variable("class_name", VariableType.STRING);
-			case STUDIO -> new Variable("subject", VariableType.STRING);
-			default -> new Variable("text", VariableType.STRING);
-		};
-	}
+    public static Variable getDefaultOutputSchema(DSLDialectType dialectType) {
+        return switch (dialectType) {
+            case DIFY -> new Variable("class_name", VariableType.STRING);
+            case STUDIO -> new Variable("subject", VariableType.STRING);
+            default -> new Variable("text", VariableType.STRING);
+        };
+    }
 
-	private String chatModeName;
+    private String providerName;
 
-	private Map<String, Object> modeParams;
+    private String chatModeName;
 
-	private VariableSelector inputSelector;
+    private Map<String, Object> modeParams;
 
-	private String outputKey;
+    private VariableSelector inputSelector;
 
-	private List<ClassConfig> classes;
+    private String outputKey;
 
-	private String promptTemplate;
+    private List<ClassConfig> classes;
 
-	private Map<String, String> classIdToName;
+    private String promptTemplate;
 
-	public record ClassConfig(String id, String classTemplate) {
+    private Map<String, String> classIdToName;
 
-	}
+    public record ClassConfig(String id, String classTemplate) {
+    }
 
-	public String getChatModeName() {
-		return chatModeName;
-	}
+    public String getProviderName() {
+        return providerName;
+    }
 
-	public void setChatModeName(String chatModeName) {
-		this.chatModeName = chatModeName;
-	}
+    public void setProviderName(String providerName) {
+        this.providerName = providerName;
+    }
 
-	public Map<String, Object> getModeParams() {
-		return modeParams;
-	}
+    public String getChatModeName() {
+        return chatModeName;
+    }
 
-	public void setModeParams(Map<String, Object> modeParams) {
-		this.modeParams = modeParams;
-	}
+    public void setChatModeName(String chatModeName) {
+        this.chatModeName = chatModeName;
+    }
 
-	public VariableSelector getInputSelector() {
-		return inputSelector;
-	}
+    public Map<String, Object> getModeParams() {
+        return modeParams;
+    }
 
-	public void setInputSelector(VariableSelector inputSelector) {
-		this.inputSelector = inputSelector;
-	}
+    public void setModeParams(Map<String, Object> modeParams) {
+        this.modeParams = modeParams;
+    }
 
-	public String getOutputKey() {
-		return outputKey;
-	}
+    public VariableSelector getInputSelector() {
+        return inputSelector;
+    }
 
-	public void setOutputKey(String outputKey) {
-		this.outputKey = outputKey;
-	}
+    public void setInputSelector(VariableSelector inputSelector) {
+        this.inputSelector = inputSelector;
+    }
 
-	public List<ClassConfig> getClasses() {
-		return classes;
-	}
+    public String getOutputKey() {
+        return outputKey;
+    }
 
-	public void setClasses(List<ClassConfig> classes) {
-		this.classes = classes;
-		updateClassIdToName();
-	}
+    public void setOutputKey(String outputKey) {
+        this.outputKey = outputKey;
+    }
 
-	public String getPromptTemplate() {
-		return promptTemplate;
-	}
+    public List<ClassConfig> getClasses() {
+        return classes;
+    }
 
-	public void setPromptTemplate(String promptTemplate) {
-		this.promptTemplate = promptTemplate;
-	}
+    public void setClasses(List<ClassConfig> classes) {
+        this.classes = classes;
+        updateClassIdToName();
+    }
 
-	public Map<String, String> getClassIdToName() {
-		return classIdToName;
-	}
+    public String getPromptTemplate() {
+        return promptTemplate;
+    }
 
-	private void updateClassIdToName() {
-		AtomicInteger count = new AtomicInteger(1);
-		this.classIdToName = this.getClasses()
-			.stream()
-			.map(QuestionClassifierNodeData.ClassConfig::id)
-			.collect(Collectors.toUnmodifiableMap(id -> id, name -> "case_" + (count.getAndIncrement())));
-	}
+    public void setPromptTemplate(String promptTemplate) {
+        this.promptTemplate = promptTemplate;
+    }
+
+    public Map<String, String> getClassIdToName() {
+        return classIdToName;
+    }
+
+    private void updateClassIdToName() {
+        AtomicInteger count = new AtomicInteger(1);
+        this.classIdToName = this.getClasses()
+                .stream()
+                .map(ClassConfig::id)
+                .collect(Collectors.toUnmodifiableMap(id -> id, name -> "case_" + (count.getAndIncrement())));
+    }
 
 }

@@ -2,16 +2,6 @@
  * Copyright 2024-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
 package com.alibaba.cloud.ai.studio.admin.builder.generator.service.generator.workflow;
 
@@ -20,6 +10,7 @@ import java.io.InputStream;
 import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
@@ -34,16 +25,20 @@ import java.util.stream.Stream;
 import com.alibaba.cloud.ai.studio.admin.builder.generator.model.App;
 import com.alibaba.cloud.ai.studio.admin.builder.generator.model.AppModeEnum;
 import com.alibaba.cloud.ai.studio.admin.builder.generator.model.Variable;
+import com.alibaba.cloud.ai.studio.admin.builder.generator.model.VariableType;
 import com.alibaba.cloud.ai.studio.admin.builder.generator.model.workflow.Edge;
 import com.alibaba.cloud.ai.studio.admin.builder.generator.model.workflow.Node;
 import com.alibaba.cloud.ai.studio.admin.builder.generator.model.workflow.NodeData;
 import com.alibaba.cloud.ai.studio.admin.builder.generator.model.workflow.NodeType;
 import com.alibaba.cloud.ai.studio.admin.builder.generator.model.workflow.Workflow;
+import com.alibaba.cloud.ai.studio.admin.builder.generator.model.workflow.nodedata.LLMNodeData;
+import com.alibaba.cloud.ai.studio.admin.builder.generator.model.workflow.nodedata.QuestionClassifierNodeData;
 import com.alibaba.cloud.ai.studio.admin.builder.generator.service.dsl.DSLAdapter;
 import com.alibaba.cloud.ai.studio.admin.builder.generator.service.dsl.DSLDialectType;
 import com.alibaba.cloud.ai.studio.admin.builder.generator.service.generator.GraphProjectDescription;
 import com.alibaba.cloud.ai.studio.admin.builder.generator.service.generator.ProjectGenerator;
 import com.alibaba.cloud.ai.studio.admin.builder.generator.utils.ContributorFileUtil;
+import com.alibaba.cloud.ai.studio.admin.builder.generator.utils.ObjectToCodeUtil;
 import io.spring.initializr.generator.io.template.MustacheTemplateRenderer;
 import io.spring.initializr.generator.io.template.TemplateRenderer;
 import io.spring.initializr.generator.project.ProjectDescription;
@@ -56,243 +51,521 @@ import org.springframework.stereotype.Component;
 @Component
 public class WorkflowProjectGenerator implements ProjectGenerator {
 
-	private static final Logger log = LoggerFactory.getLogger(WorkflowProjectGenerator.class);
+    // ADMIN_DIFY_FIX_V2
 
-	private static final String GRAPH_BUILDER_TEMPLATE_NAME = "GraphBuilder.java";
+    private static final Logger log = LoggerFactory.getLogger(WorkflowProjectGenerator.class);
 
-	private static final String GRAPH_BUILDER_STATE_SECTION = "stateSection";
+    private static final String GRAPH_BUILDER_TEMPLATE_NAME = "GraphBuilder.java";
+    private static final String GRAPH_BUILDER_STATE_SECTION = "stateSection";
+    private static final String GRAPH_BUILDER_NODE_SECTION = "nodeSection";
+    private static final String GRAPH_BUILDER_EDGE_SECTION = "edgeSection";
+    private static final String GRAPH_BUILDER_IMPORT_SECTION = "importSection";
+    private static final String GRAPH_BUILDER_ASSIST_METHOD_CODE = "assistMethodCode";
+    private static final String GRAPH_RUN_TEMPLATE_NAME = "GraphRunController.java";
+    private static final String PACKAGE_NAME = "packageName";
+    private static final String DEFAULT_INPUTS = "defaultInputs";
 
-	private static final String GRAPH_BUILDER_NODE_SECTION = "nodeSection";
+    private static final List<String> GRAPH_COMMON_IMPORTS = List.of(
+            "com.alibaba.cloud.ai.graph.CompiledGraph",
+            "com.alibaba.cloud.ai.graph.KeyStrategy",
+            "com.alibaba.cloud.ai.graph.OverAllState",
+            "com.alibaba.cloud.ai.graph.StateGraph",
+            "com.alibaba.cloud.ai.graph.action.AsyncEdgeAction",
+            "com.alibaba.cloud.ai.graph.action.AsyncNodeAction",
+            "com.alibaba.cloud.ai.graph.action.NodeAction",
+            "com.alibaba.cloud.ai.graph.exception.GraphStateException",
+            "org.springframework.ai.chat.client.ChatClient",
+            "org.springframework.ai.chat.model.ChatModel",
+            "org.springframework.ai.openai.OpenAiChatModel",
+            "org.springframework.ai.openai.OpenAiChatOptions",
+            "org.springframework.ai.openai.api.OpenAiApi",
+            "org.springframework.context.annotation.Bean",
+            "org.springframework.core.env.Environment",
+            "org.springframework.stereotype.Component",
+            "java.util.HashMap",
+            "java.util.Map",
+            "java.util.List",
+            "java.util.concurrent.ConcurrentHashMap",
+            "static com.alibaba.cloud.ai.graph.StateGraph.END",
+            "static com.alibaba.cloud.ai.graph.StateGraph.START");
 
-	private static final String GRAPH_BUILDER_EDGE_SECTION = "edgeSection";
+    private final List<DSLAdapter> dslAdapters;
 
-	private static final String GRAPH_BUILDER_IMPORT_SECTION = "importSection";
+    private final TemplateRenderer templateRenderer;
 
-	private static final String GRAPH_BUILDER_ASSIST_METHOD_CODE = "assistMethodCode";
+    private final Map<NodeType, NodeSection<? extends NodeData>> nodeSectionMap;
 
-	private static final String GRAPH_RUN_TEMPLATE_NAME = "GraphRunController.java";
+    public WorkflowProjectGenerator(
+            List<DSLAdapter> dslAdapters,
+            ObjectProvider<MustacheTemplateRenderer> templateRenderer,
+            List<NodeSection<? extends NodeData>> nodeNodeSections) {
 
-	private static final String PACKAGE_NAME = "packageName";
+        this.dslAdapters = dslAdapters;
+        this.templateRenderer = templateRenderer
+                .getIfAvailable(() -> new MustacheTemplateRenderer("classpath:/templates"));
 
-	private static final List<String> GRAPH_COMMON_IMPORTS = List.of("com.alibaba.cloud.ai.graph.CompiledGraph",
-			"com.alibaba.cloud.ai.graph.KeyStrategy", "com.alibaba.cloud.ai.graph.OverAllState",
-			"com.alibaba.cloud.ai.graph.StateGraph", "com.alibaba.cloud.ai.graph.action.AsyncEdgeAction",
-			"com.alibaba.cloud.ai.graph.action.AsyncNodeAction", "com.alibaba.cloud.ai.graph.action.NodeAction",
-			"com.alibaba.cloud.ai.graph.exception.GraphStateException", "org.springframework.ai.chat.client.ChatClient",
-			"org.springframework.ai.chat.model.ChatModel", "org.springframework.context.annotation.Bean",
-			"org.springframework.stereotype.Component", "java.util.HashMap", "java.util.Map", "java.util.List",
-			"static com.alibaba.cloud.ai.graph.StateGraph.END", "static com.alibaba.cloud.ai.graph.StateGraph.START");
+        this.nodeSectionMap = nodeNodeSections.stream()
+                .map(nodeSection -> {
+                    List<NodeType> nodeTypeList = Arrays.stream(NodeType.values())
+                            .filter(nodeSection::support)
+                            .toList();
+                    if (nodeTypeList.isEmpty()) {
+                        return null;
+                    }
+                    return Map.entry(nodeTypeList.get(0), nodeSection);
+                })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toUnmodifiableMap(
+                        Map.Entry::getKey, Map.Entry::getValue, (a, b) -> b));
+    }
 
-	private final List<DSLAdapter> dslAdapters;
+    @Override
+    public Boolean supportAppMode(AppModeEnum appModeEnum) {
+        return Objects.equals(appModeEnum, AppModeEnum.WORKFLOW);
+    }
 
-	private final TemplateRenderer templateRenderer;
+    @Override
+    public void generate(GraphProjectDescription projectDescription, Path projectRoot) {
+        DSLAdapter dslAdapter = dslAdapters.stream()
+                .filter(t -> t.supportDialect(projectDescription.getDslDialectType()))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException(
+                        "No DSL adapter found for dialect: "
+                                + projectDescription.getDslDialectType()));
 
-	private final Map<NodeType, NodeSection<? extends NodeData>> nodeSectionMap;
+        App app = dslAdapter.importDSL(projectDescription.getDsl());
+        Workflow workflow = (Workflow) app.getSpec();
 
-	public WorkflowProjectGenerator(List<DSLAdapter> dslAdapters,
-			ObjectProvider<MustacheTemplateRenderer> templateRenderer,
-			List<NodeSection<? extends NodeData>> nodeNodeSections) {
-		this.dslAdapters = dslAdapters;
-		this.templateRenderer = templateRenderer
-			.getIfAvailable(() -> new MustacheTemplateRenderer("classpath:/templates"));
-		this.nodeSectionMap = nodeNodeSections.stream().map(nodeSection -> {
-			List<NodeType> nodeTypeList = Arrays.stream(NodeType.values()).filter(nodeSection::support).toList();
-			if (nodeTypeList.isEmpty()) {
-				return null;
-			}
-			return Map.entry(nodeTypeList.get(0), nodeSection);
-		})
-			.filter(Objects::nonNull)
-			.collect(Collectors.toUnmodifiableMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -> b));
-	}
+        List<Node> nodes = workflow.getGraph().getNodes();
+        Map<String, String> varNames = nodes.stream()
+                .collect(Collectors.toMap(Node::getId, n -> n.getData().getVarName()));
 
-	@Override
-	public Boolean supportAppMode(AppModeEnum appModeEnum) {
-		return Objects.equals(appModeEnum, AppModeEnum.WORKFLOW);
-	}
+        String assistMethodCode =
+                renderAssistMethodCode(nodes, projectDescription.getDslDialectType());
 
-	@Override
-	public void generate(GraphProjectDescription projectDescription, Path projectRoot) {
-		DSLAdapter dslAdapter = dslAdapters.stream()
-			.filter(t -> t.supportDialect(projectDescription.getDslDialectType()))
-			.findFirst()
-			.orElseThrow(() -> new RuntimeException(
-					"No DSL adapter found for dialect: " + projectDescription.getDslDialectType()));
-		App app = dslAdapter.importDSL(projectDescription.getDsl());
-		Workflow workflow = (Workflow) app.getSpec();
+        List<Variable> allStateVars = Stream
+                .of(workflow.getWorkflowVars(), workflow.getEnvVars())
+                .filter(Objects::nonNull)
+                .flatMap(List::stream)
+                .toList();
 
-		List<Node> nodes = workflow.getGraph().getNodes();
-		Map<String, String> varNames = nodes.stream()
-			.collect(Collectors.toMap(Node::getId, n -> n.getData().getVarName()));
+        String stateSectionStr = renderStateSections(allStateVars);
+        String nodeSectionStr = renderNodeSections(nodes, varNames);
+        String edgeSectionStr =
+                renderEdgeSections(workflow.getGraph().getEdges(), nodes, varNames);
 
-		String assistMethodCode = renderAssistMethodCode(nodes, projectDescription.getDslDialectType());
-		String stateSectionStr = renderStateSections(
-				Stream.of(workflow.getWorkflowVars(), workflow.getEnvVars()).flatMap(List::stream).toList());
-		String nodeSectionStr = renderNodeSections(nodes, varNames);
-		String edgeSectionStr = renderEdgeSections(workflow.getGraph().getEdges(), nodes, varNames);
+        Map<String, Object> graphBuilderModel = Map.of(
+                PACKAGE_NAME, projectDescription.getPackageName(),
+                GRAPH_BUILDER_STATE_SECTION, stateSectionStr,
+                GRAPH_BUILDER_NODE_SECTION, nodeSectionStr,
+                GRAPH_BUILDER_EDGE_SECTION, edgeSectionStr,
+                GRAPH_BUILDER_IMPORT_SECTION, renderImportSection(workflow),
+                GRAPH_BUILDER_ASSIST_METHOD_CODE, assistMethodCode);
 
-		Map<String, Object> graphBuilderModel = Map.of(PACKAGE_NAME, projectDescription.getPackageName(),
-				GRAPH_BUILDER_STATE_SECTION, stateSectionStr, GRAPH_BUILDER_NODE_SECTION, nodeSectionStr,
-				GRAPH_BUILDER_EDGE_SECTION, edgeSectionStr, GRAPH_BUILDER_IMPORT_SECTION, renderImportSection(workflow),
-				GRAPH_BUILDER_ASSIST_METHOD_CODE, assistMethodCode);
-		Map<String, Object> graphRunControllerModel = Map.of(PACKAGE_NAME, projectDescription.getPackageName());
-		renderAndWriteTemplates(List.of(GRAPH_BUILDER_TEMPLATE_NAME, GRAPH_RUN_TEMPLATE_NAME),
-				List.of(graphBuilderModel, graphRunControllerModel), projectRoot, projectDescription);
+        Map<String, Object> graphRunControllerModel = Map.of(
+                PACKAGE_NAME, projectDescription.getPackageName(),
+                DEFAULT_INPUTS, renderDefaultInputs(allStateVars));
 
-		// 生成需要的资源文件
-		this.generateResourceFiles(projectRoot,
-				nodes.stream()
-					.map(node -> Map.entry(node.getType(), node.getData()))
-					.map(e -> Map.entry((NodeSection<NodeData>) nodeSectionMap.get(e.getKey()), e.getValue()))
-					.map(e -> e.getKey().resourceFiles(projectDescription.getDslDialectType(), e.getValue()))
-					.flatMap(List::stream)
-					.toList());
-	}
+        renderAndWriteTemplates(
+                List.of(GRAPH_BUILDER_TEMPLATE_NAME, GRAPH_RUN_TEMPLATE_NAME),
+                List.of(graphBuilderModel, graphRunControllerModel),
+                projectRoot,
+                projectDescription);
 
-	private void generateResourceFiles(Path projectRoot, List<NodeSection.ResourceFile> resourceFiles) {
-		resourceFiles.forEach(resourceFile -> {
-			try (InputStream inputStream = resourceFile.inputStreamSupplier().get()) {
-				ContributorFileUtil.saveResourceFile(projectRoot, resourceFile.fileName(), inputStream);
-			}
-			catch (Exception e) {
-				throw new RuntimeException(e);
-			}
-		});
-	}
+        generateProviderProperties(projectRoot, nodes);
 
-	private String renderAssistMethodCode(List<Node> nodes, DSLDialectType dialectType) {
-		StringBuilder sb = new StringBuilder();
-		nodes.stream().map(Node::getType).distinct().map(nodeSectionMap::get).forEach(section -> {
-			sb.append(section.assistMethodCode(dialectType));
-			sb.append(String.format("%n"));
-		});
-		return sb.toString();
-	}
+        generateResourceFiles(
+                projectRoot,
+                nodes.stream()
+                        .map(node -> Map.entry(node.getType(), node.getData()))
+                        .map(e -> Map.entry(
+                                (NodeSection<NodeData>) nodeSectionMap.get(e.getKey()),
+                                e.getValue()))
+                        .map(e -> e.getKey().resourceFiles(
+                                projectDescription.getDslDialectType(), e.getValue()))
+                        .flatMap(List::stream)
+                        .toList());
+    }
 
-	private String renderStateSections(List<Variable> overallStateVars) {
-		if (overallStateVars == null || overallStateVars.isEmpty()) {
-			return "";
-		}
-		String template = """
-				() -> {
-				  Map<String, KeyStrategy> strategies = new HashMap<>();
-				  %s
-				  return strategies;
-				}
-				""";
+    private void generateResourceFiles(
+            Path projectRoot, List<NodeSection.ResourceFile> resourceFiles) {
 
-		String keyStrategies = overallStateVars.stream()
-			.map(var -> String.format("strategies.put(\"%s\", %s);", var.getName(),
-					Optional.ofNullable(var.getVariableStrategy()).orElse(Variable.Strategy.REPLACE).getCode()))
-			.collect(Collectors.joining("\n"));
+        resourceFiles.forEach(resourceFile -> {
+            try (InputStream inputStream = resourceFile.inputStreamSupplier().get()) {
+                ContributorFileUtil.saveResourceFile(
+                        projectRoot, resourceFile.fileName(), inputStream);
+            }
+            catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
 
-		return String.format(template, keyStrategies);
-	}
+    private String renderAssistMethodCode(
+            List<Node> nodes, DSLDialectType dialectType) {
 
-	private String renderNodeSections(List<Node> nodes, Map<String, String> varNames) {
-		StringBuilder sb = new StringBuilder();
-		for (Node node : nodes) {
-			String varName = varNames.get(node.getId());
-			NodeType nodeType = node.getType();
-			NodeSection<? extends NodeData> section = nodeSectionMap.get(nodeType);
-			sb.append(section.render(node, varName));
-		}
-		return sb.toString();
-	}
+        StringBuilder sb = new StringBuilder();
 
-	private String renderEdgeSections(List<Edge> edges, List<Node> nodes, Map<String, String> varNames) {
-		// nodeVarName -> node的映射
-		Map<String, Node> nodeMap = nodes.stream()
-			.collect(Collectors.toMap(node -> node.getData().getVarName(), Function.identity()));
+        nodes.stream()
+                .map(Node::getType)
+                .distinct()
+                .map(nodeSectionMap::get)
+                .filter(Objects::nonNull)
+                .forEach(section -> {
+                    sb.append(section.assistMethodCode(dialectType));
+                    sb.append(String.format("%n"));
+                });
 
-		// 根据source进行分组
-		Map<String, List<Edge>> edgeGroup = edges.stream().collect(Collectors.groupingBy(Edge::getSource));
+        return sb.toString();
+    }
 
-		StringBuilder sb = new StringBuilder();
+    private String renderStateSections(List<Variable> overallStateVars) {
+        if (overallStateVars == null || overallStateVars.isEmpty()) {
+            return "";
+        }
 
-		// 调用每一个source节点的renderEdges方法
-		edgeGroup.forEach((varName, edgeList) -> {
-			NodeType nodeType = nodeMap.get(varName).getType();
-			@SuppressWarnings("unchecked")
-			NodeSection<NodeData> section = (NodeSection<NodeData>) nodeSectionMap.get(nodeType);
-			sb.append(section.renderEdges(nodeMap.get(varName).getData(), edgeList));
-		});
+        String template = """
+                () -> {
+                  Map<String, KeyStrategy> strategies = new HashMap<>();
+                  %s
+                  return strategies;
+                }
+                """;
 
-		// 统一生成end节点到StateGraph.END的边（避免边重复）
-		List<String> endNodeList = nodes.stream()
-			.filter(node -> NodeType.END.equals(node.getType()))
-			.map(Node::getId)
-			.map(varNames::get)
-			.toList();
+        String keyStrategies = overallStateVars.stream()
+                .collect(Collectors.toMap(
+                        Variable::getName,
+                        Function.identity(),
+                        (a, b) -> a))
+                .values()
+                .stream()
+                .map(var -> String.format(
+                        "strategies.put(\"%s\", %s);",
+                        var.getName(),
+                        Optional.ofNullable(var.getVariableStrategy())
+                                .orElse(Variable.Strategy.REPLACE)
+                                .getCode()))
+                .collect(Collectors.joining("\n"));
 
-		if (!endNodeList.isEmpty()) {
-			sb.append(String.format("// Edges For [end]%n"));
-			sb.append("stateGraph");
-			endNodeList.forEach(endName -> sb.append(String.format("%n.addEdge(\"%s\", END)", endName)));
-			sb.append(String.format(";%n"));
-		}
+        return String.format(template, keyStrategies);
+    }
 
-		return sb.toString();
-	}
+    private String renderDefaultInputs(List<Variable> variables) {
+        List<String> entries = variables.stream()
+                .collect(Collectors.toMap(
+                        Variable::getName,
+                        Function.identity(),
+                        (a, b) -> a))
+                .values()
+                .stream()
+                .filter(var -> var.getValue() != null || "sys_files".equals(var.getName()))
+                .map(var -> String.format(
+                        "Map.entry(%s, %s)",
+                        ObjectToCodeUtil.toCode(var.getName()),
+                        renderDefaultValue(var)))
+                .toList();
 
-	private String renderImportSection(Workflow workflow) {
-		// construct a set of node types
-		Set<NodeType> uniqueTypes = workflow.getGraph()
-			.getNodes()
-			.stream()
-			.map(Node::getType)
-			.collect(Collectors.toSet());
+        if (entries.isEmpty()) {
+            return "Map.of()";
+        }
 
-		if (uniqueTypes.isEmpty()) {
-			return "";
-		}
+        return "Map.ofEntries(" + String.join(", ", entries) + ")";
+    }
 
-		List<String> commonImports = uniqueTypes.stream()
-			.map(nodeSectionMap::get)
-			.map(NodeSection::getImports)
-			.flatMap(List::stream)
-			.distinct()
-			.toList();
-		// 按照字典序升序排序，其中static开头的放在后面
-		List<String> allImports = Stream.of(commonImports, GRAPH_COMMON_IMPORTS)
-			.flatMap(List::stream)
-			.distinct()
-			.sorted(Comparator.comparing((String s) -> s.startsWith("static")).thenComparing(String::compareTo))
-			.toList();
+    private String renderDefaultValue(Variable var) {
+        if ("sys_files".equals(var.getName()) && var.getValue() == null) {
+            return "List.of()";
+        }
 
-		StringBuilder sb = new StringBuilder();
-		allImports.forEach(className -> sb.append("import ").append(className).append(";\n"));
+        Object value = var.getValue();
+        if (value == null) {
+            return "List.of()";
+        }
 
-		return sb.toString();
-	}
+        VariableType type = var.getValueType();
+        String raw = String.valueOf(value);
 
-	private void renderAndWriteTemplates(List<String> templateNames, List<Map<String, Object>> models, Path projectRoot,
-			ProjectDescription projectDescription) {
-		// todo: may to standardize the code format via the IdentifierGeneratorFactory
-		Path fileRoot = ContributorFileUtil.createDirectory(projectRoot, projectDescription);
-		for (int i = 0; i < templateNames.size(); i++) {
-			String templateName = templateNames.get(i);
-			String template;
-			try {
-				template = templateRenderer.render(templateName, models.get(i));
-			}
-			catch (IOException e) {
-				throw new RuntimeException("Got error when rendering template" + templateName, e);
-			}
-			Path file;
-			try {
-				file = Files.createFile(fileRoot.resolve(templateName));
-			}
-			catch (IOException e) {
-				throw new RuntimeException("Got error when creating file", e);
-			}
-			try (PrintWriter writer = new PrintWriter(Files.newBufferedWriter(file))) {
-				writer.print(template);
-			}
-			catch (IOException e) {
-				throw new RuntimeException("Got error when writing template " + templateName, e);
-			}
-		}
-	}
+        if (VariableType.BOOLEAN.equals(type)) {
+            return Boolean.toString(Boolean.parseBoolean(raw));
+        }
+
+        if (VariableType.NUMBER.equals(type)) {
+            try {
+                Double.parseDouble(raw);
+                return raw;
+            }
+            catch (NumberFormatException ignored) {
+                return "0";
+            }
+        }
+
+        if (VariableType.arrays().contains(type) && "[]".equals(raw.trim())) {
+            return "List.of()";
+        }
+
+        return ObjectToCodeUtil.toCode(value);
+    }
+
+    private String renderNodeSections(
+            List<Node> nodes, Map<String, String> varNames) {
+
+        StringBuilder sb = new StringBuilder();
+
+        for (Node node : nodes) {
+            String varName = varNames.get(node.getId());
+            NodeSection<? extends NodeData> section =
+                    nodeSectionMap.get(node.getType());
+
+            if (section == null) {
+                throw new IllegalStateException(
+                        "No NodeSection found for node type: " + node.getType());
+            }
+
+            sb.append(section.render(node, varName));
+        }
+
+        return sb.toString();
+    }
+
+    private String renderEdgeSections(
+            List<Edge> edges,
+            List<Node> nodes,
+            Map<String, String> varNames) {
+
+        Map<String, Node> nodeMap = nodes.stream()
+                .collect(Collectors.toMap(
+                        node -> node.getData().getVarName(),
+                        Function.identity()));
+
+        Map<String, List<Edge>> edgeGroup = edges.stream()
+                .collect(Collectors.groupingBy(Edge::getSource));
+
+        StringBuilder sb = new StringBuilder();
+
+        edgeGroup.forEach((varName, edgeList) -> {
+            Node sourceNode = nodeMap.get(varName);
+            if (sourceNode == null) {
+                throw new IllegalStateException(
+                        "Edge source node not found: " + varName);
+            }
+
+            @SuppressWarnings("unchecked")
+            NodeSection<NodeData> section =
+                    (NodeSection<NodeData>) nodeSectionMap.get(sourceNode.getType());
+
+            sb.append(section.renderEdges(sourceNode.getData(), edgeList));
+        });
+
+        // Dify nodes are terminal only when they truly have zero outgoing edges.
+        // Do not force AnswerNode to END, because AnswerNode may continue to
+        // Assigner/Code/other nodes.
+        Set<String> sourceNames = edges.stream()
+                .map(Edge::getSource)
+                .collect(Collectors.toSet());
+
+        List<String> zeroOutDegreeNodes = nodes.stream()
+                .map(Node::getData)
+                .map(NodeData::getVarName)
+                .filter(Objects::nonNull)
+                .filter(name -> !sourceNames.contains(name))
+                .distinct()
+                .toList();
+
+        if (!zeroOutDegreeNodes.isEmpty()) {
+            sb.append(String.format("// Edges For zero-outdegree nodes%n"));
+            sb.append("stateGraph");
+
+            zeroOutDegreeNodes.forEach(endName ->
+                    sb.append(String.format(
+                            "%n.addEdge(\"%s\", END)", endName)));
+
+            sb.append(String.format(";%n"));
+        }
+
+        return sb.toString();
+    }
+
+    private String renderImportSection(Workflow workflow) {
+        Set<NodeType> uniqueTypes = workflow.getGraph()
+                .getNodes()
+                .stream()
+                .map(Node::getType)
+                .collect(Collectors.toSet());
+
+        List<String> sectionImports = uniqueTypes.stream()
+                .map(nodeSectionMap::get)
+                .filter(Objects::nonNull)
+                .map(NodeSection::getImports)
+                .flatMap(List::stream)
+                .distinct()
+                .toList();
+
+        List<String> allImports = Stream
+                .of(sectionImports, GRAPH_COMMON_IMPORTS)
+                .flatMap(List::stream)
+                .distinct()
+                .sorted(Comparator
+                        .comparing((String s) -> s.startsWith("static"))
+                        .thenComparing(String::compareTo))
+                .toList();
+
+        StringBuilder sb = new StringBuilder();
+
+        allImports.forEach(className ->
+                sb.append("import ")
+                        .append(className)
+                        .append(";\n"));
+
+        return sb.toString();
+    }
+
+    private void generateProviderProperties(
+            Path projectRoot, List<Node> nodes) {
+
+        Map<String, String> providers = nodes.stream()
+                .map(Node::getData)
+                .map(data -> {
+                    if (data instanceof LLMNodeData llm) {
+                        return llm.getProviderName();
+                    }
+                    if (data instanceof QuestionClassifierNodeData classifier) {
+                        return classifier.getProviderName();
+                    }
+                    return null;
+                })
+                .filter(Objects::nonNull)
+                .filter(provider -> !provider.isBlank())
+                .distinct()
+                .collect(Collectors.toMap(
+                        this::normalizeProviderKey,
+                        Function.identity(),
+                        (a, b) -> a));
+
+        StringBuilder content = new StringBuilder();
+        content.append(System.lineSeparator());
+        content.append("# Generated Dify model provider configuration")
+                .append(System.lineSeparator());
+        content.append("# Each AI node keeps its own provider + model; there is no default model.")
+                .append(System.lineSeparator());
+        content.append("spring.ai.model.chat=none")
+                .append(System.lineSeparator());
+        content.append("spring.ai.model.audio.speech=none")
+                .append(System.lineSeparator());
+        content.append("spring.ai.model.audio.transcription=none")
+                .append(System.lineSeparator());
+        content.append("spring.ai.model.image=none")
+                .append(System.lineSeparator());
+        content.append("spring.ai.model.embedding=none")
+                .append(System.lineSeparator());
+        content.append("spring.ai.model.moderation=none")
+                .append(System.lineSeparator());
+
+        providers.forEach((key, originalProvider) -> {
+            String envKey = key.toUpperCase().replace('-', '_');
+
+            content.append(System.lineSeparator());
+            content.append("# Dify provider: ")
+                    .append(originalProvider)
+                    .append(System.lineSeparator());
+            content.append("# For Spring AI OpenAiApi base-url, normally do not include a trailing /v1.")
+                    .append(System.lineSeparator());
+            content.append("ai.providers.")
+                    .append(key)
+                    .append(".base-url=${AI_")
+                    .append(envKey)
+                    .append("_BASE_URL:}")
+                    .append(System.lineSeparator());
+            content.append("ai.providers.")
+                    .append(key)
+                    .append(".api-key=${AI_")
+                    .append(envKey)
+                    .append("_API_KEY:}")
+                    .append(System.lineSeparator());
+        });
+
+        try {
+            Path resources = projectRoot
+                    .resolve("src")
+                    .resolve("main")
+                    .resolve("resources");
+
+            Files.createDirectories(resources);
+
+            Path properties = resources.resolve("application.properties");
+
+            Files.writeString(
+                    properties,
+                    content.toString(),
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.APPEND);
+        }
+        catch (IOException e) {
+            throw new RuntimeException(
+                    "Failed to generate provider properties", e);
+        }
+    }
+
+    private String normalizeProviderKey(String provider) {
+        String value = provider == null ? "" : provider.trim();
+
+        int slash = value.lastIndexOf('/');
+        if (slash >= 0 && slash < value.length() - 1) {
+            value = value.substring(slash + 1);
+        }
+
+        value = value
+                .toLowerCase()
+                .replaceAll("[^a-z0-9_-]", "-");
+
+        if (value.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Dify provider must not be empty");
+        }
+
+        return value;
+    }
+
+    private void renderAndWriteTemplates(
+            List<String> templateNames,
+            List<Map<String, Object>> models,
+            Path projectRoot,
+            ProjectDescription projectDescription) {
+
+        Path fileRoot = ContributorFileUtil
+                .createDirectory(projectRoot, projectDescription);
+
+        for (int i = 0; i < templateNames.size(); i++) {
+            String templateName = templateNames.get(i);
+            String template;
+
+            try {
+                template = templateRenderer.render(
+                        templateName, models.get(i));
+            }
+            catch (IOException e) {
+                throw new RuntimeException(
+                        "Got error when rendering template " + templateName, e);
+            }
+
+            Path file;
+
+            try {
+                file = Files.createFile(fileRoot.resolve(templateName));
+            }
+            catch (IOException e) {
+                throw new RuntimeException(
+                        "Got error when creating file", e);
+            }
+
+            try (PrintWriter writer =
+                         new PrintWriter(Files.newBufferedWriter(file))) {
+                writer.print(template);
+            }
+            catch (IOException e) {
+                throw new RuntimeException(
+                        "Got error when writing template " + templateName, e);
+            }
+        }
+    }
 
 }
