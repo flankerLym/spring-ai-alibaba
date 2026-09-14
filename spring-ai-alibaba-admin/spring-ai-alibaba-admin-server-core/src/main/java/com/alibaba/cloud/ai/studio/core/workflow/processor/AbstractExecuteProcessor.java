@@ -180,11 +180,13 @@ public abstract class AbstractExecuteProcessor implements ExecuteProcessor {
 		if (context.getTaskStatus().equals(NodeStatusEnum.STOP.getCode())) {
 			throw new BizException(ErrorCode.WORKFLOW_RUN_CANCEL.toError("Manually terminated"));
 		}
-		if ((!node.getId().startsWith("End_") && !node.getId().startsWith("IteratorEnd_")
-				&& !node.getId().startsWith("ParallelEnd_"))
+		if ((!node.getId().startsWith("End_")
+				&& !node.getId().startsWith("IteratorEnd_")
+				&& !node.getId().startsWith("ParallelEnd_")
+				&& !NodeTypeEnum.OUTPUT.getCode().equals(node.getType()))
 				&& CollectionUtils.isEmpty(graph.outgoingEdgesOf(node.getId()))) {
 			throw new BizException(ErrorCode.WORKFLOW_CONFIG_INVALID
-				.toError("the current node has no successor node, and it cannot function properly."));
+					.toError("the current node has no successor node, and it cannot function properly."));
 		}
 	}
 

@@ -176,6 +176,16 @@ public class LLMExecuteProcessor extends AbstractExecuteProcessor {
 				nodeResult.setInput(JsonUtils.toJson(decorateInput(inputObj)));
 				Map<String, Object> outputMap = Maps.newHashMap();
 				outputMap.put(OUTPUT_DECORATE_PARAM_KEY, responseText);
+
+				if (BooleanUtils.isTrue(nodeParam.getStructuredOutputEnabled())) {
+					try {
+						outputMap.put("structured_output", JsonUtils.fromJsonToMap(responseText));
+					}
+					catch (Exception e) {
+						log.warn("Structured output is not valid JSON, nodeId={}", node.getId());
+					}
+				}
+
 				if (StringUtils.isNotBlank(reasoningContent)) {
 					outputMap.put(REASONING_DECORATE_PARAM_KEY, reasoningContent);
 				}
@@ -419,6 +429,9 @@ public class LLMExecuteProcessor extends AbstractExecuteProcessor {
 
 		@JsonProperty("short_memory")
 		private ShortTermMemory shortMemory;
+
+		@JsonProperty("structured_output_enabled")
+		private Boolean structuredOutputEnabled;
 
 	}
 

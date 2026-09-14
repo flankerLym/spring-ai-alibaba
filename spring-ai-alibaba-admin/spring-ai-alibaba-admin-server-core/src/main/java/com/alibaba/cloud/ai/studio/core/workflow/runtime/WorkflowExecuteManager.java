@@ -495,18 +495,6 @@ public class WorkflowExecuteManager {
 			return true;
 		}
 		boolean containFail = context.getTaskStatus().equals(NodeStatusEnum.FAIL.getCode());
-		Optional<String> endNodeOptional = graph.vertexSet()
-			.stream()
-			.filter(node -> node.startsWith("End_") || node.startsWith("IteratorEnd_")
-					|| node.startsWith("ParallelEnd_"))
-			.findFirst();
-		String endNode = null;
-		if (endNodeOptional.isPresent()) {
-			endNode = endNodeOptional.get();
-		}
-		// End execution when there are no executable nodes and no nodes currently
-		// executing
-		NodeResult endNodeResult = context.getNodeResultMap().get(endNode);
 		// Calculate execution time in seconds
 		long seconds = (System.currentTimeMillis() - context.getStartTime()) / 1000;
 		if (seconds > InvokeSourceEnum.valueOf(context.getInvokeSource()).getTimeoutSeconds()) {
@@ -515,8 +503,26 @@ public class WorkflowExecuteManager {
 			workflowInnerService.refreshContextCache(context);
 			return true;
 		}
-		return containFail
-				|| (endNodeResult != null && endNodeResult.getNodeStatus().equals(NodeStatusEnum.SUCCESS.getCode()));
+		if (containFail) {
+			return true;
+		}
+
+		// Dify answer nodes are imported as Output nodes and do not have an End_ id.
+		// Treat any successfully executed sink node as the workflow terminal node.
+		Optional<NodeResult> terminalResult = graph.vertexSet()
+			.stream()
+			.filter(nodeId -> graph.outgoingEdgesOf(nodeId).isEmpty())
+			.map(context.getNodeResultMap()::get)
+			.filter(nodeResult -> nodeResult != null
+					&& NodeStatusEnum.SUCCESS.getCode().equals(nodeResult.getNodeStatus()))
+			.findFirst();
+		if (terminalResult.isPresent()) {
+			context.setTaskResult(terminalResult.get().getOutput());
+			context.setTaskStatus(NodeStatusEnum.SUCCESS.getCode());
+			workflowInnerService.refreshContextCache(context);
+			return true;
+		}
+		return false;
 	}
 
 	/**
@@ -603,6 +609,14 @@ public class WorkflowExecuteManager {
 			context.getExecuteOrderList().add(node.getId());
 			node.setType(type);
 			processorMap.get(type + "ExecuteProcessor").execute(graph, node, context);
+			NodeResult result = context.getNodeResultMap().get(nodeId);
+			log.info("节点执行完成: id={}, name={}, type={}, status={}, output={}, error={}",
+					nodeId,
+					node.getName(),
+					type,
+					result == null ? null : result.getNodeStatus(),
+					result == null ? null : result.getOutput(),
+					result == null ? null : result.getErrorInfo());
 		}
 		catch (Exception e) {
 			log.error("executeNodeWork error:{}", nodeId, e);
