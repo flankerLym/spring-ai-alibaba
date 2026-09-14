@@ -16,6 +16,7 @@ import { useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import AppCard from './components/Card';
 import CreateModal from './components/CreateModal';
+import ImportDslButton from './components/ImportDslButton';
 import { EditNameModal } from './components/EditNameModal';
 
 const tabs = [
@@ -232,6 +233,8 @@ export default function () {
       activeTab={state.activeTab}
       tabs={tabs}
       right={
+        <div style={{ display: 'flex', gap: 12 }}>
+        <ImportDslButton onImported={(app_id) => gotoAppDetail({ type: IAppType.WORKFLOW, app_id })} />
         <Button
           onClick={() => setState({ showCreateModal: true })}
           icon={<IconFont type="spark-plus-line" />}
@@ -242,6 +245,7 @@ export default function () {
             dm: '创建应用',
           })}
         </Button>
+        </div>
       }
       onTabChange={onTabChange}
     >
