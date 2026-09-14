@@ -175,6 +175,19 @@ export function importWorkflowDsl(document: unknown, filename: string, available
             }),
           }));
           p.branches.push({ id: 'default', label: 'ELSE' });
+          {
+            const connectedBranches = new Set(source.edges
+              .filter((edge: Obj) => edge.source === node.id)
+              .map((edge: Obj) => {
+                const handle = edge.sourceHandle || edge.source_handle;
+                return handle === 'false' ? 'default' : handle;
+              }));
+            // In Dify, a branch without an outgoing edge terminates successfully.
+            // Keep the same graph and record that runtime semantic explicitly.
+            p.terminal_branch_ids = p.branches
+              .map((branch: Obj) => branch.id)
+              .filter((id: string) => !connectedBranches.has(id));
+          }
           break;
         case 'question-classifier':
           p.model_config = model(data, p.model_config);

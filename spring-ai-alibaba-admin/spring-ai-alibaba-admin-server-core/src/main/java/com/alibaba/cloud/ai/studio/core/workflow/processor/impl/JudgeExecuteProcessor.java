@@ -31,6 +31,7 @@ import com.alibaba.cloud.ai.studio.core.workflow.WorkflowContext;
 import com.alibaba.cloud.ai.studio.core.utils.common.VariableUtils;
 import com.alibaba.cloud.ai.studio.core.workflow.WorkflowInnerService;
 import com.alibaba.cloud.ai.studio.core.workflow.processor.AbstractExecuteProcessor;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.Lists;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -82,7 +83,7 @@ public class JudgeExecuteProcessor extends AbstractExecuteProcessor {
 		}).findFirst();
 		if (any.isPresent()) {
 			Branch branch = any.get();
-			List<String> targetIds = null;
+			List<String> targetIds = Lists.newArrayList();
 			Set<Edge> edges = graph.outgoingEdgesOf(node.getId());
 			if (CollectionUtils.isNotEmpty(edges)) {
 				targetIds = edges.stream()
@@ -95,6 +96,10 @@ public class JudgeExecuteProcessor extends AbstractExecuteProcessor {
 			if (CollectionUtils.isNotEmpty(targetIds)) {
 				String targetIdString = targetIds.stream().collect(Collectors.joining(","));
 				outputObj.put(OUTPUT_DECORATE_PARAM_KEY, "Hit branch target node: " + targetIdString);
+				nodeResult.setNodeStatus(NodeStatusEnum.SUCCESS.getCode());
+			}
+			else if (isTerminalBranch(config, branch.getId())) {
+				outputObj.put(OUTPUT_DECORATE_PARAM_KEY, "Hit terminal branch: " + branch.getId());
 				nodeResult.setNodeStatus(NodeStatusEnum.SUCCESS.getCode());
 			}
 			else {
@@ -117,7 +122,7 @@ public class JudgeExecuteProcessor extends AbstractExecuteProcessor {
 				.findFirst();
 			if (defaultOptional.isPresent()) {
 				Branch branch = defaultOptional.get();
-				List<String> targetIds = null;
+				List<String> targetIds = Lists.newArrayList();
 				Set<Edge> edges = graph.outgoingEdgesOf(node.getId());
 				if (CollectionUtils.isNotEmpty(edges)) {
 					targetIds = edges.stream()
@@ -129,6 +134,11 @@ public class JudgeExecuteProcessor extends AbstractExecuteProcessor {
 				if (CollectionUtils.isNotEmpty(targetIds)) {
 					String targetIdString = targetIds.stream().collect(Collectors.joining(","));
 					outputObj.put(OUTPUT_DECORATE_PARAM_KEY, "Hit branch target node: " + targetIdString);
+					nodeResult.setNodeStatus(NodeStatusEnum.SUCCESS.getCode());
+				}
+				else if (isTerminalBranch(config, branch.getId())) {
+					outputObj.put(OUTPUT_DECORATE_PARAM_KEY, "Hit terminal branch: " + branch.getId());
+					nodeResult.setNodeStatus(NodeStatusEnum.SUCCESS.getCode());
 				}
 				else {
 					outputObj.put(OUTPUT_DECORATE_PARAM_KEY, "Default branch target node: empty");
@@ -589,6 +599,14 @@ public class JudgeExecuteProcessor extends AbstractExecuteProcessor {
 
 		private List<Branch> branches;
 
+		@JsonProperty("terminal_branch_ids")
+		private List<String> terminalBranchIds;
+
+	}
+
+	private boolean isTerminalBranch(NodeParam config, String branchId) {
+		return CollectionUtils.isNotEmpty(config.getTerminalBranchIds())
+				&& config.getTerminalBranchIds().contains(branchId);
 	}
 
 	@Data
@@ -647,7 +665,7 @@ public class JudgeExecuteProcessor extends AbstractExecuteProcessor {
 						.map(Edge::getTarget)
 						.collect(Collectors.toList());
 				}
-				if (CollectionUtils.isEmpty(targetIds)) {
+				if (CollectionUtils.isEmpty(targetIds) && !isTerminalBranch(config, branch.getId())) {
 					needPrefix = true;
 					stringBuilder.append("There are one or more conditional branches with no subsequent nodes;\n");
 				}
@@ -709,7 +727,7 @@ public class JudgeExecuteProcessor extends AbstractExecuteProcessor {
 					.map(Edge::getTarget)
 					.collect(Collectors.toList());
 			}
-			if (CollectionUtils.isEmpty(targetIds)) {
+			if (CollectionUtils.isEmpty(targetIds) && !isTerminalBranch(config, "default")) {
 				stringBuilder.append("[default] The conditional branch does not have a subsequent node;");
 			}
 		}

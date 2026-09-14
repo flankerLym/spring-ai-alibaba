@@ -1,8 +1,0 @@
-{
-  "baseCommit": "5e4b85a4199423cd2589b654d25d4cf78874bb4a",
-  "requires": "admin-dsl-import-patch",
-  "files": [
-    {"path":"frontend/packages/main/src/pages/App/components/ImportDslButton/index.tsx","original":"c25796bcf94115e95a7a5f960e8790bb4312cb7328b36795eb0ce312cf6dee9c","updated":"b74b96d8f1c1bafe93d4e9204302ee431a8ce34ea9546f2891aab5b812ddd63c"},
-    {"path":"frontend/packages/main/src/pages/App/utils/importWorkflowDsl.ts","original":"96e5e2f2b6da0a5b736b6bc8ea5d05c3d5ce03da8e2c534dd1a75c32f591efaf","updated":"a48038e3006d450a03b8393317ab6f98f78590e1c85a712656fe107f947778e7"}
-  ]
-}
