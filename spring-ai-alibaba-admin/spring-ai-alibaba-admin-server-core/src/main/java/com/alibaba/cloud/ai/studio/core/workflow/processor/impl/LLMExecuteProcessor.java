@@ -138,6 +138,13 @@ public class LLMExecuteProcessor extends AbstractExecuteProcessor {
 		if (StringUtils.isNotBlank(userPrompt)) {
 			requestMessages.add(constructUserMessage(node, modelConfig, userPrompt, context));
 		}
+		if (BooleanUtils.isTrue(nodeParam.getStructuredOutputEnabled())
+				&& nodeParam.getStructuredOutputSchema() != null) {
+			requestMessages.add(0, new SystemMessage(
+					"Return only one valid JSON object matching this JSON Schema. "
+							+ "Do not use Markdown code fences or explanatory text.\n"
+							+ JsonUtils.toJson(nodeParam.getStructuredOutputSchema())));
+		}
 
 		// Build model parameters
 		Map<String, Object> paramMap = Maps.newHashMap();
@@ -179,10 +186,15 @@ public class LLMExecuteProcessor extends AbstractExecuteProcessor {
 
 				if (BooleanUtils.isTrue(nodeParam.getStructuredOutputEnabled())) {
 					try {
-						outputMap.put("structured_output", JsonUtils.fromJsonToMap(responseText));
+						outputMap.put("structured_output", parseStructuredOutput(responseText));
 					}
 					catch (Exception e) {
-						log.warn("Structured output is not valid JSON, nodeId={}", node.getId());
+						String message = "Structured output is not valid JSON";
+						log.warn("{}, nodeId={}", message, node.getId(), e);
+						nodeResult.setNodeStatus(NodeStatusEnum.FAIL.getCode());
+						nodeResult.setErrorInfo(message);
+						nodeResult.setError(ErrorCode.WORKFLOW_EXECUTE_ERROR.toError(message));
+						return nodeResult;
 					}
 				}
 
@@ -199,6 +211,18 @@ public class LLMExecuteProcessor extends AbstractExecuteProcessor {
 			nodeResult.setError(agentResponse.getError());
 		}
 		return nodeResult;
+	}
+
+	private static Map<String, Object> parseStructuredOutput(String text) {
+		String json = StringUtils.trimToEmpty(text)
+			.replaceFirst("^```(?:json)?\\s*", "")
+			.replaceFirst("\\s*```$", "");
+		int start = json.indexOf('{');
+		int end = json.lastIndexOf('}');
+		if (start < 0 || end < start) {
+			throw new IllegalArgumentException("JSON object not found");
+		}
+		return JsonUtils.fromJsonToMap(json.substring(start, end + 1));
 	}
 
 	/**
@@ -432,6 +456,9 @@ public class LLMExecuteProcessor extends AbstractExecuteProcessor {
 
 		@JsonProperty("structured_output_enabled")
 		private Boolean structuredOutputEnabled;
+
+		@JsonProperty("structured_output_schema")
+		private Map<String, Object> structuredOutputSchema;
 
 	}
 

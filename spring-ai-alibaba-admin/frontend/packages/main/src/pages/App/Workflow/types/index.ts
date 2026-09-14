@@ -81,6 +81,9 @@ export interface ILLMNodeParam {
   retry_config: IRetryConfig;
   /* Exception handling configuration */
   try_catch_config: ITryCatchConfig;
+  /* Dify structured output */
+  structured_output_enabled?: boolean;
+  structured_output_schema?: Record<string, any>;
 }
 
 export interface IParameterExtractorNodeParam {

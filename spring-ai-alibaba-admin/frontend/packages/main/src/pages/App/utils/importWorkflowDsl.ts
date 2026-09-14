@@ -44,6 +44,42 @@ const replaceCodeKeys = (code: string, renames: Record<string, string>) => {
   return result;
 };
 
+const schemaOutput = (key: string, schema: Obj): Obj => {
+  const rawType = Array.isArray(schema?.type)
+    ? schema.type.find((item: string) => item !== 'null')
+    : schema?.type;
+  const typeMap: Record<string, string> = {
+    string: 'String', integer: 'Number', number: 'Number',
+    boolean: 'Boolean', object: 'Object', file: 'File',
+  };
+  if (rawType === 'array') {
+    const itemSchema = object(schema.items) ? schema.items : {};
+    const itemType = Array.isArray(itemSchema.type)
+      ? itemSchema.type.find((item: string) => item !== 'null')
+      : itemSchema.type;
+    return {
+      key,
+      type: `Array<${typeMap[itemType] || 'Object'}>`,
+      properties: itemType === 'object'
+        ? Object.entries(itemSchema.properties || {}).map(([name, value]) => ({
+          ...schemaOutput(name, value as Obj),
+          required: (itemSchema.required || []).includes(name),
+        }))
+        : undefined,
+    };
+  }
+  return {
+    key,
+    type: typeMap[rawType] || 'Object',
+    properties: rawType === 'object'
+      ? Object.entries(schema.properties || {}).map(([name, value]) => ({
+        ...schemaOutput(name, value as Obj),
+        required: (schema.required || []).includes(name),
+      }))
+      : undefined,
+  };
+};
+
 /** Converts supported Dify nodes to existing Studio editor schemas, without executing them. */
 export function importWorkflowDsl(document: unknown, filename: string, availableModels: Obj[] = []) {
   if (!object(document)) throw new Error('DSL 顶层必须是对象');
@@ -142,6 +178,18 @@ export function importWorkflowDsl(document: unknown, filename: string, available
           if (!p.prompt_content) p.prompt_content = data.memory?.query_prompt_template
             ? template(data.memory.query_prompt_template) : '${' + start.id + '.sys_query}';
           p.model_config = model(data, p.model_config);
+          const structuredSchema = data.structured_output?.schema;
+          p.structured_output_enabled = data.structured_output_enabled === true && object(structuredSchema);
+          if (p.structured_output_enabled) {
+            if (structuredSchema.type !== 'object') {
+              throw new Error(`LLM 节点 ${node.id} 的结构化输出必须是 object`);
+            }
+            p.structured_output_schema = clone(structuredSchema);
+            config.output_params = [
+              ...config.output_params.filter((item: Obj) => item.key !== 'structured_output'),
+              schemaOutput('structured_output', structuredSchema),
+            ];
+          }
           if (data.memory) {
             p.short_memory.enabled = !!data.memory.window?.enabled;
             p.short_memory.round = data.memory.window?.size || 3;
