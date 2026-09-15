@@ -9,6 +9,7 @@ const types: Record<string, string> = {
   'if-else': 'Judge', 'question-classifier': 'Classifier',
   assigner: 'VariableAssign', 'variable-assigner': 'VariableAssign',
   'template-transform': 'VariableHandle', 'http-request': 'API',
+  'parameter-extractor': 'ParameterExtractor',
 };
 const operators: Record<string, string> = {
   is: 'equals', 'is not': 'notEquals', '=': 'equals', '≠': 'notEquals',
@@ -138,7 +139,8 @@ export function importWorkflowDsl(document: unknown, filename: string, available
     if (dify) {
       const data = node.data || {};
       const names = data.type === 'start' ? (data.variables || []).map((v: Obj) => v.variable)
-        : data.type === 'code' ? Object.keys(data.outputs || {}) : [];
+        : data.type === 'code' ? Object.keys(data.outputs || {})
+          : data.type === 'parameter-extractor' ? (data.parameters || []).map((v: Obj) => v.name) : [];
       const map: Record<string, string> = {};
       names.forEach((name: string) => {
         const converted = toKey(name);
@@ -158,6 +160,10 @@ export function importWorkflowDsl(document: unknown, filename: string, available
       if (data.type === 'http-request') {
         map.body = 'output';
         map.output = 'output';
+      }
+      if (data.type === 'parameter-extractor') {
+        map._is_completed = '_is_completed';
+        map._reason = '_reason';
       }
       outputKeys[node.id] = map;
       const typeMap: Record<string, string> = Object.create(null);
@@ -184,6 +190,11 @@ export function importWorkflowDsl(document: unknown, filename: string, available
       else if (data.type === 'http-request') {
         typeMap.body = 'String';
         typeMap.output = 'String';
+      }
+      else if (data.type === 'parameter-extractor') {
+        (data.parameters || []).forEach((item: Obj) => { typeMap[item.name] = valueType(item.type); });
+        typeMap._is_completed = 'Boolean';
+        typeMap._reason = 'String';
       }
       outputTypes[node.id] = typeMap;
     }
@@ -595,6 +606,23 @@ export function importWorkflowDsl(document: unknown, filename: string, available
           p.conditions.push({ id: 'default', subject: '其他' });
           config.input_params = [input('input', data.query_variable_selector)];
           break;
+        case 'parameter-extractor': {
+          p.model_config = model(data, p.model_config).config;
+          p.instruction = template(data.instruction || '');
+          p.extract_params = (data.parameters || []).map((v: Obj) => ({
+            key: outputKeys[node.id][v.name],
+            type: valueType(v.type),
+            required: v.required === true,
+            desc: v.description || v.desc || '',
+          }));
+          config.input_params = [input('input', data.query, selectorType(data.query))];
+          config.output_params = [
+            ...p.extract_params.map((v: Obj) => ({ key: v.key, type: v.type, desc: v.desc })),
+            { key: '_is_completed', type: 'Boolean', desc: '是否完整解析' },
+            { key: '_reason', type: 'String', desc: '未成功解析的原因' },
+          ];
+          break;
+        }
         case 'assigner':
         case 'variable-assigner':
           p.inputs = (data.items || []).map((v: Obj, i: number) => {
