@@ -1,0 +1,99 @@
+.schema-modal {
+  :global(.ant-modal-body) {
+    min-height: 610px;
+  }
+}
+
+.toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 8px;
+
+  :global(.ant-tabs-nav) {
+    margin-bottom: 0;
+  }
+}
+
+.visual-editor {
+  min-height: 520px;
+  padding: 16px 18px;
+  background: #f7f8fa;
+  border-radius: 12px;
+}
+
+.root-title {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.root-content {
+  padding-left: 18px;
+  border-left: 1px solid #e2e5ea;
+}
+
+.field-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.field-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 1.2fr) 140px minmax(160px, 1.5fr) 82px 50px;
+  gap: 8px;
+  align-items: center;
+}
+
+.field-name,
+.field-description,
+.field-type {
+  min-width: 0;
+}
+
+.required-control {
+  color: #ff7d00;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.enum-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 8px;
+}
+
+.enum-label {
+  width: 56px;
+  flex-shrink: 0;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.children-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 0 4px 14px;
+  border-left: 1px solid #dfe3e8;
+}
+
+.add-field-btn {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+.json-editor {
+  min-height: 520px !important;
+  font-family: Menlo, Monaco, Consolas, 'Courier New', monospace;
+  line-height: 1.6;
+}
