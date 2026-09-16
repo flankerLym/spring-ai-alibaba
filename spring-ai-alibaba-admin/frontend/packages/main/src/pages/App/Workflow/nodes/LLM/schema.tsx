@@ -15,6 +15,7 @@ import {
   getVariablesFromText,
   transformInputParams,
 } from '../../utils';
+import { DEFAULT_STRUCTURED_OUTPUT_SCHEMA } from './structuredOutput';
 
 const checkLLMNodeDataValid = (data: ILLMNodeData) => {
   const errorMsg: { label: string; error: string }[] = [];
@@ -91,6 +92,8 @@ export const LLMSchema: INodeSchema = {
       try_catch_config: getDefaultTryCatchConfig(
         LLM_NODE_OUTPUT_PARAMS_DEFAULT,
       ),
+      structured_output_enabled: false,
+      structured_output_schema: DEFAULT_STRUCTURED_OUTPUT_SCHEMA,
     } as ILLMNodeParam,
   },
   isSystem: false,

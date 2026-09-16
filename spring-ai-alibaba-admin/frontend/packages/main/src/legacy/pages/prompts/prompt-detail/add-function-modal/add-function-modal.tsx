@@ -73,10 +73,13 @@ function AddFunctionModal(props: AddFunctionModalProps) {
 
   return (
     <Modal
-      destroyOnHidden
+      destroyOnClose
       open={open}
       onCancel={handleCancel}
-      title={$i18n.get({ id: 'legacy.prompts.add.function', dm: '新增函数' })}
+      title={$i18n.get({
+        id: 'legacy.prompts.add.function',
+        dm: '新增函数'
+      })}
       width={900}
       onOk={handleOk}
     >

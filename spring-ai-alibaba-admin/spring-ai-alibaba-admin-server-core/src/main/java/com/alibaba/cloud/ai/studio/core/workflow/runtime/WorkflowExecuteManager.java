@@ -521,12 +521,63 @@ public class WorkflowExecuteManager {
 					&& NodeStatusEnum.SUCCESS.getCode().equals(nodeResult.getNodeStatus()))
 			.findFirst();
 		if (terminalResult.isPresent()) {
-			context.setTaskResult(terminalResult.get().getOutput());
+
+			NodeResult result = terminalResult.get();
+
+			// 如果最后节点不是END，自动补END
+			Node lastNode = context.getWorkflowConfig()
+					.getNodes()
+					.stream()
+					.filter(node -> node.getId().equals(result.getNodeId()))
+					.findFirst()
+					.orElse(null);
+
+			if (lastNode != null
+					&& !NodeTypeEnum.END.getCode().equals(lastNode.getType())) {
+
+				executeAutoEnd(context, result);
+			}
+
+			context.setTaskResult(result.getOutput());
 			context.setTaskStatus(NodeStatusEnum.SUCCESS.getCode());
 			workflowInnerService.refreshContextCache(context);
 			return true;
 		}
 		return false;
+	}
+
+	private void executeAutoEnd(
+			WorkflowContext context,
+			NodeResult result
+	) {
+
+		Node endNode = new Node();
+		endNode.setId("auto_end");
+		endNode.setType(NodeTypeEnum.END.getCode());
+		endNode.setName("Auto End Node");
+
+		EndExecuteProcessor.NodeParam param =
+				new EndExecuteProcessor.NodeParam();
+
+		param.setOutputType("text");
+		param.setTextTemplate(
+				result.getOutput() == null ?
+						"" :
+						result.getOutput().toString()
+		);
+
+		Node.NodeCustomConfig config =
+				new Node.NodeCustomConfig();
+
+		config.setNodeParam(
+				JsonUtils.fromObjectToMap(param)
+		);
+
+		endNode.setConfig(config);
+
+		processorMap
+				.get("EndExecuteProcessor")
+				.execute(null, endNode, context);
 	}
 
 	/**
