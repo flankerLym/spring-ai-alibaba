@@ -51,6 +51,10 @@ import com.alibaba.cloud.ai.studio.runtime.domain.Error;
 @Data
 public class WorkflowContext extends RequestContext {
 
+	/**
+	 * Workflow Trace ID
+	 */
+	private String traceId;
 	/** Application identifier */
 	private String appId;
 

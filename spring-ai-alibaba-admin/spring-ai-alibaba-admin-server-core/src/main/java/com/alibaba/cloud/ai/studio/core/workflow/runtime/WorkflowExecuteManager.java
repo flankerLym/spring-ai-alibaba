@@ -53,7 +53,9 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
-
+import com.alibaba.cloud.ai.studio.core.workflow.trace.annotation.WorkflowTrace;
+import com.alibaba.cloud.ai.studio.core.workflow.trace.service.WorkflowTraceManager;
+import jakarta.annotation.Resource;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -92,6 +94,8 @@ import static com.alibaba.cloud.ai.studio.core.utils.LogUtils.SUCCESS;
 @Component
 public class WorkflowExecuteManager {
 
+	@Resource
+	private WorkflowTraceManager workflowTraceManager;
 	private final Map<String, AbstractExecuteProcessor> processorMap;
 
 	private final WorkflowInnerService workflowInnerService;
@@ -122,6 +126,7 @@ public class WorkflowExecuteManager {
 		return true;
 	}
 
+	@WorkflowTrace
 	public TaskRunResponse runTask(ApplicationVersion appVersion, List<TaskRunParam> inputParams, String conversationId,
 			WorkflowContext workflowContext) {
 		RequestContext context = RequestContextHolder.getRequestContext();
@@ -245,6 +250,9 @@ public class WorkflowExecuteManager {
 			}
 			catch (Exception e) {
 				log.error("execute error:{}", context.getWorkflowConfig(), e);
+			}
+			finally {
+				workflowTraceManager.finishIfNecessary(context);
 			}
 		});
 		return taskId;

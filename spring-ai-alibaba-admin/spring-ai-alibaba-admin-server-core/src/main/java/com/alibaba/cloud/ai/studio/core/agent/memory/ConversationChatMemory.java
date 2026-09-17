@@ -18,14 +18,14 @@ package com.alibaba.cloud.ai.studio.core.agent.memory;
 
 import com.alibaba.cloud.ai.studio.core.config.CommonConfig;
 import com.alibaba.cloud.ai.studio.core.base.manager.RedisManager;
+import jakarta.annotation.Resource;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.stereotype.Component;
+import com.alibaba.cloud.ai.studio.core.base.entity.ConversationMessageEntity;
+import com.alibaba.cloud.ai.studio.core.base.mapper.ConversationMessageMapper;
 
-import java.util.ArrayDeque;
-import java.util.Deque;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 
 /**
  * Implementation of ChatMemory that stores conversation history in Redis. Manages message
@@ -37,6 +37,9 @@ import java.util.Objects;
 @Component
 public class ConversationChatMemory implements ChatMemory {
 
+	@Resource
+	private ConversationMessageMapper conversationMessageMapper;
+
 	/** Redis key prefix for conversation storage */
 	public static String CONVERSATION_CHAT_MEMORY_PREFIX = "conversation_chat:%s";
 
@@ -46,7 +49,10 @@ public class ConversationChatMemory implements ChatMemory {
 	/** Maximum number of messages to store in history */
 	private final Integer maxMessages;
 
-	public ConversationChatMemory(RedisManager redisManager, CommonConfig commonConfig) {
+	public ConversationChatMemory(
+			RedisManager redisManager,
+			CommonConfig commonConfig) {
+
 		this.redisManager = redisManager;
 		this.maxMessages = commonConfig.getMaxConversationRoundInCache();
 	}
@@ -64,10 +70,21 @@ public class ConversationChatMemory implements ChatMemory {
 			historyMessages = new ArrayDeque<>();
 		}
 
-		int messageLimit = Math.max(0, maxMessages);
 		for (Message message : messages) {
+			// Redis
 			historyMessages.offer(message);
+
+			// PostgreSQL
+			ConversationMessageEntity entity = new ConversationMessageEntity();
+			entity.setConversationId(conversationId);
+			entity.setMessageType(message.getMessageType().name());
+			entity.setContent(message.getText());
+			entity.setGmtCreate(new Date());
+
+			conversationMessageMapper.insert(entity);
 		}
+
+		int messageLimit = Math.max(0, maxMessages);
 
 		while (historyMessages.size() > messageLimit) {
 			historyMessages.poll();

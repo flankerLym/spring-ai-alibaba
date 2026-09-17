@@ -16,6 +16,7 @@
 
 package com.alibaba.cloud.ai.studio.core.workflow.processor;
 
+import com.alibaba.cloud.ai.studio.core.workflow.trace.annotation.WorkflowSpan;
 import com.alibaba.cloud.ai.studio.runtime.exception.BizException;
 import com.alibaba.cloud.ai.studio.runtime.enums.ErrorCode;
 import com.alibaba.cloud.ai.studio.runtime.domain.chat.ChatMessage;
@@ -135,6 +136,7 @@ public abstract class AbstractExecuteProcessor implements ExecuteProcessor {
 	 * @param context The workflow context
 	 */
 	@Override
+	@WorkflowSpan
 	public void execute(DirectedAcyclicGraph<String, Edge> graph, Node node, WorkflowContext context) {
 		long start = System.currentTimeMillis();
 		try {

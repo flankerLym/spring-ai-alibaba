@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.alibaba.cloud.ai.studio.admin.mapper.WorkflowTraceMapper">
+
+    <insert id="insertTrace">
+        INSERT INTO workflow_trace (
+            trace_id,
+            root_span_id,
+            task_id,
+            request_id,
+            app_id,
+            workflow_version,
+            conversation_id,
+            invoke_source,
+            status,
+            finish_reason,
+            start_time,
+            end_time,
+            duration_ms,
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+            total_cost,
+            span_count,
+            model_call_count,
+            input_data,
+            output_data,
+            trace_data,
+            error_data,
+            error_code,
+            error_message,
+            gmt_create,
+            gmt_modified
+        )
+        VALUES (
+            #{entity.traceId},
+            #{entity.rootSpanId},
+            #{entity.taskId},
+            #{entity.requestId},
+            #{entity.appId},
+            #{entity.workflowVersion},
+            #{entity.conversationId},
+            #{entity.invokeSource},
+            #{entity.status},
+            #{entity.finishReason},
+            #{entity.startTime},
+            #{entity.endTime},
+            #{entity.durationMs},
+            #{entity.promptTokens},
+            #{entity.completionTokens},
+            #{entity.totalTokens},
+            #{entity.totalCost},
+            #{entity.spanCount},
+            #{entity.modelCallCount},
+            CAST(#{entity.inputData} AS jsonb),
+            CAST(#{entity.outputData} AS jsonb),
+            CAST(#{entity.traceData} AS jsonb),
+            CAST(#{entity.errorData} AS jsonb),
+            #{entity.errorCode},
+            #{entity.errorMessage},
+            #{entity.gmtCreate},
+            #{entity.gmtModified}
+        )
+    </insert>
+
+</mapper>

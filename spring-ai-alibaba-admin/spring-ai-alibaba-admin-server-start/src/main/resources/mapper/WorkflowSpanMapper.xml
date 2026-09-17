@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.alibaba.cloud.ai.studio.admin.mapper.WorkflowSpanMapper">
+
+    <insert id="batchInsert">
+        INSERT INTO workflow_span (
+            span_id,
+            trace_id,
+            parent_span_id,
+            span_name,
+            span_kind,
+            sequence_no,
+            node_id,
+            node_name,
+            node_type,
+            attempt_no,
+            provider,
+            model_id,
+            model_name,
+            price_cost,
+            status,
+            start_time,
+            end_time,
+            duration_ms,
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+            input_data,
+            output_data,
+            span_data,
+            error_code,
+            error_message,
+            error_data,
+            gmt_create
+        )
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (
+                #{item.spanId},
+                #{item.traceId},
+                #{item.parentSpanId},
+                #{item.spanName},
+                #{item.spanKind},
+                #{item.sequenceNo},
+                #{item.nodeId},
+                #{item.nodeName},
+                #{item.nodeType},
+                #{item.attemptNo},
+                #{item.provider},
+                #{item.modelId},
+                #{item.modelName},
+                #{item.priceCost},
+                #{item.status},
+                #{item.startTime},
+                #{item.endTime},
+                #{item.durationMs},
+                #{item.promptTokens},
+                #{item.completionTokens},
+                #{item.totalTokens},
+                CAST(#{item.inputData} AS jsonb),
+                CAST(#{item.outputData} AS jsonb),
+                CAST(#{item.spanData} AS jsonb),
+                #{item.errorCode},
+                #{item.errorMessage},
+                CAST(#{item.errorData} AS jsonb),
+                #{item.gmtCreate}
+            )
+        </foreach>
+    </insert>
+
+</mapper>
