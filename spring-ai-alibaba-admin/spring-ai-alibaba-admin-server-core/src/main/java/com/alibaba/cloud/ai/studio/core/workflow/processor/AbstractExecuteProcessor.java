@@ -538,16 +538,22 @@ public abstract class AbstractExecuteProcessor implements ExecuteProcessor {
 						context.getAppId(),
 						context.getConversationId());
 
-		/*
-		 * 兼容 SAA 原生 sys.query
-		 * 以及 Dify 迁移后的 userText。
-		 */
 		Object input = null;
 
+// SAA 原生
 		if (context.getSysMap() != null) {
 			input = context.getSysMap().get(SYS_QUERY_KEY);
 		}
 
+// Dify snake_case
+		if ((input == null
+				|| StringUtils.isBlank(String.valueOf(input)))
+				&& context.getUserMap() != null) {
+
+			input = context.getUserMap().get("user_text");
+		}
+
+// 兼容 camelCase
 		if ((input == null
 				|| StringUtils.isBlank(String.valueOf(input)))
 				&& context.getUserMap() != null) {
@@ -555,7 +561,7 @@ public abstract class AbstractExecuteProcessor implements ExecuteProcessor {
 			input = context.getUserMap().get("userText");
 		}
 
-		// 再兼容一些 Dify 工作流直接使用 query 作为用户输入字段
+// 兼容 query
 		if ((input == null
 				|| StringUtils.isBlank(String.valueOf(input)))
 				&& context.getUserMap() != null) {

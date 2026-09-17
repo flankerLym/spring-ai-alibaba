@@ -77,7 +77,11 @@ public class RedissonConfig {
 
         config.useSingleServer()
                 .setAddress("redis://" + host + ":" + port)
-                .setDatabase(database);
+                .setDatabase(database)
+                .setConnectTimeout(10000)
+                .setTimeout(15000)
+                .setRetryAttempts(3)
+                .setRetryInterval(1000);
 
         if (password != null && !password.isEmpty()) {
             config.useSingleServer().setPassword(password);

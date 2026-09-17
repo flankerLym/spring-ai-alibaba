@@ -97,7 +97,7 @@ spring:
       host: ${SPRING_REDIS_HOST:172.16.20.230}
       port: ${SPRING_REDIS_PORT:6379}
       password: bjdx_icode
-      database: ${SPRING_REDIS_DATABASE:0}
+      database: ${SPRING_REDIS_DATABASE:3}
   freemarker:
     cache: false
     charset: UTF-8
