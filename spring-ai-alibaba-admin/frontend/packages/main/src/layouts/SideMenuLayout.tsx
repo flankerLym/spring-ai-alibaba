@@ -15,6 +15,7 @@ import {
   MenuUnfoldOutlined,
   ApiOutlined,
   DatabaseOutlined,
+  ApartmentOutlined,
   ToolOutlined,
   SwapOutlined,
 } from '@ant-design/icons';
@@ -102,6 +103,9 @@ const getSelectedMenuKey = (pathname: string): string => {
     return '/admin/prompts';
   }
 
+  if (pathname.startsWith('/admin/workflow-tracing')) {
+    return '/admin/workflow-tracing';
+  }
   // Tracing 页面
   if (pathname.startsWith('/admin/tracing')) {
     return '/admin/tracing';
@@ -253,6 +257,11 @@ export default function SideMenuLayout({ children }: { children: React.ReactNode
             key: '/admin/tracing',
             label: 'Tracing',
             icon: <NodeIndexOutlined />,
+          },
+          {
+            key: '/admin/workflow-tracing',
+            label: '工作流Trace',
+            icon: <ApartmentOutlined />,
           },
         ],
       },

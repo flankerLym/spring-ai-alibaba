@@ -29,6 +29,7 @@ export default defineConfig({
         { path: '/admin/prompt-detail', component: '@/legacy/pages/prompts/prompt-detail/prompt-detail' },
         { path: '/admin/version-history', component: '@/legacy/pages/prompts/version-history/version-history' },
         { path: '/admin/tracing', component: '@/legacy/pages/tracing/tracing' },
+        { path: '/admin/workflow-tracing', component: 'Observability/WorkflowTrace' },
         { path: '/admin/evaluation/experiment', component: '@/legacy/pages/evaluation/experiment/index' },
         { path: '/admin/evaluation/experiment/create', component: '@/legacy/pages/evaluation/experiment/experimentCreate' },
         { path: '/admin/evaluation/experiment/detail/:id', component: '@/legacy/pages/evaluation/experiment/experimentDetail' },

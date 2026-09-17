@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.alibaba.cloud.ai.studio.admin.mapper.WorkflowTraceQueryMapper">
+
+    <sql id="TraceWhere">
+        <where>
+            <if test="appId != null and appId != ''">AND app_id = #{appId}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (
+                    trace_id ILIKE CONCAT('%', #{keyword}, '%')
+                    OR task_id ILIKE CONCAT('%', #{keyword}, '%')
+                    OR request_id ILIKE CONCAT('%', #{keyword}, '%')
+                    OR conversation_id ILIKE CONCAT('%', #{keyword}, '%')
+                )
+            </if>
+            <if test="status != null and status != ''">AND status = #{status}</if>
+            <if test="invokeSource != null and invokeSource != ''">AND invoke_source = #{invokeSource}</if>
+            <if test="startTime != null">AND start_time <![CDATA[ >= ]]> #{startTime}</if>
+            <if test="endTime != null">AND start_time <![CDATA[ <= ]]> #{endTime}</if>
+        </where>
+    </sql>
+
+    <sql id="TraceColumns">
+        id, trace_id, root_span_id, task_id, request_id, app_id, workflow_version,
+        conversation_id, invoke_source, status, finish_reason, start_time, end_time,
+        duration_ms, prompt_tokens, completion_tokens, total_tokens, total_cost,
+        span_count, model_call_count, input_data::text AS input_data,
+        output_data::text AS output_data, trace_data::text AS trace_data,
+        error_data::text AS error_data, error_code, error_message, gmt_create, gmt_modified
+    </sql>
+
+    <select id="selectTracePage" resultType="com.alibaba.cloud.ai.studio.admin.trace.dto.WorkflowTraceView">
+        SELECT <include refid="TraceColumns"/> FROM workflow_trace
+        <include refid="TraceWhere"/>
+        ORDER BY start_time DESC LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countTraces" resultType="long">
+        SELECT COUNT(1) FROM workflow_trace <include refid="TraceWhere"/>
+    </select>
+
+    <select id="selectOverview" resultType="com.alibaba.cloud.ai.studio.admin.trace.dto.WorkflowTraceOverviewView">
+        SELECT
+            COUNT(1) AS trace_count,
+            COUNT(1) FILTER (WHERE status = 'success') AS success_count,
+            COUNT(1) FILTER (WHERE status = 'fail') AS fail_count,
+            COALESCE(SUM(total_tokens), 0) AS total_tokens,
+            COALESCE(SUM(model_call_count), 0) AS model_call_count,
+            COALESCE(AVG(duration_ms), 0)::BIGINT AS avg_duration_ms
+        FROM workflow_trace
+        <include refid="TraceWhere"/>
+    </select>
+
+    <select id="selectTraceById" resultType="com.alibaba.cloud.ai.studio.admin.trace.dto.WorkflowTraceView">
+        SELECT <include refid="TraceColumns"/>
+        FROM workflow_trace WHERE trace_id = #{traceId} LIMIT 1
+    </select>
+
+    <select id="selectSpansByTraceId" resultType="com.alibaba.cloud.ai.studio.admin.trace.dto.WorkflowSpanView">
+        SELECT id, span_id, trace_id, parent_span_id, span_name, span_kind, sequence_no,
+               node_id, node_name, node_type, attempt_no, provider, model_id, model_name,
+               price_cost, status, start_time, end_time, duration_ms, prompt_tokens,
+               completion_tokens, total_tokens, input_data::text AS input_data,
+               output_data::text AS output_data, span_data::text AS span_data,
+               error_code, error_message, error_data::text AS error_data, gmt_create
+        FROM workflow_span
+        WHERE trace_id = #{traceId}
+        ORDER BY sequence_no ASC, start_time ASC
+    </select>
+</mapper>

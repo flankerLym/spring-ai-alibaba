@@ -1,0 +1,29 @@
+.page { min-height: 100%; padding: 24px; background: #f5f7fa; }
+.header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+.title { margin: 0 0 4px !important; }
+.metrics { margin-bottom: 16px; }
+.filterCard { margin-bottom: 16px; }
+.filterCard :global(.ant-form-item) { margin-bottom: 8px; }
+.tableCard { overflow: hidden; }
+.description { margin-bottom: 16px; }
+.errorCard { margin-bottom: 16px; border-color: #ffccc7; background: #fff2f0; }
+.detailGrid { display: grid; grid-template-columns: minmax(680px, 1.7fr) minmax(360px, 1fr); gap: 16px; align-items: start; }
+.waterfallCard, .spanDetailCard { min-height: 520px; }
+.waterfall { border: 1px solid #f0f0f0; border-radius: 8px; overflow: hidden; }
+.waterfallHeader { display: grid; grid-template-columns: 360px 1fr; padding: 10px 12px; color: rgba(0,0,0,.55); font-size: 12px; background: #fafafa; border-bottom: 1px solid #f0f0f0; }
+.spanRow { display: grid; grid-template-columns: 360px 1fr; min-height: 52px; cursor: pointer; border-bottom: 1px solid #f5f5f5; transition: background .15s ease; }
+.spanRow:last-child { border-bottom: 0; }
+.spanRow:hover { background: #f8fbff; }
+.spanRowActive { background: #e6f4ff !important; }
+.spanLabel { display: flex; flex-direction: column; justify-content: center; min-width: 0; border-right: 1px solid #f0f0f0; }
+.spanMeta { margin-top: 3px; padding-left: 2px; font-size: 11px; }
+.timeline { position: relative; min-height: 52px; overflow: hidden; background-image: linear-gradient(to right, rgba(0,0,0,.035) 1px, transparent 1px); background-size: 20% 100%; }
+.bar { position: absolute; top: 13px; height: 26px; min-width: 4px; overflow: hidden; border-radius: 4px; }
+.bar span { position: absolute; right: 5px; top: 3px; white-space: nowrap; color: rgba(0,0,0,.65); font-size: 11px; }
+.barNode { background: #91caff; }
+.barModel { background: #d3adf7; }
+.barFail { background: #ffccc7; }
+.errorText { margin-top: 12px; padding: 10px 12px; color: #cf1322; background: #fff2f0; border: 1px solid #ffccc7; border-radius: 6px; }
+.jsonSection { margin-top: 14px; }
+.jsonSection pre { max-height: 220px; margin: 8px 0 0; padding: 12px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 12px; line-height: 1.55; background: #f7f8fa; border: 1px solid #f0f0f0; border-radius: 6px; }
+@media (max-width: 1200px) { .detailGrid { grid-template-columns: 1fr; } }
