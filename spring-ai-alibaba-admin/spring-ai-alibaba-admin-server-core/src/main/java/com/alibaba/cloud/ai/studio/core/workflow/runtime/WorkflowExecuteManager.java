@@ -514,17 +514,19 @@ public class WorkflowExecuteManager {
 		// Dify answer nodes are imported as Output nodes and do not have an End_ id.
 		// Treat any successfully executed sink node as the workflow terminal node.
 		Optional<NodeResult> terminalResult = graph.vertexSet()
-			.stream()
-			.filter(nodeId -> graph.outgoingEdgesOf(nodeId).isEmpty())
-			.map(context.getNodeResultMap()::get)
-			.filter(nodeResult -> nodeResult != null
-					&& NodeStatusEnum.SUCCESS.getCode().equals(nodeResult.getNodeStatus()))
-			.findFirst();
+				.stream()
+				.filter(nodeId -> graph.outgoingEdgesOf(nodeId).isEmpty())
+				.map(context.getNodeResultMap()::get)
+				.filter(nodeResult ->
+						nodeResult != null
+								&& NodeStatusEnum.SUCCESS.getCode()
+								.equals(nodeResult.getNodeStatus()))
+				.findFirst();
+
 		if (terminalResult.isPresent()) {
 
 			NodeResult result = terminalResult.get();
 
-			// 如果最后节点不是END，自动补END
 			Node lastNode = context.getWorkflowConfig()
 					.getNodes()
 					.stream()
@@ -535,49 +537,96 @@ public class WorkflowExecuteManager {
 			if (lastNode != null
 					&& !NodeTypeEnum.END.getCode().equals(lastNode.getType())) {
 
-				executeAutoEnd(context, result);
+				// 无后继的普通节点：运行时自动补 END
+				executeAutoEnd(graph, context, result);
 			}
 
-			context.setTaskResult(result.getOutput());
-			context.setTaskStatus(NodeStatusEnum.SUCCESS.getCode());
-			workflowInnerService.refreshContextCache(context);
 			return true;
 		}
+
 		return false;
 	}
 
 	private void executeAutoEnd(
+			DirectedAcyclicGraph<String, Edge> graph,
 			WorkflowContext context,
-			NodeResult result
-	) {
+			NodeResult terminalResult) {
 
-		Node endNode = new Node();
-		endNode.setId("auto_end");
-		endNode.setType(NodeTypeEnum.END.getCode());
-		endNode.setName("Auto End Node");
+		String autoEndId = "End_Auto_" + terminalResult.getNodeId();
 
-		EndExecuteProcessor.NodeParam param =
-				new EndExecuteProcessor.NodeParam();
+		/*
+		 * needStop() 会同时被主调度线程和 monitor 线程调用，
+		 * 因此这里必须保证 END 只补一次，
+		 * 否则 conversationChatMemory.add() 可能重复写入。
+		 */
+		synchronized (context) {
 
-		param.setOutputType("text");
-		param.setTextTemplate(
-				result.getOutput() == null ?
-						"" :
-						result.getOutput().toString()
-		);
+			NodeResult existing =
+					context.getNodeResultMap().get(autoEndId);
 
-		Node.NodeCustomConfig config =
-				new Node.NodeCustomConfig();
+			if (existing != null
+					&& NodeStatusEnum.SUCCESS.getCode()
+					.equals(existing.getNodeStatus())) {
+				return;
+			}
 
-		config.setNodeParam(
-				JsonUtils.fromObjectToMap(param)
-		);
+			Node endNode = new Node();
+			endNode.setId(autoEndId);
+			endNode.setType(NodeTypeEnum.END.getCode());
+			endNode.setName("Auto End Node");
 
-		endNode.setConfig(config);
+			Node.NodeCustomConfig config =
+					new Node.NodeCustomConfig();
 
-		processorMap
-				.get("EndExecuteProcessor")
-				.execute(null, endNode, context);
+			config.setInputParams(Lists.newArrayList());
+			config.setOutputParams(Lists.newArrayList());
+
+			endNode.setConfig(config);
+
+			/*
+			 * Auto END 不重新渲染输出，
+			 * 直接透传最后一个业务节点的最终结果。
+			 */
+			NodeResult endResult = new NodeResult();
+
+			endResult.setNodeId(autoEndId);
+			endResult.setNodeName(endNode.getName());
+			endResult.setNodeType(NodeTypeEnum.END.getCode());
+			endResult.setNodeStatus(NodeStatusEnum.EXECUTING.getCode());
+
+			endResult.setInput(terminalResult.getOutput());
+			endResult.setOutput(terminalResult.getOutput());
+			endResult.setUsages(terminalResult.getUsages());
+
+			AbstractExecuteProcessor endProcessor =
+					processorMap.get("EndExecuteProcessor");
+
+			if (endProcessor == null) {
+				throw new BizException(
+						ErrorCode.WORKFLOW_EXECUTE_ERROR
+								.toError("EndExecuteProcessor not found"));
+			}
+
+			/*
+			 * 不调用 execute()：
+			 *
+			 * execute() 会再次执行 preCheck / innerExecute，
+			 * 而 Auto END 的目的只是完成 END 生命周期。
+			 *
+			 * handleNodeResult() 会负责：
+			 * 1. taskResult
+			 * 2. global conversation memory
+			 * 3. node memory
+			 * 4. session variables
+			 * 5. taskStatus = SUCCESS
+			 */
+			endProcessor.handleNodeResult(
+					graph,
+					endNode,
+					context,
+					endResult,
+					System.currentTimeMillis());
+		}
 	}
 
 	/**

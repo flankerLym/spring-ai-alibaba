@@ -180,14 +180,14 @@ public abstract class AbstractExecuteProcessor implements ExecuteProcessor {
 		if (context.getTaskStatus().equals(NodeStatusEnum.STOP.getCode())) {
 			throw new BizException(ErrorCode.WORKFLOW_RUN_CANCEL.toError("Manually terminated"));
 		}
-		if ((!node.getId().startsWith("End_")
-				&& !node.getId().startsWith("IteratorEnd_")
-				&& !node.getId().startsWith("ParallelEnd_")
-				&& !NodeTypeEnum.OUTPUT.getCode().equals(node.getType()))
-				&& CollectionUtils.isEmpty(graph.outgoingEdgesOf(node.getId()))) {
-			throw new BizException(ErrorCode.WORKFLOW_CONFIG_INVALID
-					.toError("the current node has no successor node, and it cannot function properly."));
-		}
+//		if ((!node.getId().startsWith("End_")
+//				&& !node.getId().startsWith("IteratorEnd_")
+//				&& !node.getId().startsWith("ParallelEnd_")
+//				&& !NodeTypeEnum.OUTPUT.getCode().equals(node.getType()))
+//				&& CollectionUtils.isEmpty(graph.outgoingEdgesOf(node.getId()))) {
+//			throw new BizException(ErrorCode.WORKFLOW_CONFIG_INVALID
+//					.toError("the current node has no successor node, and it cannot function properly."));
+//		}
 	}
 
 	/**
@@ -511,22 +511,71 @@ public abstract class AbstractExecuteProcessor implements ExecuteProcessor {
 	 * @param context The workflow context
 	 * @param nodeResult The final node result
 	 */
-	private void handleSessionShortTermMemory(WorkflowContext context, NodeResult nodeResult) {
-		// Get global context switch
+	private void handleSessionShortTermMemory(
+			WorkflowContext context,
+			NodeResult nodeResult) {
+
 		boolean historySwitch = false;
-		WorkflowConfig.GlobalConfig globalConfig = context.getWorkflowConfig().getGlobalConfig();
-		if (globalConfig != null && globalConfig.getHistoryConfig() != null
-				&& BooleanUtils.isTrue(globalConfig.getHistoryConfig().getHistorySwitch())) {
+
+		WorkflowConfig.GlobalConfig globalConfig =
+				context.getWorkflowConfig().getGlobalConfig();
+
+		if (globalConfig != null
+				&& globalConfig.getHistoryConfig() != null
+				&& BooleanUtils.isTrue(
+				globalConfig.getHistoryConfig().getHistorySwitch())) {
+
 			historySwitch = true;
 		}
-		if (historySwitch) {
-			String conversationId = String.format(APPCODE_CONVERSATION_ID_TEMPLATE, context.getAppId(),
-					context.getConversationId());
-			String inputContent = context.getSysMap().get(SYS_QUERY_KEY) == null ? ""
-					: (String) context.getSysMap().get(SYS_QUERY_KEY);
-			String outputContent = nodeResult.getOutput() == null ? "" : nodeResult.getOutput();
-			conversationChatMemory.add(conversationId, buildCurrentRoundMessages(inputContent, outputContent));
+
+		if (!historySwitch) {
+			return;
 		}
+
+		String conversationId =
+				String.format(
+						APPCODE_CONVERSATION_ID_TEMPLATE,
+						context.getAppId(),
+						context.getConversationId());
+
+		/*
+		 * 兼容 SAA 原生 sys.query
+		 * 以及 Dify 迁移后的 userText。
+		 */
+		Object input = null;
+
+		if (context.getSysMap() != null) {
+			input = context.getSysMap().get(SYS_QUERY_KEY);
+		}
+
+		if ((input == null
+				|| StringUtils.isBlank(String.valueOf(input)))
+				&& context.getUserMap() != null) {
+
+			input = context.getUserMap().get("userText");
+		}
+
+		// 再兼容一些 Dify 工作流直接使用 query 作为用户输入字段
+		if ((input == null
+				|| StringUtils.isBlank(String.valueOf(input)))
+				&& context.getUserMap() != null) {
+
+			input = context.getUserMap().get("query");
+		}
+
+		String inputContent =
+				input == null ? "" : String.valueOf(input);
+
+		String outputContent =
+				nodeResult.getOutput() == null
+						? ""
+						: nodeResult.getOutput();
+
+		conversationChatMemory.add(
+				conversationId,
+				buildCurrentRoundMessages(
+						inputContent,
+						outputContent));
 	}
 
 	/**
