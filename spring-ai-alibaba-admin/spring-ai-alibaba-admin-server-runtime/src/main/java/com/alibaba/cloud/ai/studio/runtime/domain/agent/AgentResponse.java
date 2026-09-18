@@ -79,4 +79,7 @@ public class AgentResponse implements Serializable {
 		return error == null;
 	}
 
+	@JsonIgnore
+	private String providerResponseId;
+
 }

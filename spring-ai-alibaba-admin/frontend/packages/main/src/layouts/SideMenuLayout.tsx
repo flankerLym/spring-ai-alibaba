@@ -125,13 +125,19 @@ export default function SideMenuLayout({ children }: { children: React.ReactNode
   // 加载模型列表（用于 legacy 页面）
   useEffect(() => {
     PromptAPI.getModels()
-      .then((res) => {
-        const nameMap = res.data.pageItems.reduce((acc: Record<number, string>, item: any) => {
-          acc[item.id] = item.name;
-          return acc;
-        }, {});
+      .then((res: any) => {
+        const items = res.pageItems || [];
+
+        const nameMap = items.reduce(
+          (acc: Record<number, string>, item: any) => {
+            acc[item.id] = item.name;
+            return acc;
+          },
+          {},
+        );
+
         setModelNameMap(nameMap);
-        setModels(res.data.pageItems);
+        setModels(items);
       })
       .catch((err) => {
         console.error('Failed to load models:', err);

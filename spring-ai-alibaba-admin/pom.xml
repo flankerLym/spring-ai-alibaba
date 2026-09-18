@@ -112,6 +112,7 @@
         <graalvm-truffle.version>24.2.1</graalvm-truffle.version>
         <graalvm-sdk.version>24.2.1</graalvm-sdk.version>
         <graalvm-polyglot.version>24.2.1</graalvm-polyglot.version>
+        <graalvm-regex.version>24.2.1</graalvm-regex.version>
 
         <!-- RocketMQ -->
         <rocketmq-client.version>5.0.7</rocketmq-client.version>
@@ -361,6 +362,7 @@
                 <artifactId>js</artifactId>
                 <version>${graalvm-js.version}</version>
             </dependency>
+
             <dependency>
                 <groupId>org.graalvm.js</groupId>
                 <artifactId>js-scriptengine</artifactId>
@@ -375,6 +377,11 @@
                 <groupId>org.graalvm.truffle</groupId>
                 <artifactId>truffle-api</artifactId>
                 <version>${graalvm-truffle.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.graalvm.regex</groupId>
+                <artifactId>regex</artifactId>
+                <version>${graalvm-regex.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.graalvm.sdk</groupId>

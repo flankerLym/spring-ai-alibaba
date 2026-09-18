@@ -41,6 +41,12 @@ public final class SpanReporter {
         }
     }
 
+    public static void put(WorkflowSpanContext span, String key, Object value) {
+        if (span != null && key != null && value != null) {
+            span.getAttributes().put(key, value);
+        }
+    }
+
     public static void putAll(Map<String, Object> values) {
         WorkflowSpanContext span = current();
         if (span != null && values != null) {

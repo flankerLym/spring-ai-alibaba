@@ -125,7 +125,8 @@ public class ModelExecuteManager {
 
 		AgentResponse.AgentResponseBuilder responseBuilder = AgentResponse.builder()
 			.model(chatResponse.getMetadata().getModel())
-			.usage(Usage.builder()
+				.providerResponseId(chatResponse.getMetadata().getId())
+				.usage(Usage.builder()
 				.promptTokens(usage.getPromptTokens())
 				.completionTokens(usage.getCompletionTokens())
 				.totalTokens(usage.getTotalTokens())

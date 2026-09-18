@@ -49,7 +49,20 @@ public class ModelCallTraceAspect {
             }
 
             return source
-                    .doOnNext(response -> traceManager.recordModelResponse(modelSpan, response))
+                    .doOnNext(response -> {
+
+                        traceManager.recordModelResponse(
+                                modelSpan,
+                                response
+                        );
+
+                        SpanReporter.put(
+                                modelSpan,
+                                "provider_response_id",
+                                response.getProviderResponseId()
+                        );
+
+                    })
                     .doOnError(error -> traceManager.recordSpanError(modelSpan, error))
                     .doFinally(signalType ->
                             traceManager.finishModelCallSpan(modelSpan, signalType.name()));

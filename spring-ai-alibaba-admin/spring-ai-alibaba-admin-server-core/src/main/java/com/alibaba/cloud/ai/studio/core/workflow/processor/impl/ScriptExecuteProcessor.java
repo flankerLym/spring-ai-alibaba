@@ -44,6 +44,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Script Node Processor
@@ -67,7 +68,7 @@ public class ScriptExecuteProcessor extends AbstractExecuteProcessor {
 	private final SandboxManager sandboxManager;
 
 	public ScriptExecuteProcessor(SandboxManager sandboxManager, RedisManager redisManager,
-			WorkflowInnerService workflowInnerService, ChatMemory conversationChatMemory, CommonConfig commonConfig) {
+								  WorkflowInnerService workflowInnerService, ChatMemory conversationChatMemory, CommonConfig commonConfig) {
 		super(redisManager, workflowInnerService, conversationChatMemory, commonConfig);
 		this.sandboxManager = sandboxManager;
 	}
@@ -117,15 +118,25 @@ public class ScriptExecuteProcessor extends AbstractExecuteProcessor {
 		Map<String, Object> variableMap = Maps.newHashMap();
 		variableMap.put("params", localVariableMap);
 
+		// Dify Code 节点的 main(...) 需要显式传入输入参数；
+		// SAA 原生 Script 继续保持 main() + params 的调用方式，避免破坏已有脚本。
+		boolean importedDify = node.getConfig().getNodeParam() != null
+				&& node.getConfig().getNodeParam().containsKey("imported_dify");
+		String mainCall = "\nmain()";
+		if (importedDify) {
+			variableMap.putAll(localVariableMap);
+			mainCall = buildMainCall(scriptType, localVariableMap);
+		}
+
 		// Execute script in sandbox for container isolation
 		Result<String> executeResult;
 		if (ScriptType.python.name().equals(scriptType)) {
 			// Execute Python script using GraalVM Python
-			scriptContent += "\nmain()";
+			scriptContent += mainCall;
 			executeResult = sandboxManager.executePython3Script(scriptContent, variableMap, context.getRequestId());
 		}
 		else {
-			scriptContent += "\nmain()";
+			scriptContent += mainCall;
 			// Execute JavaScript script using traditional method
 			executeResult = sandboxManager.executeScript(scriptContent, variableMap, context.getRequestId());
 		}
@@ -148,7 +159,7 @@ public class ScriptExecuteProcessor extends AbstractExecuteProcessor {
 					nodeResult.setNodeStatus(NodeStatusEnum.FAIL.getCode());
 					nodeResult.setErrorCode(ErrorCode.WORKFLOW_CONFIG_INVALID.getCode());
 					nodeResult
-						.setErrorInfo("Output format does not match configuration, raw data: " + scriptRes.getData());
+							.setErrorInfo("Output format does not match configuration, raw data: " + scriptRes.getData());
 				}
 			}
 			else {
@@ -170,6 +181,31 @@ public class ScriptExecuteProcessor extends AbstractExecuteProcessor {
 		// Set input parameters
 		nodeResult.setInput(JsonUtils.toJson(decorateInput(localVariableMap)));
 		return nodeResult;
+	}
+
+	/**
+	 * Builds main(...) invocation using the resolved script inputs.
+	 * Python: main(query=query, foo=foo)
+	 * JavaScript: main({query: query, foo: foo})
+	 */
+	private String buildMainCall(String scriptType, Map<String, Object> variables) {
+		if (variables == null || variables.isEmpty()) {
+			return "\nmain()";
+		}
+
+		if (ScriptType.python.name().equals(scriptType)) {
+			String args = variables.keySet()
+					.stream()
+					.map(key -> key + "=" + key)
+					.collect(Collectors.joining(", "));
+			return "\nmain(" + args + ")";
+		}
+
+		String args = variables.keySet()
+				.stream()
+				.map(key -> key + ": " + key)
+				.collect(Collectors.joining(", "));
+		return "\nmain({" + args + "})";
 	}
 
 	/**
