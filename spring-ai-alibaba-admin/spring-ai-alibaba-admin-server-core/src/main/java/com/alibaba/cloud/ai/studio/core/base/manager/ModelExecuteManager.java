@@ -15,6 +15,7 @@
  */
 package com.alibaba.cloud.ai.studio.core.base.manager;
 
+import com.alibaba.cloud.ai.studio.core.workflow.trace.annotation.WorkflowModelCall;
 import com.alibaba.cloud.ai.studio.runtime.domain.agent.AgentResponse;
 import com.alibaba.cloud.ai.studio.runtime.domain.agent.AgentStatus;
 import com.alibaba.cloud.ai.studio.runtime.domain.chat.ChatMessage;
@@ -60,6 +61,7 @@ public class ModelExecuteManager {
 	 * @param messages Chat messages
 	 * @return Flux of agent responses
 	 */
+	@WorkflowModelCall
 	public Flux<AgentResponse> stream(String provider, String modelId, Map<String, Object> parameterMap,
 			List<Message> messages) {
 		ChatModel chatModel = modelFactory.getChatModel(provider);

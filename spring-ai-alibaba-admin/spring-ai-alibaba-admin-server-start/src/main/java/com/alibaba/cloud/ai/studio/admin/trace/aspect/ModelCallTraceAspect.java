@@ -24,7 +24,7 @@ public class ModelCallTraceAspect {
 
     private final WorkflowTraceManager traceManager;
 
-    @Around("execution(* com.alibaba.cloud.ai.studio.core.base.manager.ModelExecuteManager.stream(..))")
+    @Around("@annotation(com.alibaba.cloud.ai.studio.core.workflow.trace.annotation.WorkflowModelCall)")
     @SuppressWarnings("unchecked")
     public Object around(ProceedingJoinPoint joinPoint) throws Throwable {
         WorkflowSpanContext parent = SpanReporter.current();
