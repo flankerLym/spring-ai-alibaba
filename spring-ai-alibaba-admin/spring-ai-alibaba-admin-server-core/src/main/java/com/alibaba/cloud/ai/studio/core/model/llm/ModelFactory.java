@@ -162,18 +162,28 @@ public class ModelFactory {
 	 */
 	private OpenAiApi buildOpenAiApi(ModelCredential credential) {
 		OpenAiApi.Builder openAiApiBuilder = OpenAiApi.builder()
-			.apiKey(credential.getApiKey())
-			.responseErrorHandler(ErrorHandlerUtils.OPENAI_RESPONSE_ERROR_HANDLER)
-			.headers(ApiUtils.getBaseHeaders());
+				.apiKey(credential.getApiKey())
+				.responseErrorHandler(ErrorHandlerUtils.OPENAI_RESPONSE_ERROR_HANDLER)
+				.headers(ApiUtils.getBaseHeaders());
+
 		if (StringUtils.isNotBlank(credential.getEndpoint())) {
 			String endpoint = credential.getEndpoint();
 
-			// to remove the /v1 part as spring ai client will add it
-			if (endpoint.endsWith("/v1") || endpoint.endsWith("/v1/")) {
-				endpoint = endpoint.replaceAll("/v1/?$", "");
+			// 火山方舟兼容
+			if (endpoint.contains("ark.cn-beijing.volces.com")) {
+				endpoint = endpoint.replaceAll("/+$", "");
+				openAiApiBuilder
+						.baseUrl(endpoint)
+						.completionsPath("/chat/completions");
 			}
+			else {
+				// Spring AI 默认会自动拼 /v1/chat/completions
+				if (endpoint.endsWith("/v1") || endpoint.endsWith("/v1/")) {
+					endpoint = endpoint.replaceAll("/v1/?$", "");
+				}
 
-			openAiApiBuilder.baseUrl(endpoint);
+				openAiApiBuilder.baseUrl(endpoint);
+			}
 		}
 
 		return openAiApiBuilder.build();

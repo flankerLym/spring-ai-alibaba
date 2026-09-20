@@ -722,13 +722,6 @@ public class WorkflowExecuteManager {
 			node.setType(type);
 			processorMap.get(type + "ExecuteProcessor").execute(graph, node, context);
 			NodeResult result = context.getNodeResultMap().get(nodeId);
-			log.info("节点执行完成: id={}, name={}, type={}, status={}, output={}, error={}",
-					nodeId,
-					node.getName(),
-					type,
-					result == null ? null : result.getNodeStatus(),
-					result == null ? null : result.getOutput(),
-					result == null ? null : result.getErrorInfo());
 		}
 		catch (Exception e) {
 			log.error("executeNodeWork error:{}", nodeId, e);

@@ -77,6 +77,22 @@ public class VariableUtils {
 		if (StringUtils.isBlank(expression) || payload == null) {
 			return null;
 		}
+
+		// 兼容纯数字节点 ID，例如：1779180563855.output
+		// OGNL 会把纯数字开头识别成数字字面量，导致表达式解析失败。
+		int dotIndex = expression.indexOf('.');
+		if (dotIndex > 0) {
+			String firstKey = expression.substring(0, dotIndex);
+			if (StringUtils.isNumeric(firstKey) && payload.containsKey(firstKey)) {
+				Object nodeValue = payload.get(firstKey);
+				if (nodeValue instanceof Map) {
+					@SuppressWarnings("unchecked")
+					Map<String, Object> nodePayload = (Map<String, Object>) nodeValue;
+					return getValueFromPayload(expression.substring(dotIndex + 1), nodePayload);
+				}
+			}
+		}
+
 		Matcher matcher = VALID_EXPRESSION_PATTERN.matcher(expression);
 		if (matcher.matches()) {
 			// 将[]转为{}，适配array下的获取逻辑

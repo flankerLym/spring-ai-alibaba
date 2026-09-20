@@ -187,7 +187,22 @@ public class WorkflowInnerService {
 		if (incomingEdges.isEmpty()) {
 			return true;
 		}
+// 分支节点没有选中当前节点，直接标记 skip，不进入线程池
+		if (shouldSkipByBranch(incomingEdges, nodeId, context)) {
+			Node node = nodeOptional.get();
 
+			NodeResult nodeResult = new NodeResult();
+			nodeResult.setNodeId(nodeId);
+			nodeResult.setNodeName(node.getName());
+			nodeResult.setNodeType(node.getType());
+			nodeResult.setNodeStatus(NodeStatusEnum.SKIP.getCode());
+
+			context.getNodeResultMap().put(nodeId, nodeResult);
+			context.getExecuteOrderList().add(nodeId);
+
+			refreshContextCache(context);
+			return false;
+		}
 		// Process streaming output logic for output nodes
 		String nodeType = nodeOptional.get().getType();
 		if (NodeTypeEnum.OUTPUT.getCode().equals(nodeType)) {
@@ -399,4 +414,48 @@ public class WorkflowInnerService {
 		return newPriority < oldPriority;
 	}
 
+	private boolean shouldSkipByBranch(
+			Set<Edge> incomingEdges,
+			String nodeId,
+			WorkflowContext context) {
+
+		for (Edge edge : incomingEdges) {
+			NodeResult result =
+					context.getNodeResultMap().get(edge.getSource());
+
+			// 前置节点还没跑完，现在不能判断
+			if (result == null
+					|| NodeStatusEnum.EXECUTING.getCode().equals(result.getNodeStatus())
+					|| NodeStatusEnum.PAUSE.getCode().equals(result.getNodeStatus())) {
+				return false;
+			}
+
+			// 普通成功节点说明当前节点仍然有有效来源
+			if (NodeStatusEnum.SUCCESS.getCode().equals(result.getNodeStatus())
+					&& !result.isMultiBranch()) {
+				return false;
+			}
+
+			// Judge / Classifier 分支
+			if (NodeStatusEnum.SUCCESS.getCode().equals(result.getNodeStatus())
+					&& result.isMultiBranch()) {
+
+				if (result.getMultiBranchResults() != null
+						&& result.getMultiBranchResults()
+						.stream()
+						.anyMatch(branch ->
+								branch.getTargetIds() != null
+										&& branch.getTargetIds().contains(nodeId))) {
+
+					// 当前节点就是选中的分支
+					return false;
+				}
+			}
+
+			// SKIP 或未选中的 branch 继续检查其他入边
+		}
+
+		// 所有入边都是 skip / 未选中分支
+		return true;
+	}
 }
