@@ -45,26 +45,8 @@ public class ConversationMessageEntity {
 	@TableField("trace_id")
 	private String traceId;
 
-	@TableField("model_id")
-	private String modelId;
-
-	@TableField("provider_id")
-	private String providerId;
-
 	@TableField("request_id")
 	private String requestId;
-
-	@TableField("response_id")
-	private String responseId;
-
-	@TableField("input_tokens")
-	private Integer inputTokens;
-
-	@TableField("output_tokens")
-	private Integer outputTokens;
-
-	@TableField("total_tokens")
-	private Integer totalTokens;
 
 	private String status;
 
@@ -73,5 +55,4 @@ public class ConversationMessageEntity {
 
 	@TableField("updated_at")
 	private Date updatedAt;
-
 }

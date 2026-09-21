@@ -316,9 +316,6 @@ public class ConversationManager {
 		entity.setContentType(TEXT);
 		entity.setTraceId(traceId);
 		entity.setRequestId(requestId);
-		entity.setInputTokens(0);
-		entity.setOutputTokens(0);
-		entity.setTotalTokens(0);
 		entity.setStatus(SUCCESS);
 		entity.setCreatedAt(now);
 		entity.setUpdatedAt(now);

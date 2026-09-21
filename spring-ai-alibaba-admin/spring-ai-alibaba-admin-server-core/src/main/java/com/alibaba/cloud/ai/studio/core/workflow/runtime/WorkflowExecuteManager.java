@@ -15,6 +15,7 @@
  */
 package com.alibaba.cloud.ai.studio.core.workflow.runtime;
 
+import com.alibaba.cloud.ai.studio.core.conversation.annotation.Conversation;
 import com.alibaba.cloud.ai.studio.runtime.domain.RequestContext;
 import com.alibaba.cloud.ai.studio.runtime.domain.workflow.Edge;
 import com.alibaba.cloud.ai.studio.runtime.domain.workflow.InvokeSourceEnum;
@@ -126,6 +127,7 @@ public class WorkflowExecuteManager {
 		return true;
 	}
 
+	@Conversation
 	@WorkflowTrace
 	public TaskRunResponse runTask(ApplicationVersion appVersion, List<TaskRunParam> inputParams, String conversationId,
 			WorkflowContext workflowContext) {

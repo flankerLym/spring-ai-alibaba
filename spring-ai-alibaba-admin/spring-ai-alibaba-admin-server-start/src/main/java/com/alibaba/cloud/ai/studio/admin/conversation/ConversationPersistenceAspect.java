@@ -38,7 +38,7 @@ public class ConversationPersistenceAspect {
 
 	private final ConversationManager conversationManager;
 
-	@Around("execution(* com.alibaba.cloud.ai.studio.core.workflow.runtime.WorkflowExecuteManager.runTask(..))")
+	@Around("@annotation(com.alibaba.cloud.ai.studio.core.conversation.annotation.Conversation)")
 	public Object aroundRunTask(ProceedingJoinPoint joinPoint) throws Throwable {
 		Object[] args = joinPoint.getArgs();
 		ApplicationVersion appVersion = findApplicationVersion(args);
