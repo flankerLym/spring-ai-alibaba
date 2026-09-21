@@ -32,6 +32,7 @@ import { getSparkFlowUsageList, TextCard } from '../TaskTestPanel';
 import { InputParamsFormDrawer } from '../TaskTestPanel/InputParamsForm';
 import UserInputForm from '../UserInputForm';
 import styles from './index.module.less';
+
 const ChatFormCard = (props: any) => {
   return (
     <UserInputForm
@@ -94,6 +95,23 @@ export default memo(function ChatTestPanel() {
       clearTimeout(timer.current);
       timer.current = null;
     }
+  };
+
+  const stopLoading = () => {
+    clearTimer();
+    setLoading(false);
+    chatRef.current?.setLoading(false);
+  };
+
+  const handleRequestError = (error: unknown, fallback: string) => {
+    stopLoading();
+    if (currentQA.current.answer) {
+      currentQA.current.answer.msgStatus = 'interrupted';
+      updateMessage(currentQA.current.answer as TMessage);
+    }
+    const errorMessage =
+      error instanceof Error && error.message ? error.message : fallback;
+    message.error(errorMessage);
   };
 
   const generateWelcomeCard = () => {
@@ -196,9 +214,11 @@ export default memo(function ChatTestPanel() {
       currentQA.current.answer.msgStatus = 'interrupted';
     }
 
-    const { task_results } = data;
+    const taskResults = data.task_results || [];
+    const nodeResults = data.node_results || [];
     const taskResultCard: TMessage['cards'] = [];
-    task_results.forEach((item) => {
+
+    taskResults.forEach((item) => {
       if (item.node_type === 'Input') {
         taskResultCard.push(createCard('formCard', item));
       } else {
@@ -212,7 +232,7 @@ export default memo(function ChatTestPanel() {
 
     currentQA.current.answer.cards = compact([
       createCard('nodeResultCard', {
-        results: data.node_results,
+        results: nodeResults,
         statusInfo: {
           usages: getSparkFlowUsageList(data),
           status: data.task_status,
@@ -227,7 +247,7 @@ export default memo(function ChatTestPanel() {
     updateMessage(currentQA.current.answer as TMessage);
 
     if (
-      task_results.some(
+      taskResults.some(
         (item) => item.node_type === 'Input' && item.node_status === 'pause',
       )
     ) {
@@ -241,33 +261,48 @@ export default memo(function ChatTestPanel() {
     clearTimer();
     if (!currentQA.current.answer) return;
     if (!currentQA.current.answer.task_id) return;
+
     getWorkFlowTaskProcess({
-      task_id: currentQA.current.answer?.task_id,
-    }).then((res) => {
-      if (
-        !currentQA.current.answer ||
-        currentQA.current.answer.msgStatus === 'interrupted' ||
-        isDestroy.current
-      )
-        return;
-      const endNode = res.node_results[res.node_results.length - 1];
-      if (endNode.node_id !== cacheAnimateNodeId.current) {
-        focusElement({ nodeId: endNode.node_id });
-        cacheAnimateNodeId.current = endNode.node_id;
-      }
-      updateDebugMessages(res);
-      if (res.task_status === 'executing') {
-        timer.current = setTimeout(() => {
-          queryTaskStatus();
-        }, 500);
-      } else {
-        if (res.task_status !== 'pause') {
-          setLoading(false);
-          chatRef.current?.setLoading(false);
+      task_id: currentQA.current.answer.task_id,
+    })
+      .then((res) => {
+        if (
+          !currentQA.current.answer ||
+          currentQA.current.answer.msgStatus === 'interrupted' ||
+          isDestroy.current
+        )
+          return;
+
+        // The task is created before the async workflow necessarily executes Start.
+        // Especially on later turns, history/conversation persistence may make the first
+        // poll arrive while node_results is still empty. Never dereference an empty list.
+        const nodeResults = res.node_results || [];
+        const endNode = nodeResults[nodeResults.length - 1];
+        if (
+          endNode?.node_id &&
+          endNode.node_id !== cacheAnimateNodeId.current
+        ) {
+          focusElement({ nodeId: endNode.node_id });
+          cacheAnimateNodeId.current = endNode.node_id;
         }
-        clearTimer();
-      }
-    });
+
+        updateDebugMessages(res);
+
+        if (res.task_status === 'executing') {
+          timer.current = setTimeout(() => {
+            queryTaskStatus();
+          }, 500);
+        } else {
+          if (res.task_status !== 'pause') {
+            stopLoading();
+          }
+          clearTimer();
+        }
+      })
+      .catch((error) => {
+        if (isDestroy.current) return;
+        handleRequestError(error, '获取工作流执行状态失败，请查看后端日志');
+      });
   };
 
   const chat = (task_id: string) => {
@@ -287,15 +322,20 @@ export default memo(function ChatTestPanel() {
   const onInput = ({ query, params, type }: any) => {
     setShowResults(true);
     setSelectedNode(null);
+
     if (type === 'resume') {
       if (!currentQA.current.answer) return;
       resumeWorkFlowTask({
         app_id: appId,
         task_id: currentQA.current.answer.task_id,
         ...params,
-      }).then(() => {
-        queryTaskStatus();
-      });
+      })
+        .then(() => {
+          queryTaskStatus();
+        })
+        .catch((error) => {
+          handleRequestError(error, '恢复工作流失败');
+        });
       return;
     }
 
@@ -314,10 +354,10 @@ export default memo(function ChatTestPanel() {
       });
     }
 
-    // clear answer when regenerate
     setLoading(true);
     chatRef.current?.setLoading(true);
     currentQA.current.answer = undefined;
+
     if (type !== 'regenerate')
       currentQA.current.query = {
         id: uuid(),
@@ -336,21 +376,24 @@ export default memo(function ChatTestPanel() {
       };
 
     updateMessage(currentQA.current.query as TMessage);
+
     createWorkFlowTask({
       conversation_id: conversationId,
       app_id: appId,
       inputs: currentQA.current.query.inputs,
-    }).then((res) => {
-      if (conversationId !== res.conversation_id)
-        setConversationId(res.conversation_id);
-      chat(res.task_id);
-    });
+    })
+      .then((res) => {
+        if (conversationId !== res.conversation_id)
+          setConversationId(res.conversation_id);
+        chat(res.task_id);
+      })
+      .catch((error) => {
+        handleRequestError(error, '创建工作流测试任务失败');
+      });
   };
 
   const onStop = () => {
-    clearTimer();
-    setLoading(false);
-    chatRef.current?.setLoading(false);
+    stopLoading();
     if (currentQA.current.answer) {
       const newTaskStore = {
         ...taskStore,
