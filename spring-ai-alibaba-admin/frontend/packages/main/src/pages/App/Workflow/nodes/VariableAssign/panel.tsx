@@ -59,6 +59,19 @@ const VALUE_FROM_OPTIONS = [
   },
 ];
 
+const ASSIGN_OPERATION_OPTIONS = [
+  { label: '=', value: '=' },
+  { label: '+=', value: '+=' },
+  { label: '-=', value: '-=' },
+  { label: '*=', value: '*=' },
+  { label: '/=', value: '/=' },
+];
+
+type VariableAssignInputWithOperation =
+  IVariableAssignNodeParam['inputs'][number] & {
+    operation?: '=' | '+=' | '-=' | '*=' | '/=';
+  };
+
 export default memo(function VariableAssignPanel({
   id,
   parentId,
@@ -111,20 +124,22 @@ export default memo(function VariableAssignPanel({
   );
 
   const handleAdd = () => {
-    const newInputs: IVariableAssignNodeParam['inputs'] = [
-      ...data.node_param.inputs,
-      {
-        id: uniqueId(4),
-        left: {
-          value_from: 'refer',
-          type: 'String',
-        },
-        right: {
-          value_from: 'refer',
-          type: 'String',
-        },
+    const newItem: VariableAssignInputWithOperation = {
+      id: uniqueId(4),
+      operation: '=',
+      left: {
+        value_from: 'refer',
+        type: 'String',
       },
-    ];
+      right: {
+        value_from: 'refer',
+        type: 'String',
+      },
+    };
+    const newInputs = [
+      ...data.node_param.inputs,
+      newItem,
+    ] as IVariableAssignNodeParam['inputs'];
 
     changeInputs(newInputs);
   };
@@ -165,7 +180,10 @@ export default memo(function VariableAssignPanel({
   }, [globalVariableList, parentId, nodes]);
 
   const changeRowItem = useCallback(
-    (id: string, payload: Partial<IVariableAssignNodeParam['inputs'][0]>) => {
+    (
+      id: string,
+      payload: Partial<VariableAssignInputWithOperation>,
+    ) => {
       const newInputs = data.node_param.inputs.map((item) =>
         item.id === id ? { ...item, ...payload } : item,
       );
@@ -183,13 +201,14 @@ export default memo(function VariableAssignPanel({
             dm: '设置变量',
           })}
         </div>
-        <div className="spark-flow-panel-form-title-desc flex gap-[36px]">
-          <span style={{ width: '40%' }}>
+        <div className="spark-flow-panel-form-title-desc flex gap-[12px]">
+          <span style={{ width: '34%' }}>
             {$i18n.get({
               id: 'main.pages.App.Workflow.nodes.VariableAssign.panel.variable',
               dm: '变量',
             })}
           </span>
+          <span style={{ width: 64 }}>操作</span>
           <span>
             {$i18n.get({
               id: 'main.pages.App.Workflow.nodes.VariableAssign.panel.setValue',
@@ -197,78 +216,98 @@ export default memo(function VariableAssignPanel({
             })}
           </span>
         </div>
-        {data.node_param.inputs.map((item) => (
-          <div key={item.id} className="flex gap-[8px] items-center">
-            <div style={{ width: '40%' }}>
-              <VariableSelector
-                disabled={nodesReadOnly}
-                variableList={leftVariables}
-                value={item.left}
-                onChange={(val) => {
-                  changeRowItem(item.id, {
-                    left: {
-                      ...item.left,
-                      ...val,
-                    },
-                    right: {
-                      ...item.right,
-                      value: void 0,
-                      type: val.type,
-                    },
-                  });
-                }}
-              />
-            </div>
-            <IconFont
-              className="spark-flow-icon-base-color text-xl"
-              type="spark-leftArrow-line"
-            />
+        {data.node_param.inputs.map((rawItem) => {
+          const item = rawItem as VariableAssignInputWithOperation;
+          return (
+            <div key={item.id} className="flex gap-[8px] items-center">
+              <div style={{ width: '34%' }}>
+                <VariableSelector
+                  disabled={nodesReadOnly}
+                  variableList={leftVariables}
+                  value={item.left}
+                  onChange={(val) => {
+                    changeRowItem(item.id, {
+                      left: {
+                        ...item.left,
+                        ...val,
+                      },
+                      right: {
+                        ...item.right,
+                        value: void 0,
+                        type: val.type,
+                      },
+                      operation:
+                        val.type === 'Number' ? item.operation || '=' : '=',
+                    });
+                  }}
+                />
+              </div>
 
-            <Space.Compact style={{ flex: 1 }}>
               <Select
-                disabled={nodesReadOnly}
-                style={{ width: 60 }}
-                className="flex-shrink-0 spark-flow-variable-from-select"
-                value={item.right.value_from}
+                disabled={nodesReadOnly || item.left.type !== 'Number'}
+                style={{ width: 64 }}
+                className="flex-shrink-0"
+                value={item.operation || '='}
                 onChange={(val) =>
                   changeRowItem(item.id, {
-                    right: {
-                      ...item.right,
-                      value_from: val,
-                      value: void 0,
-                    },
+                    operation: val as VariableAssignInputWithOperation['operation'],
                   })
                 }
-                options={VALUE_FROM_OPTIONS}
-                labelRender={(props) =>
-                  variableFromLabelRender(props.value as string)
+                options={
+                  item.left.type === 'Number'
+                    ? ASSIGN_OPERATION_OPTIONS
+                    : ASSIGN_OPERATION_OPTIONS.slice(0, 1)
                 }
                 popupMatchSelectWidth={false}
               />
-              <VariableFormComp
-                disabledType
-                isCompact
-                disabled={nodesReadOnly}
-                data={item.right || 'String'}
-                variableList={variableList}
-                onChange={(val) => {
-                  changeRowItem(item.id, {
-                    right: {
-                      ...item.right,
-                      ...val,
-                    },
-                  });
-                }}
+
+              <Space.Compact style={{ flex: 1 }}>
+                <Select
+                  disabled={nodesReadOnly}
+                  style={{ width: 60 }}
+                  className="flex-shrink-0 spark-flow-variable-from-select"
+                  value={item.right.value_from}
+                  onChange={(val) =>
+                    changeRowItem(item.id, {
+                      operation: val === 'clear' ? '=' : item.operation || '=',
+                      right: {
+                        ...item.right,
+                        value_from: val,
+                        value: void 0,
+                      },
+                    })
+                  }
+                  options={VALUE_FROM_OPTIONS}
+                  labelRender={(props) =>
+                    variableFromLabelRender(props.value as string)
+                  }
+                  popupMatchSelectWidth={false}
+                />
+                <VariableFormComp
+                  disabledType
+                  isCompact
+                  disabled={nodesReadOnly}
+                  data={item.right || 'String'}
+                  variableList={variableList}
+                  onChange={(val) => {
+                    changeRowItem(item.id, {
+                      right: {
+                        ...item.right,
+                        ...val,
+                      },
+                    });
+                  }}
+                />
+              </Space.Compact>
+              <IconFont
+                type="spark-delete-line"
+                onClick={() => removeInput(item.id)}
+                isCursorPointer={!nodesReadOnly}
+                className={nodesReadOnly ? 'disabled-icon-btn' : ''}
               />
-            </Space.Compact>
-            <IconFont
-              type="spark-delete-line"
-              onClick={() => removeInput(item.id)}
-              isCursorPointer={!nodesReadOnly}
-              className={nodesReadOnly ? 'disabled-icon-btn' : ''}
-            />
-          </div>
-        ))}
+            </div>
+          );
+        })}
         <Button
           type="link"
           onClick={handleAdd}

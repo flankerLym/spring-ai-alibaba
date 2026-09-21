@@ -5,6 +5,10 @@ import { createApp } from '@/services/appManage';
 import { Button, message } from '@spark-ai/design';
 import { useRef, useState } from 'react';
 import { importWorkflowDsl } from '../../utils/importWorkflowDsl';
+import {
+  prepareDifyArithmeticAssignments,
+  restoreStudioArithmeticAssignments,
+} from '../../utils/difyVariableAssignOperations';
 
 export default function ImportDslButton({ onImported }: { onImported: (id: string) => void }) {
   const input = useRef<HTMLInputElement>(null);
@@ -24,11 +28,17 @@ export default function ImportDslButton({ onImported }: { onImported: (id: strin
         data: { dsl: await file.text() },
       });
       const selectors = await getModelSelector('llm');
-      const imported = importWorkflowDsl(
-        response.data.data,
-        file.name,
-        selectors.data.flatMap((item) => item.models),
+
+      const prepared = prepareDifyArithmeticAssignments(response.data.data);
+      const imported = restoreStudioArithmeticAssignments(
+        importWorkflowDsl(
+          prepared.document,
+          file.name,
+          selectors.data.flatMap((item) => item.models),
+        ),
+        prepared.operations,
       );
+
       const id = await createApp({ name: imported.name, type: IAppType.WORKFLOW, config: imported.config });
       message.success('DSL 已导入为草稿');
       if (imported.dify) message.warning('已转换为可编辑画布；运行前请检查模型配置及节点参数', 8);

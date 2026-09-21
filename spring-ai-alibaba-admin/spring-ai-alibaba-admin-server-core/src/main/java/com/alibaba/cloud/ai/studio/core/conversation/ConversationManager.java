@@ -5,6 +5,7 @@ import com.alibaba.cloud.ai.studio.core.base.entity.ConversationRecordEntity;
 import com.alibaba.cloud.ai.studio.core.base.manager.RedisManager;
 import com.alibaba.cloud.ai.studio.core.base.mapper.ConversationMessageMapper;
 import com.alibaba.cloud.ai.studio.core.base.mapper.ConversationRecordMapper;
+import com.alibaba.cloud.ai.studio.core.utils.common.IdGenerator;
 import com.alibaba.cloud.ai.studio.core.workflow.WorkflowContext;
 import com.alibaba.cloud.ai.studio.runtime.enums.ErrorCode;
 import com.alibaba.cloud.ai.studio.runtime.exception.BizException;
@@ -181,7 +182,7 @@ public class ConversationManager {
 				context.getTraceId(),
 				requestId);
 		if (userMessage != null) {
-			assistantMessage.setParentMessageId(userMessage.getId());
+			assistantMessage.setParentMessageId(userMessage.getMessageId());
 		}
 		conversationMessageMapper.insert(assistantMessage);
 
@@ -246,7 +247,7 @@ public class ConversationManager {
 
 			conversationMessageMapper.insert(entity);
 			if ("user".equals(entity.getRole())) {
-				lastUserMessageId = entity.getId();
+				lastUserMessageId = entity.getMessageId();
 				fillConversationName(record, entity.getContent());
 			}
 			inserted++;
@@ -278,7 +279,7 @@ public class ConversationManager {
 						.eq(ConversationMessageEntity::getConversationId, key.conversationId())
 						.eq(ConversationMessageEntity::getStatus, SUCCESS)
 						.orderByDesc(ConversationMessageEntity::getSequence)
-						.orderByDesc(ConversationMessageEntity::getId)
+						.orderByDesc(ConversationMessageEntity::getMessageId)
 						.last("limit " + limit));
 
 		if (rows == null || rows.isEmpty()) {
@@ -334,7 +335,7 @@ public class ConversationManager {
 						.eq(ConversationMessageEntity::getConversationId, conversationId)
 						.eq(ConversationMessageEntity::getRequestId, requestId)
 						.eq(ConversationMessageEntity::getRole, role)
-						.orderByDesc(ConversationMessageEntity::getId)
+						.orderByDesc(ConversationMessageEntity::getMessageId)
 						.last("limit 1"));
 		return rows == null || rows.isEmpty() ? null : rows.get(0);
 	}
@@ -368,6 +369,7 @@ public class ConversationManager {
 
 		Date now = new Date();
 		ConversationMessageEntity entity = new ConversationMessageEntity();
+		entity.setMessageId(IdGenerator.id());
 		entity.setAppId(appId);
 		entity.setConversationId(conversationId);
 		entity.setSequence(sequence);
