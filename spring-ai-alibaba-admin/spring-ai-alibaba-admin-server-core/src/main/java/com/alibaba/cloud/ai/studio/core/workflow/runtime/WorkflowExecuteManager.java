@@ -15,6 +15,7 @@
  */
 package com.alibaba.cloud.ai.studio.core.workflow.runtime;
 
+import com.alibaba.cloud.ai.studio.core.conversation.ConversationManager;
 import com.alibaba.cloud.ai.studio.core.conversation.annotation.Conversation;
 import com.alibaba.cloud.ai.studio.runtime.domain.RequestContext;
 import com.alibaba.cloud.ai.studio.runtime.domain.workflow.Edge;
@@ -97,6 +98,10 @@ public class WorkflowExecuteManager {
 
 	@Resource
 	private WorkflowTraceManager workflowTraceManager;
+
+	@Resource
+	private ConversationManager conversationManager;
+
 	private final Map<String, AbstractExecuteProcessor> processorMap;
 
 	private final WorkflowInnerService workflowInnerService;
@@ -151,12 +156,13 @@ public class WorkflowExecuteManager {
 			}
 		});
 
-		conversationId = conversationId == null ? IdGenerator.uuid() : conversationId;
+		conversationId = conversationId == null || conversationId.isBlank() ? IdGenerator.idStr() : conversationId;
 
 		workflowContext.setAppId(appVersion.getAppId());
 		workflowContext.setTaskStatus(NodeStatusEnum.EXECUTING.getCode());
 		workflowContext.setRequestId(context.getRequestId());
 		workflowContext.setWorkspaceId(context.getWorkspaceId());
+		workflowContext.setAccountId(context.getAccountId());
 		workflowContext.setConversationId(conversationId);
 		String taskId = execute(appVersion, workflowContext);
 		TaskRunResponse response = new TaskRunResponse();
@@ -244,6 +250,11 @@ public class WorkflowExecuteManager {
 				context.getSysMap().put(SYS_HISTORY_LIST_KEY, messages);
 			}
 		}
+
+		// Persist the current user message only after previous history is loaded, but
+		// before any asynchronous workflow node starts. This prevents the current input
+		// from appearing in its own history and preserves it even when later nodes fail.
+		conversationManager.saveWorkflowUserMessage(context);
 
 		workflowInnerService.refreshContextCache(context);
 		ThreadPoolUtils.taskExecutorService.submit(() -> {

@@ -20,15 +20,13 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 /**
- * Low-intrusion conversation lifecycle integration.
+ * Conversation lifecycle integration.
  *
  * 1. Workflow runTask: creates/touches conversation_record and generates a numeric
  *    conversation id when omitted.
- * 2. Normal END: persists one user/assistant round after END succeeds.
- * 3. Auto END: handleNodeResult is called directly by WorkflowExecuteManager, so a
- *    second pointcut covers that path as well.
- *
- * No WorkflowExecuteManager/AbstractExecuteProcessor source change is required.
+ * 2. WorkflowExecuteManager persists the user message after old history is loaded and
+ *    before asynchronous workflow execution is submitted.
+ * 3. Normal END and auto END persist only the assistant message.
  */
 @Aspect
 @Component
@@ -82,7 +80,7 @@ public class ConversationPersistenceAspect {
 		try {
 			Object result = joinPoint.proceed();
 			if (NodeStatusEnum.SUCCESS.getCode().equals(context.getTaskStatus())) {
-				conversationManager.saveWorkflowRound(context);
+				conversationManager.saveWorkflowAssistantMessage(context);
 			}
 			return result;
 		}
@@ -108,7 +106,7 @@ public class ConversationPersistenceAspect {
 		try {
 			Object result = joinPoint.proceed();
 			if (NodeStatusEnum.SUCCESS.getCode().equals(context.getTaskStatus())) {
-				conversationManager.saveWorkflowRound(context);
+				conversationManager.saveWorkflowAssistantMessage(context);
 			}
 			return result;
 		}

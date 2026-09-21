@@ -290,8 +290,8 @@ public class WorkflowServiceImpl implements WorkflowService {
 				workflowContext.getSysMap().put(SYS_HISTORY_LIST_KEY, request.getMessages());
 			}
 
-			String conversationId = request.getConversationId() == null ? IdGenerator.uuid()
-					: request.getConversationId();
+			String conversationId = StringUtils.isBlank(request.getConversationId())
+					? IdGenerator.idStr() : request.getConversationId();
 			workflowContext.setWorkflowConfig(JsonUtils.fromJson(configStr, WorkflowConfig.class));
 			workflowContext.setTaskStatus(NodeStatusEnum.EXECUTING.getCode());
 			workflowContext.setRequestId(context.getRequestId());
@@ -308,8 +308,8 @@ public class WorkflowServiceImpl implements WorkflowService {
 
 	private Flux<WorkflowResponse> streamExecute(WorkflowContext workflowContext, WorkflowRequest request) {
 		String taskId = workflowExecuteManager.execute(workflowContext);
-		String requestId = request.getRequestId();
-		String conversationId = request.getConversationId();
+		String requestId = workflowContext.getRequestId();
+		String conversationId = workflowContext.getConversationId();
 		Sinks.Many<WorkflowResponse> sink = Sinks.many().unicast().onBackpressureBuffer();
 		ThreadPoolUtils.DEFAULT_TASK_EXECUTOR.execute(() -> {
 			List<NodeResult> lastNodeResults = Lists.newArrayList();

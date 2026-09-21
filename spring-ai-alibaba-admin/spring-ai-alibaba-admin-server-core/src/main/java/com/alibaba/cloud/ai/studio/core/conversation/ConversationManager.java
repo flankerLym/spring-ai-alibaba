@@ -21,7 +21,6 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Objects;
 
 import static com.alibaba.cloud.ai.studio.core.base.constants.CacheConstants.APPCODE_CONVERSATION_ID_TEMPLATE;
@@ -93,13 +92,14 @@ public class ConversationManager {
 	}
 
 	/**
-	 * Persists one workflow round after END succeeds.
+	 * Persists the current workflow user message before asynchronous node execution.
 	 *
-	 * The method is idempotent by conversation_id + request_id + assistant role, so an
-	 * auto END and a normal END cannot accidentally save the same round twice.
+	 * This must be called after old history has been loaded. Otherwise a cold Redis cache
+	 * may reload the current user message from DB and incorrectly treat it as history of
+	 * the same request.
 	 */
 	@Transactional(rollbackFor = Exception.class)
-	public void saveWorkflowRound(WorkflowContext context) {
+	public void saveWorkflowUserMessage(WorkflowContext context) {
 		if (context == null || StringUtils.isBlank(context.getAppId())
 				|| StringUtils.isBlank(context.getConversationId())) {
 			return;
@@ -107,31 +107,105 @@ public class ConversationManager {
 
 		Long appId = requireLong(context.getAppId(), "app_id");
 		Long conversationId = requireLong(context.getConversationId(), "conversation_id");
+		Long userId = nullableLong(context.getAccountId());
+		String requestId = context.getRequestId();
 
+		ConversationRecordEntity record =
+				lockOrCreateConversation(appId, conversationId, context.getInvokeSource(), userId);
+
+		if (messageExists(conversationId, requestId, "user")) {
+			return;
+		}
+
+		int sequence = safeCount(record) + 1;
 		String input = resolveWorkflowInput(context);
-		String output = context.getTaskResult() == null ? "" : context.getTaskResult();
 
-		persistRound(
+		ConversationMessageEntity userMessage = newMessage(
 				appId,
 				conversationId,
-				context.getInvokeSource(),
-				nullableLong(context.getAccountId()),
-				context.getTraceId(),
-				context.getRequestId(),
+				sequence,
+				"user",
 				input,
-				output);
+				context.getTraceId(),
+				requestId);
+		conversationMessageMapper.insert(userMessage);
 
-		// The old END memory code may already have appended Redis history. Invalidate it
-		// after the transaction write so the next request reloads the authoritative DB
-		// history and never sees stale/duplicated cache data.
+		fillConversationName(record, input);
+		record.setMessageCount(sequence);
+		record.setUpdatedAt(new Date());
+		if (StringUtils.isNotBlank(context.getInvokeSource())) {
+			record.setInvokeSource(context.getInvokeSource());
+		}
+		if (userId != null) {
+			record.setUserId(userId);
+		}
+		conversationRecordMapper.updateById(record);
+	}
+
+	/**
+	 * Persists only the assistant message after END succeeds.
+	 *
+	 * The matching user message has already been persisted before workflow execution.
+	 * The request id makes both the normal END and auto END paths idempotent.
+	 */
+	@Transactional(rollbackFor = Exception.class)
+	public void saveWorkflowAssistantMessage(WorkflowContext context) {
+		if (context == null || StringUtils.isBlank(context.getAppId())
+				|| StringUtils.isBlank(context.getConversationId())) {
+			return;
+		}
+
+		Long appId = requireLong(context.getAppId(), "app_id");
+		Long conversationId = requireLong(context.getConversationId(), "conversation_id");
+		Long userId = nullableLong(context.getAccountId());
+		String requestId = context.getRequestId();
+
+		ConversationRecordEntity record =
+				lockOrCreateConversation(appId, conversationId, context.getInvokeSource(), userId);
+
+		if (messageExists(conversationId, requestId, "assistant")) {
+			redisManager.delete(memoryRedisKey(memoryConversationId(appId, conversationId)));
+			return;
+		}
+
+		ConversationMessageEntity userMessage = findMessage(conversationId, requestId, "user");
+		int sequence = safeCount(record) + 1;
+		String output = context.getTaskResult() == null ? "" : context.getTaskResult();
+
+		ConversationMessageEntity assistantMessage = newMessage(
+				appId,
+				conversationId,
+				sequence,
+				"assistant",
+				output,
+				context.getTraceId(),
+				requestId);
+		if (userMessage != null) {
+			assistantMessage.setParentMessageId(userMessage.getId());
+		}
+		conversationMessageMapper.insert(assistantMessage);
+
+		record.setMessageCount(sequence);
+		record.setUpdatedAt(new Date());
+		if (StringUtils.isNotBlank(context.getInvokeSource())) {
+			record.setInvokeSource(context.getInvokeSource());
+		}
+		if (userId != null) {
+			record.setUserId(userId);
+		}
+		conversationRecordMapper.updateById(record);
+
+		// END may already have appended the completed round to Redis. Remove the cache so
+		// the next request reloads the authoritative DB history without duplicates.
 		redisManager.delete(memoryRedisKey(memoryConversationId(appId, conversationId)));
 	}
 
 	/**
 	 * Durable write used by generic Spring AI ChatMemory callers such as Agent.
 	 *
-	 * Workflow END calls are excluded by ConversationPersistenceScope and are persisted
-	 * by saveWorkflowRound(), which carries trace/request metadata.
+	 * Workflow END calls are excluded by ConversationPersistenceScope and the workflow
+	 * assistant row is persisted once by saveWorkflowAssistantMessage(), carrying
+	 * trace/request metadata.
 	 */
 	@Transactional(rollbackFor = Exception.class)
 	public void appendMemoryMessages(String memoryConversationId, List<Message> messages) {
@@ -239,44 +313,30 @@ public class ConversationManager {
 		redisManager.delete(memoryRedisKey(memoryConversationId));
 	}
 
-	private void persistRound(Long appId, Long conversationId, String invokeSource, Long userId,
-			String traceId, String requestId, String input, String output) {
-
-		ConversationRecordEntity record =
-				lockOrCreateConversation(appId, conversationId, invokeSource, userId);
-
-		if (StringUtils.isNotBlank(requestId)) {
-			Long existing = conversationMessageMapper.selectCount(
-					Wrappers.<ConversationMessageEntity>lambdaQuery()
-							.eq(ConversationMessageEntity::getConversationId, conversationId)
-							.eq(ConversationMessageEntity::getRequestId, requestId)
-							.eq(ConversationMessageEntity::getRole, "assistant"));
-			if (existing != null && existing > 0) {
-				return;
-			}
+	private boolean messageExists(Long conversationId, String requestId, String role) {
+		if (StringUtils.isBlank(requestId)) {
+			return false;
 		}
+		Long existing = conversationMessageMapper.selectCount(
+				Wrappers.<ConversationMessageEntity>lambdaQuery()
+						.eq(ConversationMessageEntity::getConversationId, conversationId)
+						.eq(ConversationMessageEntity::getRequestId, requestId)
+						.eq(ConversationMessageEntity::getRole, role));
+		return existing != null && existing > 0;
+	}
 
-		int sequence = safeCount(record) + 1;
-
-		ConversationMessageEntity userMessage = newMessage(
-				appId, conversationId, sequence++, "user", input, traceId, requestId);
-		conversationMessageMapper.insert(userMessage);
-
-		ConversationMessageEntity assistantMessage = newMessage(
-				appId, conversationId, sequence, "assistant", output, traceId, requestId);
-		assistantMessage.setParentMessageId(userMessage.getId());
-		conversationMessageMapper.insert(assistantMessage);
-
-		fillConversationName(record, input);
-		record.setMessageCount(safeCount(record) + 2);
-		record.setUpdatedAt(new Date());
-		if (StringUtils.isNotBlank(invokeSource)) {
-			record.setInvokeSource(invokeSource);
+	private ConversationMessageEntity findMessage(Long conversationId, String requestId, String role) {
+		if (StringUtils.isBlank(requestId)) {
+			return null;
 		}
-		if (userId != null) {
-			record.setUserId(userId);
-		}
-		conversationRecordMapper.updateById(record);
+		List<ConversationMessageEntity> rows = conversationMessageMapper.selectList(
+				Wrappers.<ConversationMessageEntity>lambdaQuery()
+						.eq(ConversationMessageEntity::getConversationId, conversationId)
+						.eq(ConversationMessageEntity::getRequestId, requestId)
+						.eq(ConversationMessageEntity::getRole, role)
+						.orderByDesc(ConversationMessageEntity::getId)
+						.last("limit 1"));
+		return rows == null || rows.isEmpty() ? null : rows.get(0);
 	}
 
 	private ConversationRecordEntity lockOrCreateConversation(
