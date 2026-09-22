@@ -306,10 +306,32 @@ public class WorkflowServiceImpl implements WorkflowService {
 		}
 	}
 
-	private Flux<WorkflowResponse> streamExecute(WorkflowContext workflowContext, WorkflowRequest request) {
-		String taskId = workflowExecuteManager.execute(workflowContext);
-		String requestId = workflowContext.getRequestId();
-		String conversationId = workflowContext.getConversationId();
+	private Flux<WorkflowResponse> streamExecute(
+			WorkflowContext workflowContext,
+			WorkflowRequest request) {
+
+		String version = BooleanUtils.isTrue(request.getDraft())
+				? "latest"
+				: "lastPublished";
+
+		ApplicationVersion appVersion =
+				appService.getAppVersion(
+						request.getAppId(),
+						version
+				);
+
+		TaskRunResponse taskRunResponse =
+				workflowExecuteManager.runTask(
+						appVersion,
+						request.getInputParams(),
+						request.getConversationId(),
+						workflowContext
+				);
+
+		String taskId = taskRunResponse.getTaskId();
+		String requestId = taskRunResponse.getRequestId();
+		String conversationId =
+				taskRunResponse.getConversationId();
 		Sinks.Many<WorkflowResponse> sink = Sinks.many().unicast().onBackpressureBuffer();
 		ThreadPoolUtils.DEFAULT_TASK_EXECUTOR.execute(() -> {
 			List<NodeResult> lastNodeResults = Lists.newArrayList();
