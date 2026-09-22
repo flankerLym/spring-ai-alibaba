@@ -1,5 +1,6 @@
 import $i18n from '@/i18n';
 import Welcome from '@/pages/App/AssistantAppEdit/components/SparkChat/components/Welcome';
+import { getAppDetail } from '@/services/appManage';
 import {
   createWorkFlowTask,
   getWorkFlowTaskProcess,
@@ -20,14 +21,17 @@ import {
   useFlowInteraction,
   useStore,
 } from '@spark-ai/flow';
-import { useMount, useUnmount } from 'ahooks';
+import { useUnmount } from 'ahooks';
 import { Flex, message, Tooltip } from 'antd';
 import classNames from 'classnames';
 import { compact } from 'lodash-es';
-import { memo, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { IWorkflowDebugInputParamItem } from '../../context';
 import { useWorkflowAppStore } from '../../context/WorkflowAppProvider';
 import { NodeResultPanelList } from '../NodeResultPanel';
+import {
+  WORKFLOW_PROLOGUE_UPDATED_EVENT,
+} from '../WorkflowFeatureConfigDrawer';
 import { getSparkFlowUsageList, TextCard } from '../TaskTestPanel';
 import { InputParamsFormDrawer } from '../TaskTestPanel/InputParamsForm';
 import UserInputForm from '../UserInputForm';
@@ -55,6 +59,13 @@ interface IAnswer extends TMessage {
   task_id: string;
 }
 
+interface IWelcomeConfig {
+  loaded: boolean;
+  enabled: boolean;
+  prologue: string;
+  name: string;
+}
+
 export default memo(function ChatTestPanel() {
   const inputParams = useWorkflowAppStore((state) => state.debugInputParams);
   const appId = useWorkflowAppStore((state) => state.appId);
@@ -66,6 +77,12 @@ export default memo(function ChatTestPanel() {
     void 0 as string | undefined,
   );
   const [loading, setLoading] = useState(false);
+  const [welcomeConfig, setWelcomeConfig] = useState<IWelcomeConfig>({
+    loaded: false,
+    enabled: false,
+    prologue: '',
+    name: '',
+  });
   const setSelectedNode = useStore((state) => state.setSelectedNode);
   const [showInputParamsForm, setShowInputParamsForm] = useState(false);
   const cacheAnimateNodeId = useRef('');
@@ -116,9 +133,17 @@ export default memo(function ChatTestPanel() {
 
   const generateWelcomeCard = () => {
     if (!chatRef.current) return;
-    const welcomeCard = createCard('welcome', {
+
+    const welcomeData: Record<string, any> = {
       modalType: 'textDialog',
-    });
+    };
+    if (welcomeConfig.enabled && welcomeConfig.prologue.trim()) {
+      welcomeData.prologue = welcomeConfig.prologue;
+      welcomeData.name = welcomeConfig.name;
+      welcomeData.suggested_questions = [];
+    }
+
+    const welcomeCard = createCard('welcome', welcomeData);
     chatRef.current.updateMessage({
       id: 'welcome',
       cards: [welcomeCard],
@@ -127,9 +152,65 @@ export default memo(function ChatTestPanel() {
     });
   };
 
-  useMount(() => {
+  useEffect(() => {
+    let active = true;
+
+    getAppDetail(appId)
+      .then((detail: any) => {
+        if (!active) return;
+        const prologue = detail?.config?.prologue || {};
+        setWelcomeConfig({
+          loaded: true,
+          enabled:
+            prologue.enabled === undefined
+              ? Boolean(prologue.prologue_text?.trim())
+              : Boolean(prologue.enabled),
+          prologue: prologue.prologue_text || '',
+          name: detail?.name || '',
+        });
+      })
+      .catch(() => {
+        if (!active) return;
+        setWelcomeConfig((prev) => ({
+          ...prev,
+          loaded: true,
+        }));
+      });
+
+    const onPrologueUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<any>).detail || {};
+      setWelcomeConfig({
+        loaded: true,
+        enabled: Boolean(detail.enabled),
+        prologue: detail.prologue_text || '',
+        name: detail.name || '',
+      });
+    };
+
+    window.addEventListener(
+      WORKFLOW_PROLOGUE_UPDATED_EVENT,
+      onPrologueUpdated,
+    );
+
+    return () => {
+      active = false;
+      window.removeEventListener(
+        WORKFLOW_PROLOGUE_UPDATED_EVENT,
+        onPrologueUpdated,
+      );
+    };
+  }, [appId]);
+
+  useEffect(() => {
+    if (!welcomeConfig.loaded || conversationId) return;
     generateWelcomeCard();
-  });
+  }, [
+    welcomeConfig.loaded,
+    welcomeConfig.enabled,
+    welcomeConfig.prologue,
+    welcomeConfig.name,
+    conversationId,
+  ]);
 
   useUnmount(() => {
     isDestroy.current = true;
@@ -273,9 +354,6 @@ export default memo(function ChatTestPanel() {
         )
           return;
 
-        // The task is created before the async workflow necessarily executes Start.
-        // Especially on later turns, history/conversation persistence may make the first
-        // poll arrive while node_results is still empty. Never dereference an empty list.
         const nodeResults = res.node_results || [];
         const endNode = nodeResults[nodeResults.length - 1];
         if (
