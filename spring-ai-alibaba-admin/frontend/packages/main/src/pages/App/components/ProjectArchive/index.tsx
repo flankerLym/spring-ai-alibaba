@@ -62,13 +62,16 @@ export default function ProjectArchive() {
     setFolderLoading(true);
     try {
       const list = await getProjectArchiveFolders();
-      setFolders(list || []);
-      if (activeFolder) {
-        const fresh = list.find(
-          (item) => item.folder_id === activeFolder.folder_id,
+      const nextFolders = list || [];
+      setFolders(nextFolders);
+      setActiveFolder((currentFolder) => {
+        if (!currentFolder) return null;
+        return (
+          nextFolders.find(
+            (item) => item.folder_id === currentFolder.folder_id,
+          ) || null
         );
-        if (fresh) setActiveFolder(fresh);
-      }
+      });
     } finally {
       setFolderLoading(false);
     }
