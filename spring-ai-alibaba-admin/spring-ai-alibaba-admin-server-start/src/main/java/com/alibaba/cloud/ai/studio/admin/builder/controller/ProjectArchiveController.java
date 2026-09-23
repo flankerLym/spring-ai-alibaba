@@ -20,6 +20,8 @@ import com.alibaba.cloud.ai.studio.runtime.domain.app.Application;
 import com.alibaba.cloud.ai.studio.runtime.domain.app.ProjectArchiveFolder;
 import com.alibaba.cloud.ai.studio.runtime.enums.ErrorCode;
 import com.alibaba.cloud.ai.studio.runtime.exception.BizException;
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -127,6 +129,9 @@ public class ProjectArchiveController {
 
 	@Data
 	public static class AppIdsRequest {
+
+		@JsonProperty("app_ids")
+		@JsonAlias("appIds")
 		private List<String> appIds;
 	}
 
