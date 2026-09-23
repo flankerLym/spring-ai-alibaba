@@ -42,6 +42,7 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
@@ -72,6 +73,16 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(value = Exception.class)
 	public void exceptionHandler(HttpServletRequest request, HttpServletResponse response, Exception ex)
 			throws Exception {
+		/*
+		 * Once an SSE/async response is no longer usable, attempting to serialize another
+		 * JSON error response only causes a second exception ("Response not usable after
+		 * response errors"). There is no client left to receive that body, so terminate
+		 * quietly.
+		 */
+		if (ex instanceof AsyncRequestNotUsableException || response.isCommitted()) {
+			return;
+		}
+
 		long start = System.currentTimeMillis();
 		Error error;
 		if (ex instanceof AsyncRequestTimeoutException) {
@@ -85,9 +96,7 @@ public class GlobalExceptionHandler {
 			String message = ExceptionUtils.getAllExceptionMsg(se);
 			int statusCode = se.getErrCode();
 			// Determine error type based on status code
-			String type = (statusCode >= 400 && statusCode < 500)
-					? "invalid_request_error"
-					: "response_error";
+			String type = (statusCode >= 400 && statusCode < 500) ? "invalid_request_error" : "response_error";
 			error = Error.builder()
 				.code(String.valueOf(statusCode))
 				.message(message)
@@ -145,6 +154,11 @@ public class GlobalExceptionHandler {
 		}
 
 		try {
+			// The response may have become committed while the exception was being mapped.
+			if (response.isCommitted()) {
+				return;
+			}
+
 			response.setContentType(MediaType.APPLICATION_JSON_UTF8_VALUE);
 			RequestContext context = RequestContextHolder.getRequestContext();
 
@@ -159,8 +173,11 @@ public class GlobalExceptionHandler {
 			response.getWriter().write(json);
 			response.getWriter().flush();
 		}
+		catch (AsyncRequestNotUsableException e) {
+			// The client has already gone away. Do not attempt a second write.
+		}
 		catch (IOException e) {
-			LogUtils.error("failed to write error response, err: {}", e.getMessage(), e);
+			LogUtils.error("failed to write error response, err: {}", e.getMessage());
 		}
 	}
 

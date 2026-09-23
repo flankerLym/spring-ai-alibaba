@@ -67,6 +67,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -169,6 +170,9 @@ public class WorkflowServiceImpl implements WorkflowService {
 		long startTime = context.getStartTime();
 		long endTime = context.getEndTime();
 
+		if (firstResponseTime <= 0) {
+			firstResponseTime = endTime > 0 ? endTime : System.currentTimeMillis();
+		}
 		LogUtils.monitor(context, "WorkflowService", "firstResponse", context.getStartTime(), "", null,
 				firstResponseTime - startTime);
 
@@ -214,6 +218,7 @@ public class WorkflowServiceImpl implements WorkflowService {
 			error = ErrorCode.WORKFLOW_EXECUTE_ERROR.toError(err.getMessage());
 		}
 		response.setError(error);
+		response.setStatus(WorkflowStatus.FAILED);
 		LogUtils.monitor(context, "WorkflowService", "handleThrowable", context.getStartTime(), error.getCode(), null,
 				response, err);
 		return Mono.just(response);
@@ -306,50 +311,47 @@ public class WorkflowServiceImpl implements WorkflowService {
 		}
 	}
 
-	private Flux<WorkflowResponse> streamExecute(
-			WorkflowContext workflowContext,
-			WorkflowRequest request) {
+	private Flux<WorkflowResponse> streamExecute(WorkflowContext workflowContext, WorkflowRequest request) {
 
-		String version = BooleanUtils.isTrue(request.getDraft())
-				? "latest"
-				: "lastPublished";
+		String version = BooleanUtils.isTrue(request.getDraft()) ? "latest" : "lastPublished";
 
-		ApplicationVersion appVersion =
-				appService.getAppVersion(
-						request.getAppId(),
-						version
-				);
+		ApplicationVersion appVersion = appService.getAppVersion(request.getAppId(), version);
 
-		TaskRunResponse taskRunResponse =
-				workflowExecuteManager.runTask(
-						appVersion,
-						request.getInputParams(),
-						request.getConversationId(),
-						workflowContext
-				);
+		TaskRunResponse taskRunResponse = workflowExecuteManager.runTask(appVersion, request.getInputParams(),
+				request.getConversationId(), workflowContext);
 
 		String taskId = taskRunResponse.getTaskId();
 		String requestId = taskRunResponse.getRequestId();
-		String conversationId =
-				taskRunResponse.getConversationId();
+		String conversationId = taskRunResponse.getConversationId();
 		Sinks.Many<WorkflowResponse> sink = Sinks.many().unicast().onBackpressureBuffer();
+		AtomicBoolean cancelled = new AtomicBoolean(false);
+
 		ThreadPoolUtils.DEFAULT_TASK_EXECUTOR.execute(() -> {
 			List<NodeResult> lastNodeResults = Lists.newArrayList();
 			Map<String, AtomicInteger> recmsgSeqIdMap = Maps.newHashMap();
 			boolean firstResponse = true;
 			boolean isCompleted = false;
-			while (true) {
+			while (!cancelled.get()) {
 				if (isCompleted) {
+					if (firstResponse) {
+						workflowContext.setFirstResponseTime(System.currentTimeMillis());
+					}
 					handleCompletedMsg(sink, workflowContext, requestId, taskId, conversationId);
 					break;
 				}
+
 				String taskStatus = workflowContext.getTaskStatus();
 				isCompleted = NodeStatusEnum.FAIL.getCode().equals(taskStatus)
 						|| NodeStatusEnum.PAUSE.getCode().equals(taskStatus)
-						|| NodeStatusEnum.SUCCESS.getCode().equals(taskStatus);
+						|| NodeStatusEnum.SUCCESS.getCode().equals(taskStatus)
+						|| NodeStatusEnum.STOP.getCode().equals(taskStatus);
+
 				List<NodeResult> currentNodeResults = Lists.newArrayList();
 				workflowContext.getExecuteOrderList().forEach(nodeId -> {
 					NodeResult currentNodeResult = workflowContext.getNodeResultMap().get(nodeId);
+					if (currentNodeResult == null) {
+						return;
+					}
 					if ((NodeTypeEnum.OUTPUT.getCode().equals(currentNodeResult.getNodeType())
 							|| NodeTypeEnum.END.getCode().equals(currentNodeResult.getNodeType())
 							|| NodeTypeEnum.INPUT.getCode().equals(currentNodeResult.getNodeType()))
@@ -360,6 +362,7 @@ public class WorkflowServiceImpl implements WorkflowService {
 						currentNodeResults.add(copyNodeResult);
 					}
 				});
+
 				boolean handleResult = handleNodeMessage(sink, requestId, taskId, conversationId, recmsgSeqIdMap,
 						lastNodeResults, currentNodeResults);
 				if (handleResult) {
@@ -374,12 +377,21 @@ public class WorkflowServiceImpl implements WorkflowService {
 						Thread.sleep(50);
 					}
 					catch (InterruptedException e) {
-						throw new RuntimeException(e);
+						Thread.currentThread().interrupt();
+						cancelled.set(true);
+						break;
 					}
 				}
 			}
 		});
-		return sink.asFlux();
+
+		return sink.asFlux()
+			.doOnCancel(() -> cancelled.set(true))
+			.doFinally(signal -> {
+				if (SignalType.CANCEL == signal) {
+					cancelled.set(true);
+				}
+			});
 	}
 
 	private boolean handleNodeMessage(Sinks.Many<WorkflowResponse> sink, String requestId, String taskId,
@@ -396,12 +408,12 @@ public class WorkflowServiceImpl implements WorkflowService {
 				if (atomicInteger == null) {
 					atomicInteger = new AtomicInteger(0);
 				}
-				boolean nodeCompleted = nodeResult.getNodeStatus().equals(NodeStatusEnum.SUCCESS.getCode()) ? true
-						: false;
+				boolean nodeCompleted = nodeResult.getNodeStatus().equals(NodeStatusEnum.SUCCESS.getCode());
 				if (StringUtils.isNotBlank(incrementalContent) || nodeCompleted) {
-					sendNodeMessage(sink, nodeResult, requestId, taskId, conversationId,
-							atomicInteger.incrementAndGet(), incrementalContent);
-					diff = true;
+					if (sendNodeMessage(sink, nodeResult, requestId, taskId, conversationId,
+							atomicInteger.incrementAndGet(), incrementalContent)) {
+						diff = true;
+					}
 				}
 				recmsgSeqIdMap.put(nodeResult.getNodeId(), atomicInteger);
 			}
@@ -411,9 +423,9 @@ public class WorkflowServiceImpl implements WorkflowService {
 				.collect(Collectors.groupingBy(NodeResult::getNodeId));
 			for (NodeResult nodeResult : thisNodeResult) {
 				List<NodeResult> lastNodeResultList = listMap.get(nodeResult.getNodeId());
-				boolean nodeCompleted = ((CollectionUtils.isEmpty(lastNodeResultList)
+				boolean nodeCompleted = (CollectionUtils.isEmpty(lastNodeResultList)
 						|| !lastNodeResultList.get(0).getNodeStatus().equals(NodeStatusEnum.SUCCESS.getCode()))
-						&& nodeResult.getNodeStatus().equals(NodeStatusEnum.SUCCESS.getCode())) ? true : false;
+						&& nodeResult.getNodeStatus().equals(NodeStatusEnum.SUCCESS.getCode());
 				String incrementalContent;
 				if (CollectionUtils.isEmpty(lastNodeResultList)) {
 					incrementalContent = calculateIncrementalContent(nodeResult.getOutput(), "");
@@ -428,9 +440,10 @@ public class WorkflowServiceImpl implements WorkflowService {
 					atomicInteger = new AtomicInteger(0);
 				}
 				if (StringUtils.isNotBlank(incrementalContent) || nodeCompleted) {
-					sendNodeMessage(sink, nodeResult, requestId, taskId, conversationId,
-							atomicInteger.incrementAndGet(), incrementalContent);
-					diff = true;
+					if (sendNodeMessage(sink, nodeResult, requestId, taskId, conversationId,
+							atomicInteger.incrementAndGet(), incrementalContent)) {
+						diff = true;
+					}
 				}
 				recmsgSeqIdMap.put(nodeResult.getNodeId(), atomicInteger);
 			}
@@ -449,24 +462,30 @@ public class WorkflowServiceImpl implements WorkflowService {
 		if (NodeStatusEnum.FAIL.getCode().equals(taskStatus)) {
 			sendErrorMessage(sink, requestId, taskId, conversationId, context.getError());
 		}
-
-		if (NodeStatusEnum.PAUSE.getCode().equals(taskStatus)) {
+		else if (NodeStatusEnum.PAUSE.getCode().equals(taskStatus)) {
 			sendPauseMessage(sink, context, requestId, taskId, conversationId);
 		}
-
-		if (NodeStatusEnum.SUCCESS.getCode().equals(taskStatus)) {
+		else if (NodeStatusEnum.SUCCESS.getCode().equals(taskStatus)) {
 			sendFinishMessage(sink, requestId, taskId, conversationId);
+		}
+		else if (NodeStatusEnum.STOP.getCode().equals(taskStatus)) {
+			// The public WorkflowStatus enum has no STOPPED value. Close the stream
+			// cleanly without inventing a new wire-level status.
+			completeSink(sink);
 		}
 	}
 
 	private String calculateIncrementalContent(String currentOutput, String lastOutput) {
+		if (currentOutput == null) {
+			return "";
+		}
 		if (lastOutput != null && !lastOutput.isEmpty() && currentOutput.startsWith(lastOutput)) {
 			return currentOutput.substring(lastOutput.length());
 		}
 		return currentOutput;
 	}
 
-	private void sendNodeMessage(Sinks.Many<WorkflowResponse> sink, NodeResult nodeResult, String requestId,
+	private boolean sendNodeMessage(Sinks.Many<WorkflowResponse> sink, NodeResult nodeResult, String requestId,
 			String taskId, String conversationId, int msgSeqId, String content) {
 		WorkflowResponse response = new WorkflowResponse();
 		response.setRequestId(requestId);
@@ -479,14 +498,9 @@ public class WorkflowServiceImpl implements WorkflowService {
 		response.setNodeType(nodeResult.getNodeType());
 		response.setNodeStatus(nodeResult.getNodeStatus());
 		response.setStatus(WorkflowStatus.IN_PROGRESS);
-		if (nodeResult.getNodeStatus().equals(NodeStatusEnum.SUCCESS.getCode())) {
-			response.setNodeIsCompleted(true);
-		}
-		else {
-			response.setNodeIsCompleted(false);
-		}
+		response.setNodeIsCompleted(nodeResult.getNodeStatus().equals(NodeStatusEnum.SUCCESS.getCode()));
 		response.setNodeMsgSeqId(msgSeqId);
-		sink.tryEmitNext(response);
+		return tryEmitNext(sink, response);
 	}
 
 	private void sendErrorMessage(Sinks.Many<WorkflowResponse> sink, String requestId, String taskId,
@@ -497,8 +511,8 @@ public class WorkflowServiceImpl implements WorkflowService {
 		response.setConversationId(conversationId);
 		response.setError(error);
 		response.setStatus(WorkflowStatus.FAILED);
-		sink.tryEmitNext(response);
-		sink.tryEmitComplete();
+		tryEmitNext(sink, response);
+		completeSink(sink);
 	}
 
 	private void sendPauseMessage(Sinks.Many<WorkflowResponse> sink, WorkflowContext context, String requestId,
@@ -523,9 +537,12 @@ public class WorkflowServiceImpl implements WorkflowService {
 			pauseData.put("input_params", nodeResult.getInput());
 			ChatMessage message = new ChatMessage(MessageRole.ASSISTANT, JsonUtils.toJson(pauseData));
 			response.setMessage(message);
-			sink.tryEmitNext(response);
-			sink.tryEmitComplete();
 		}
+
+		// PAUSE is terminal for the current streaming call even when no pause node can be
+		// found because of a timing race.
+		tryEmitNext(sink, response);
+		completeSink(sink);
 	}
 
 	private void sendFinishMessage(Sinks.Many<WorkflowResponse> sink, String requestId, String taskId,
@@ -535,8 +552,27 @@ public class WorkflowServiceImpl implements WorkflowService {
 		response.setTaskId(taskId);
 		response.setConversationId(conversationId);
 		response.setStatus(WorkflowStatus.COMPLETED);
-		sink.tryEmitNext(response);
-		sink.tryEmitComplete();
+		tryEmitNext(sink, response);
+		completeSink(sink);
+	}
+
+	private boolean tryEmitNext(Sinks.Many<WorkflowResponse> sink, WorkflowResponse response) {
+		Sinks.EmitResult result = sink.tryEmitNext(response);
+		if (result.isSuccess()) {
+			return true;
+		}
+		if (result != Sinks.EmitResult.FAIL_CANCELLED && result != Sinks.EmitResult.FAIL_TERMINATED) {
+			log.debug("Workflow stream emit ignored, result={}, taskId={}", result, response.getTaskId());
+		}
+		return false;
+	}
+
+	private void completeSink(Sinks.Many<WorkflowResponse> sink) {
+		Sinks.EmitResult result = sink.tryEmitComplete();
+		if (!result.isSuccess() && result != Sinks.EmitResult.FAIL_CANCELLED
+				&& result != Sinks.EmitResult.FAIL_TERMINATED) {
+			log.debug("Workflow stream complete ignored, result={}", result);
+		}
 	}
 
 }

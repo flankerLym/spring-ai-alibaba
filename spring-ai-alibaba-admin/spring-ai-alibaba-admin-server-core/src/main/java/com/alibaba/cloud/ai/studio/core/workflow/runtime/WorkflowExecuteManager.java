@@ -538,10 +538,8 @@ public class WorkflowExecuteManager {
 				.stream()
 				.filter(nodeId -> graph.outgoingEdgesOf(nodeId).isEmpty())
 				.map(context.getNodeResultMap()::get)
-				.filter(nodeResult ->
-						nodeResult != null
-								&& NodeStatusEnum.SUCCESS.getCode()
-								.equals(nodeResult.getNodeStatus()))
+				.filter(nodeResult -> nodeResult != null
+						&& NodeStatusEnum.SUCCESS.getCode().equals(nodeResult.getNodeStatus()))
 				.findFirst();
 
 		if (terminalResult.isPresent()) {
@@ -555,8 +553,7 @@ public class WorkflowExecuteManager {
 					.findFirst()
 					.orElse(null);
 
-			if (lastNode != null
-					&& !NodeTypeEnum.END.getCode().equals(lastNode.getType())) {
+			if (lastNode != null && !NodeTypeEnum.END.getCode().equals(lastNode.getType())) {
 
 				// 无后继的普通节点：运行时自动补 END
 				executeAutoEnd(graph, context, result);
@@ -568,9 +565,7 @@ public class WorkflowExecuteManager {
 		return false;
 	}
 
-	private void executeAutoEnd(
-			DirectedAcyclicGraph<String, Edge> graph,
-			WorkflowContext context,
+	private void executeAutoEnd(DirectedAcyclicGraph<String, Edge> graph, WorkflowContext context,
 			NodeResult terminalResult) {
 
 		String autoEndId = "End_Auto_" + terminalResult.getNodeId();
@@ -582,12 +577,9 @@ public class WorkflowExecuteManager {
 		 */
 		synchronized (context) {
 
-			NodeResult existing =
-					context.getNodeResultMap().get(autoEndId);
+			NodeResult existing = context.getNodeResultMap().get(autoEndId);
 
-			if (existing != null
-					&& NodeStatusEnum.SUCCESS.getCode()
-					.equals(existing.getNodeStatus())) {
+			if (existing != null && NodeStatusEnum.SUCCESS.getCode().equals(existing.getNodeStatus())) {
 				return;
 			}
 
@@ -596,8 +588,7 @@ public class WorkflowExecuteManager {
 			endNode.setType(NodeTypeEnum.END.getCode());
 			endNode.setName("Auto End Node");
 
-			Node.NodeCustomConfig config =
-					new Node.NodeCustomConfig();
+			Node.NodeCustomConfig config = new Node.NodeCustomConfig();
 
 			config.setInputParams(Lists.newArrayList());
 			config.setOutputParams(Lists.newArrayList());
@@ -605,9 +596,13 @@ public class WorkflowExecuteManager {
 			endNode.setConfig(config);
 
 			/*
-			 * Auto END 不重新渲染输出，
-			 * 直接透传最后一个业务节点的最终结果。
+			 * Auto END is a workflow lifecycle concern. For a single-chain workflow the
+			 * physical terminal node may be a side-effect node (for example an API alert)
+			 * that runs after the user-facing Output node. In that case the side-effect
+			 * response must not become taskResult / assistant history.
 			 */
+			NodeResult finalOutputResult = resolveAutoEndOutputResult(context, terminalResult);
+
 			NodeResult endResult = new NodeResult();
 
 			endResult.setNodeId(autoEndId);
@@ -615,17 +610,16 @@ public class WorkflowExecuteManager {
 			endResult.setNodeType(NodeTypeEnum.END.getCode());
 			endResult.setNodeStatus(NodeStatusEnum.EXECUTING.getCode());
 
+			// Keep the terminal node payload as END input for diagnostics, but use the
+			// latest successful Output node as the user-facing final result when present.
 			endResult.setInput(terminalResult.getOutput());
-			endResult.setOutput(terminalResult.getOutput());
-			endResult.setUsages(terminalResult.getUsages());
+			endResult.setOutput(finalOutputResult.getOutput());
+			endResult.setUsages(finalOutputResult.getUsages());
 
-			AbstractExecuteProcessor endProcessor =
-					processorMap.get("EndExecuteProcessor");
+			AbstractExecuteProcessor endProcessor = processorMap.get("EndExecuteProcessor");
 
 			if (endProcessor == null) {
-				throw new BizException(
-						ErrorCode.WORKFLOW_EXECUTE_ERROR
-								.toError("EndExecuteProcessor not found"));
+				throw new BizException(ErrorCode.WORKFLOW_EXECUTE_ERROR.toError("EndExecuteProcessor not found"));
 			}
 
 			/*
@@ -641,13 +635,30 @@ public class WorkflowExecuteManager {
 			 * 4. session variables
 			 * 5. taskStatus = SUCCESS
 			 */
-			endProcessor.handleNodeResult(
-					graph,
-					endNode,
-					context,
-					endResult,
-					System.currentTimeMillis());
+			endProcessor.handleNodeResult(graph, endNode, context, endResult, System.currentTimeMillis());
 		}
+	}
+
+	/**
+	 * Resolve the value that Auto END should expose as the final assistant response. The
+	 * current terminal node remains the fallback so workflows without an Output node keep
+	 * their existing behavior.
+	 */
+	private NodeResult resolveAutoEndOutputResult(WorkflowContext context, NodeResult terminalResult) {
+		if (NodeTypeEnum.OUTPUT.getCode().equals(terminalResult.getNodeType())) {
+			return terminalResult;
+		}
+
+		List<String> executeOrderList = context.getExecuteOrderList();
+		for (int i = executeOrderList.size() - 1; i >= 0; i--) {
+			NodeResult candidate = context.getNodeResultMap().get(executeOrderList.get(i));
+			if (candidate != null && NodeTypeEnum.OUTPUT.getCode().equals(candidate.getNodeType())
+					&& NodeStatusEnum.SUCCESS.getCode().equals(candidate.getNodeStatus())) {
+				return candidate;
+			}
+		}
+
+		return terminalResult;
 	}
 
 	/**
@@ -655,7 +666,7 @@ public class WorkflowExecuteManager {
 	 * error handling
 	 * @param graph The workflow graph
 	 * @param nodeId The ID of the node to execute
-	 * @param context The execution context
+	 * @param context The workflow context
 	 */
 	private void executeNodeWork(DirectedAcyclicGraph<String, Edge> graph, String nodeId, WorkflowContext context) {
 		try {

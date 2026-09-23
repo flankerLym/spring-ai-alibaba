@@ -47,6 +47,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static com.alibaba.cloud.ai.studio.core.base.constants.CacheConstants.WORKFLOW_TASK_CONTEXT_PREFIX;
 
@@ -60,6 +62,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import lombok.extern.slf4j.Slf4j;
+import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.SignalType;
@@ -118,10 +121,25 @@ public class ChatController {
 			response.addHeader(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_EVENT_STREAM_VALUE);
 
 			SseEmitter emitter = new SseEmitter(0L);
-			responseFlux.doOnNext(data -> sendStreamingResponse(context, request, emitter, data, response))
+			AtomicBoolean emitterClosed = new AtomicBoolean(false);
+			AtomicReference<Disposable> subscriptionRef = new AtomicReference<>();
+			bindEmitterLifecycle(emitter, emitterClosed, subscriptionRef);
+
+			Disposable subscription = responseFlux
+				// Convert business errors to a response before the send stage so the error
+				// response is actually written to SSE.
 				.onErrorResume(err -> handleError(context, request, err))
-				.doFinally(type -> handleComplete(context, type, emitter))
+				.doOnNext(data -> sendStreamingResponse(context, request, emitter, data, response, emitterClosed))
+				// A failed SSE write means the transport is no longer usable. Stop this
+				// subscription instead of producing more data for a dead connection.
+				.onErrorResume(StreamWriteException.class, err -> Mono.empty())
+				.doFinally(type -> handleComplete(context, type, emitter, emitterClosed))
 				.subscribe();
+
+			subscriptionRef.set(subscription);
+			if (emitterClosed.get()) {
+				disposeSubscription(subscriptionRef);
+			}
 
 			return emitter;
 		}
@@ -170,10 +188,21 @@ public class ChatController {
 			response.addHeader(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_EVENT_STREAM_VALUE);
 
 			SseEmitter emitter = new SseEmitter(0L);
-			responseFlux.doOnNext(data -> sendStreamingResponse(context, request, emitter, data, response))
+			AtomicBoolean emitterClosed = new AtomicBoolean(false);
+			AtomicReference<Disposable> subscriptionRef = new AtomicReference<>();
+			bindEmitterLifecycle(emitter, emitterClosed, subscriptionRef);
+
+			Disposable subscription = responseFlux
 				.onErrorResume(err -> handleError(context, request, err))
-				.doFinally(type -> handleComplete(context, type, emitter))
+				.doOnNext(data -> sendStreamingResponse(context, request, emitter, data, response, emitterClosed))
+				.onErrorResume(StreamWriteException.class, err -> Mono.empty())
+				.doFinally(type -> handleComplete(context, type, emitter, emitterClosed))
 				.subscribe();
+
+			subscriptionRef.set(subscription);
+			if (emitterClosed.get()) {
+				disposeSubscription(subscriptionRef);
+			}
 
 			return emitter;
 		}
@@ -207,18 +236,26 @@ public class ChatController {
 	 * @param response The HTTP servlet response
 	 */
 	private void sendStreamingResponse(RequestContext context, AgentRequest request, SseEmitter emitter,
-			AgentResponse completion, HttpServletResponse response) {
-		if (completion.getError() != null) {
+			AgentResponse completion, HttpServletResponse response, AtomicBoolean emitterClosed) {
+		if (completion.getError() != null && !response.isCommitted()) {
 			response.setStatus(completion.getError().getStatusCode());
 		}
 
 		String json = JsonUtils.toJson(completion);
 		try {
+			if (emitterClosed.get()) {
+				throw new StreamWriteException("SSE emitter is already closed");
+			}
 			emitter.send(json, MediaType.TEXT_EVENT_STREAM);
 		}
+		catch (StreamWriteException e) {
+			throw e;
+		}
 		catch (Exception e) {
-			LogUtils.monitor(context, "ChatController", "endStreamCallError", context.getStartTime(), FAIL, request,
-					e.getMessage(), e);
+			emitterClosed.set(true);
+			log.debug("SSE agent response write stopped, requestId={}, reason={}", context.getRequestId(),
+					e.getMessage());
+			throw new StreamWriteException(e);
 		}
 
 		if (completion.getStatus() == AgentStatus.COMPLETED) {
@@ -252,18 +289,26 @@ public class ChatController {
 	 * @param response The HTTP servlet response
 	 */
 	private void sendStreamingResponse(RequestContext context, WorkflowRequest request, SseEmitter emitter,
-			WorkflowResponse completion, HttpServletResponse response) {
-		if (completion.getError() != null) {
+			WorkflowResponse completion, HttpServletResponse response, AtomicBoolean emitterClosed) {
+		if (completion.getError() != null && !response.isCommitted()) {
 			response.setStatus(completion.getError().getStatusCode());
 		}
 
 		String json = JsonUtils.toJson(completion);
 		try {
+			if (emitterClosed.get()) {
+				throw new StreamWriteException("SSE emitter is already closed");
+			}
 			emitter.send(json, MediaType.TEXT_EVENT_STREAM);
 		}
+		catch (StreamWriteException e) {
+			throw e;
+		}
 		catch (Exception e) {
-			LogUtils.monitor(context, "ChatController", "endStreamCallError", context.getStartTime(), FAIL, request,
-					e.getMessage(), e);
+			emitterClosed.set(true);
+			log.debug("SSE workflow response write stopped, requestId={}, reason={}", context.getRequestId(),
+					e.getMessage());
+			throw new StreamWriteException(e);
 		}
 
 		if (completion.getStatus() == WorkflowStatus.COMPLETED) {
@@ -283,20 +328,84 @@ public class ChatController {
 				err.getMessage(), err);
 
 		Error error = ExceptionUtils.convertError(err);
-		WorkflowResponse completion = WorkflowResponse.builder().requestId(context.getRequestId()).error(error).build();
+		WorkflowResponse completion = WorkflowResponse.builder()
+			.requestId(context.getRequestId())
+			.error(error)
+			.status(WorkflowStatus.FAILED)
+			.build();
 
 		return Mono.just(completion);
 	}
 
 	/**
-	 * Handles completion of streaming requests
-	 * @param context The request context
-	 * @param signalType The signal type
-	 * @param emitter The SSE emitter
+	 * Bind servlet-side SSE lifecycle to the Reactor subscription. Once the client closes
+	 * the connection, the subscription is disposed so upstream streaming producers receive
+	 * cancellation instead of continuing to write to an unusable response.
 	 */
-	private void handleComplete(RequestContext context, SignalType signalType, SseEmitter emitter) {
-		emitter.complete();
-		LogUtils.monitor(context, "ChatController", "endStreamCall", context.getStartTime(), SUCCESS, null, null);
+	private void bindEmitterLifecycle(SseEmitter emitter, AtomicBoolean emitterClosed,
+			AtomicReference<Disposable> subscriptionRef) {
+		emitter.onCompletion(() -> {
+			emitterClosed.set(true);
+			disposeSubscription(subscriptionRef);
+		});
+		emitter.onTimeout(() -> {
+			emitterClosed.set(true);
+			disposeSubscription(subscriptionRef);
+		});
+		emitter.onError(error -> {
+			emitterClosed.set(true);
+			disposeSubscription(subscriptionRef);
+		});
+	}
+
+	private void disposeSubscription(AtomicReference<Disposable> subscriptionRef) {
+		Disposable disposable = subscriptionRef.get();
+		if (disposable != null && !disposable.isDisposed()) {
+			disposable.dispose();
+		}
+	}
+
+	/**
+	 * Handles completion of streaming requests. Do not try to complete an emitter that is
+	 * already closed by the servlet container/client; that would cause a second write on a
+	 * dead response.
+	 */
+	private void handleComplete(RequestContext context, SignalType signalType, SseEmitter emitter,
+			AtomicBoolean emitterClosed) {
+		if (SignalType.CANCEL == signalType || emitterClosed.get()) {
+			LogUtils.monitor(context, "ChatController", "endStreamCall", context.getStartTime(), "cancel", null,
+					null);
+			return;
+		}
+
+		if (emitterClosed.compareAndSet(false, true)) {
+			try {
+				emitter.complete();
+			}
+			catch (Exception e) {
+				log.debug("SSE emitter complete ignored, requestId={}, reason={}", context.getRequestId(), e.getMessage());
+			}
+		}
+
+		if (SignalType.ON_COMPLETE == signalType) {
+			LogUtils.monitor(context, "ChatController", "endStreamCall", context.getStartTime(), SUCCESS, null, null);
+		}
+		else {
+			LogUtils.monitor(context, "ChatController", "endStreamCall", context.getStartTime(), FAIL, null,
+					signalType.name());
+		}
+	}
+
+	private static final class StreamWriteException extends RuntimeException {
+
+		private StreamWriteException(String message) {
+			super(message);
+		}
+
+		private StreamWriteException(Throwable cause) {
+			super(cause);
+		}
+
 	}
 
 	@PostMapping(value = { "/workflow/async-completions" })
