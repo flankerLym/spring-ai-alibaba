@@ -31,6 +31,8 @@ import com.alibaba.cloud.ai.studio.runtime.domain.workflow.Node;
 import com.alibaba.cloud.ai.studio.runtime.domain.workflow.NodeTypeEnum;
 import com.alibaba.cloud.ai.studio.runtime.enums.AppStatus;
 import com.alibaba.cloud.ai.studio.runtime.enums.AppType;
+import com.alibaba.cloud.ai.studio.runtime.enums.ErrorCode;
+import com.alibaba.cloud.ai.studio.runtime.exception.BizException;
 import com.alibaba.cloud.ai.studio.runtime.utils.JsonUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -38,7 +40,8 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.util.CollectionUtils;
-import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -48,11 +51,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * OpenAPI application discovery endpoint.
+ * OpenAPI application detail endpoint.
  *
- * Returns every application that currently has a published version together with the
- * endpoint, parameter schema and a request JSON example that a third party can use
- * directly.
+ * Queries application information by JSON filter conditions and returns the application
+ * metadata together with its published OpenAPI schema when a published version exists.
  */
 @RestController
 @RequiredArgsConstructor
@@ -71,32 +73,52 @@ public class OpenApiAppController {
 	private final AppService appService;
 
 	/**
-	 * Lists all externally callable applications.
+	 * Queries applications by one or more filter conditions.
 	 *
-	 * PUBLISHED_EDITING is included because the application still owns a published
-	 * version. Its schema/request example is always generated from lastPublished, never
-	 * from the editing draft.
+	 * Supported filters:
+	 * appId: exact match
+	 * name: fuzzy match
+	 * type: basic/workflow
+	 * status: draft/published/published_editing
 	 */
-	@GetMapping("/published")
-	@Operation(summary = "List published applications and their OpenAPI request schema")
-	public Result<List<PublishedAppApiInfo>> listPublishedApps() {
+	@PostMapping("")
+	@Operation(summary = "Query application details by filter conditions")
+	public Result<List<PublishedAppApiInfo>> queryAppDetails(@RequestBody AppDetailQuery filter) {
 		RequestContext context = RequestContextHolder.getRequestContext();
+		validateFilter(filter);
 
-		LinkedHashMap<String, Application> applications = new LinkedHashMap<>();
-		loadAppsByStatus(AppStatus.PUBLISHED)
-			.forEach(app -> applications.put(app.getAppId(), app));
-		loadAppsByStatus(AppStatus.PUBLISHED_EDITING)
-			.forEach(app -> applications.put(app.getAppId(), app));
-
+		List<Application> applications = loadApps(filter);
 		List<PublishedAppApiInfo> result = new ArrayList<>();
-		for (Application app : applications.values()) {
+
+		for (Application app : applications) {
 			result.add(buildApiInfo(app));
 		}
 
 		return Result.success(context.getRequestId(), result);
 	}
 
-	private List<Application> loadAppsByStatus(AppStatus status) {
+	private void validateFilter(AppDetailQuery filter) {
+		if (filter == null || (StringUtils.isBlank(filter.getAppId())
+				&& StringUtils.isBlank(filter.getName())
+				&& StringUtils.isBlank(filter.getType())
+				&& StringUtils.isBlank(filter.getStatus()))) {
+			throw new BizException(ErrorCode.MISSING_PARAMS
+				.toError("At least one filter is required: appId, name, type or status"));
+		}
+
+		normalizeType(filter.getType());
+		parseStatus(filter.getStatus());
+	}
+
+	private List<Application> loadApps(AppDetailQuery filter) {
+		if (StringUtils.isNotBlank(filter.getAppId())) {
+			Application app = appService.getApp(filter.getAppId());
+			if (matchesFilter(app, filter)) {
+				return List.of(app);
+			}
+			return List.of();
+		}
+
 		List<Application> result = new ArrayList<>();
 		int current = 1;
 
@@ -104,7 +126,9 @@ public class OpenApiAppController {
 			AppQuery query = new AppQuery();
 			query.setCurrent(current);
 			query.setSize(PAGE_SIZE);
-			query.setStatus(status);
+			query.setName(StringUtils.trimToNull(filter.getName()));
+			query.setType(normalizeType(filter.getType()));
+			query.setStatus(parseStatus(filter.getStatus()));
 
 			PagingList<Application> page = appService.listApps(query);
 			if (page == null || CollectionUtils.isEmpty(page.getRecords())) {
@@ -123,6 +147,65 @@ public class OpenApiAppController {
 		return result;
 	}
 
+	private boolean matchesFilter(Application app, AppDetailQuery filter) {
+		if (app == null) {
+			return false;
+		}
+
+		if (StringUtils.isNotBlank(filter.getName())
+				&& (app.getName() == null
+					|| !app.getName().toLowerCase().contains(filter.getName().trim().toLowerCase()))) {
+			return false;
+		}
+
+		String type = normalizeType(filter.getType());
+		if (StringUtils.isNotBlank(type)
+				&& (app.getType() == null || !type.equals(app.getType().getValue()))) {
+			return false;
+		}
+
+		AppStatus status = parseStatus(filter.getStatus());
+		return status == null || status == app.getStatus();
+	}
+
+	private String normalizeType(String type) {
+		if (StringUtils.isBlank(type)) {
+			return null;
+		}
+
+		String normalized = type.trim().toLowerCase();
+		for (AppType appType : AppType.values()) {
+			if (appType.getValue().equalsIgnoreCase(normalized)
+					|| appType.name().equalsIgnoreCase(normalized)) {
+				return appType.getValue();
+			}
+		}
+
+		throw new BizException(ErrorCode.INVALID_PARAMS
+			.toError("type", "supported values: basic, workflow"));
+	}
+
+	private AppStatus parseStatus(String status) {
+		if (StringUtils.isBlank(status)) {
+			return null;
+		}
+
+		String normalized = status.trim();
+		for (AppStatus appStatus : AppStatus.values()) {
+			if (appStatus.getValue().equalsIgnoreCase(normalized)
+					|| appStatus.name().equalsIgnoreCase(normalized)) {
+				if (appStatus == AppStatus.DELETED) {
+					throw new BizException(ErrorCode.INVALID_PARAMS
+						.toError("status", "deleted applications are not externally queryable"));
+				}
+				return appStatus;
+			}
+		}
+
+		throw new BizException(ErrorCode.INVALID_PARAMS
+			.toError("status", "supported values: draft, published, published_editing"));
+	}
+
 	private PublishedAppApiInfo buildApiInfo(Application app) {
 		PublishedAppApiInfo info = new PublishedAppApiInfo();
 		info.setAppId(app.getAppId());
@@ -130,6 +213,10 @@ public class OpenApiAppController {
 		info.setDescription(app.getDescription());
 		info.setType(app.getType() == null ? null : app.getType().getValue());
 		info.setStatus(app.getStatus() == null ? null : app.getStatus().getValue());
+		info.setIcon(app.getIcon());
+		info.setSource(app.getSource());
+		info.setGmtCreate(app.getGmtCreate());
+		info.setGmtModified(app.getGmtModified());
 		info.setMethod("POST");
 		info.setAuth("Authorization: Bearer <API_KEY>");
 		info.setContentType("application/json");
@@ -169,7 +256,6 @@ public class OpenApiAppController {
 
 		List<ApiInputParam> params = new ArrayList<>();
 
-		// query is the predefined system input used by the current workflow runtime.
 		ApiInputParam query = new ApiInputParam();
 		query.setKey("query");
 		query.setType("String");
@@ -240,6 +326,11 @@ public class OpenApiAppController {
 		AgentConfig config =
 				JsonUtils.fromJson(publishedVersion.getConfig(), AgentConfig.class);
 
+		if (config != null && config.getPrologue() != null
+				&& StringUtils.isNotBlank(config.getPrologue().getPrologueText())) {
+			info.setPrologueText(config.getPrologue().getPrologueText());
+		}
+
 		List<ApiInputParam> params = new ArrayList<>();
 
 		ApiInputParam messages = new ApiInputParam();
@@ -257,7 +348,7 @@ public class OpenApiAppController {
 				param.setType(variable.getType());
 				param.setDesc(variable.getDescription());
 				param.setRequired(false);
-				param.setSource("prompt_variables");
+				param.setSource("promptVariables");
 				param.setDefaultValue(variable.getDefaultValue());
 				params.add(param);
 			}
@@ -278,7 +369,7 @@ public class OpenApiAppController {
 
 		Map<String, Object> promptVariables = new LinkedHashMap<>();
 		for (ApiInputParam param : params) {
-			if ("prompt_variables".equals(param.getSource())) {
+			if ("promptVariables".equals(param.getSource())) {
 				promptVariables.put(param.getKey(), exampleValue(param));
 			}
 		}
@@ -319,6 +410,19 @@ public class OpenApiAppController {
 	}
 
 	@Data
+	public static class AppDetailQuery {
+
+		private String appId;
+
+		private String name;
+
+		private String type;
+
+		private String status;
+
+	}
+
+	@Data
 	public static class PublishedAppApiInfo {
 
 		private String appId;
@@ -331,7 +435,18 @@ public class OpenApiAppController {
 
 		private String status;
 
+		private String icon;
+
+		private String source;
+
+		private java.util.Date gmtCreate;
+
+		private java.util.Date gmtModified;
+
 		private String publishedVersion;
+
+		/** Opening statement configured for BASIC applications. */
+		private String prologueText;
 
 		private String method;
 
