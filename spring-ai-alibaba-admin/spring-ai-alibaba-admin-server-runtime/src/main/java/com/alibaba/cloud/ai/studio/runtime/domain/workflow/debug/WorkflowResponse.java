@@ -28,7 +28,10 @@ import lombok.NoArgsConstructor;
 import java.io.Serializable;
 
 /**
- * workflow response.
+ * Workflow response.
+ *
+ * Runtime/debug fields are kept in the Java object for internal processing, while JSON
+ * serialization only exposes business-facing fields.
  *
  * @author guning.lt
  * @since 1.0.0.3
@@ -39,38 +42,60 @@ import java.io.Serializable;
 @AllArgsConstructor
 public class WorkflowResponse implements Serializable {
 
-	@JsonProperty("request_id")
+	/** Internal request trace id, never exposed as business output. */
+	@JsonIgnore
 	private String requestId;
 
-	@JsonProperty("conversation_id")
+	/** Business conversation identifier. */
 	private String conversationId;
 
-	@JsonProperty("task_id")
+	/** Business task identifier. */
 	private String taskId;
 
-	@JsonProperty("node_id")
+	/** Internal node diagnostics. */
+	@JsonIgnore
 	private String nodeId;
 
-	@JsonProperty("node_name")
+	@JsonIgnore
 	private String nodeName;
 
-	@JsonProperty("node_type")
+	@JsonIgnore
 	private String nodeType;
 
-	@JsonProperty("node_status")
+	@JsonIgnore
 	private String nodeStatus;
 
-	@JsonProperty("node_msg_seq_id")
+	@JsonIgnore
 	private Integer nodeMsgSeqId;
 
-	@JsonProperty("node_is_completed")
+	@JsonIgnore
 	private Boolean nodeIsCompleted;
 
+	/** Business workflow status. */
 	private WorkflowStatus status;
 
+	/** Internal message model; expose content only. */
+	@JsonIgnore
 	private ChatMessage message;
 
+	/** Internal error model; expose code/message only. */
+	@JsonIgnore
 	private Error error;
+
+	@JsonProperty("content")
+	public Object getBusinessContent() {
+		return message == null ? null : message.getContent();
+	}
+
+	@JsonProperty("errorCode")
+	public String getBusinessErrorCode() {
+		return error == null ? null : error.getCode();
+	}
+
+	@JsonProperty("errorMessage")
+	public String getBusinessErrorMessage() {
+		return error == null ? null : error.getMessage();
+	}
 
 	@JsonIgnore
 	public boolean isSuccess() {

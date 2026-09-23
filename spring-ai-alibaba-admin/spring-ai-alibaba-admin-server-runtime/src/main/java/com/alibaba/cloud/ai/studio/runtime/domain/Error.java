@@ -16,7 +16,6 @@
 
 package com.alibaba.cloud.ai.studio.runtime.domain;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -27,9 +26,10 @@ import java.io.Serializable;
 /**
  * Standard error response model for API responses.
  *
+ * JSON field names follow Java camelCase naming.
+ *
  * @since 1.0.0.3
  */
-
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
@@ -37,7 +37,6 @@ import java.io.Serializable;
 public class Error implements Serializable {
 
 	/** HTTP status code of the error */
-	@JsonProperty("status_code")
 	private Integer statusCode;
 
 	/** Type of the error */

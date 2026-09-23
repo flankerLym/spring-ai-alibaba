@@ -15,12 +15,21 @@
  */
 package com.alibaba.cloud.ai.studio.runtime.domain.workflow.debug;
 
+import com.alibaba.cloud.ai.studio.runtime.utils.JsonUtils;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 import java.io.Serializable;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * SSE message for workflow execution.
+ *
+ * The object still carries node-level diagnostics internally, but those fields are not
+ * serialized to external clients. External JSON uses camelCase business fields only.
+ */
 @Data
 public class ApiTaskMsg implements Serializable {
 
@@ -29,52 +38,97 @@ public class ApiTaskMsg implements Serializable {
 	 */
 	private String event;
 
-	@JsonProperty("task_id")
 	private String taskId;
 
-	@JsonProperty("conversation_id")
 	private String conversationId;
 
-	@JsonProperty("node_id")
+	/** Internal node diagnostics. */
+	@JsonIgnore
 	private String nodeId;
 
-	@JsonProperty("node_name")
+	@JsonIgnore
 	private String nodeName;
 
-	@JsonProperty("node_type")
+	@JsonIgnore
 	private String nodeType;
 
-	@JsonProperty("node_status")
+	@JsonIgnore
 	private String nodeStatus;
 
-	@JsonProperty("node_msg_seq_id")
+	@JsonIgnore
 	private Integer nodeMsgSeqId;
 
-	@JsonProperty("node_is_completed")
+	@JsonIgnore
 	private Boolean nodeIsCompleted;
 
+	@JsonIgnore
 	private Map<String, Object> ext;
 
-	@JsonProperty("content_type")
+	@JsonIgnore
 	private String contentType = "text";
 
-	@JsonProperty("text_content")
+	@JsonIgnore
 	private String textContent;
 
-	@JsonProperty("error_code")
+	@JsonIgnore
 	private String error_code;
 
-	@JsonProperty("error_message")
+	@JsonIgnore
 	private String error_message;
 
-	@JsonProperty("pause_data")
+	@JsonIgnore
 	private Object pause_data;
 
 	/**
 	 * @see PauseType
 	 */
-	@JsonProperty("pause_type")
 	private String pauseType;
+
+	@JsonProperty("content")
+	public String getBusinessContent() {
+		return textContent;
+	}
+
+	@JsonProperty("errorCode")
+	public String getErrorCode() {
+		return error_code;
+	}
+
+	@JsonProperty("errorMessage")
+	public String getErrorMessage() {
+		return error_message;
+	}
+
+	/**
+	 * Pause information is a business interaction contract, so only expose the information
+	 * required to resume the workflow. Node name/type/status are diagnostics and remain
+	 * hidden.
+	 */
+	@JsonProperty("pauseData")
+	public Object getBusinessPauseData() {
+		if (!(pause_data instanceof Map<?, ?> rawMap)) {
+			return pause_data;
+		}
+
+		Map<String, Object> result = new LinkedHashMap<>();
+
+		Object nodeIdValue = rawMap.get("node_id");
+		if (nodeIdValue != null) {
+			result.put("resumeNodeId", nodeIdValue);
+		}
+
+		Object inputParams = rawMap.get("input_params");
+		if (inputParams != null) {
+			if (inputParams instanceof String json && JsonUtils.isValidJson(json)) {
+				result.put("inputParams", JsonUtils.fromJson(json));
+			}
+			else {
+				result.put("inputParams", inputParams);
+			}
+		}
+
+		return result.isEmpty() ? null : result;
+	}
 
 	public enum Event {
 

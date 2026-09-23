@@ -1,0 +1,236 @@
+.archivePage {
+  padding: 20px;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+.toolbar,
+.folderHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.folderHeaderLeft,
+.folderActions,
+.emptyActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pageTitle {
+  font-size: 18px;
+  line-height: 28px;
+  font-weight: 600;
+  color: var(--ag-ant-color-text-base);
+}
+
+.pageDesc {
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ag-ant-color-text-tertiary);
+}
+
+.folderGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.folderCard {
+  min-height: 146px;
+  padding: 20px;
+  display: flex;
+  gap: 16px;
+  box-sizing: border-box;
+  border: 1px solid var(--ag-ant-color-border-secondary);
+  border-radius: 8px;
+  background: var(--ag-ant-color-bg-base);
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease,
+    transform 0.2s ease;
+
+  &:hover {
+    border-color: var(--ag-ant-color-primary-border-hover);
+    box-shadow: 0 8px 24px rgba(31, 35, 41, 0.08);
+    transform: translateY(-1px);
+  }
+}
+
+.folderVisual {
+  flex: 0 0 auto;
+}
+
+.folderIcon {
+  position: relative;
+  width: 48px;
+  height: 36px;
+  margin-top: 8px;
+  border-radius: 5px;
+  background: linear-gradient(180deg, #8f89ff 0%, #7169f5 100%);
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: -7px;
+    width: 21px;
+    height: 10px;
+    border-radius: 5px 5px 0 0;
+    background: #a7a2ff;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    left: 7px;
+    right: 7px;
+    bottom: 8px;
+    height: 2px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.62);
+  }
+}
+
+.folderBody {
+  min-width: 0;
+  flex: 1;
+}
+
+.folderTitleRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.folderName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+  line-height: 32px;
+  font-weight: 600;
+  color: var(--ag-ant-color-text-base);
+}
+
+.folderMeta {
+  margin-top: 18px;
+  font-size: 14px;
+  color: var(--ag-ant-color-text-secondary);
+}
+
+.folderTime {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--ag-ant-color-text-tertiary);
+}
+
+.emptyFolders {
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.emptyFolderIcon {
+  margin-bottom: 18px;
+  transform: scale(1.35);
+}
+
+.emptyTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ag-ant-color-text-base);
+}
+
+.emptyDesc {
+  max-width: 520px;
+  margin: 8px 0 18px;
+  font-size: 13px;
+  line-height: 22px;
+  color: var(--ag-ant-color-text-tertiary);
+}
+
+.appSearchRow {
+  margin-bottom: 4px;
+}
+
+.appSearch {
+  width: 320px;
+}
+
+.pickerHint {
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border-radius: 6px;
+  background: var(--ag-ant-color-fill-secondary);
+  color: var(--ag-ant-color-text-secondary);
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.pickerSearch {
+  margin-bottom: 12px;
+}
+
+.pickerList {
+  display: flex !important;
+  flex-direction: column;
+  width: 100%;
+  max-height: 430px;
+  overflow-y: auto;
+  border: 1px solid var(--ag-ant-color-border-secondary);
+  border-radius: 6px;
+}
+
+.pickerItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--ag-ant-color-border-secondary);
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:hover {
+    background: var(--ag-ant-color-fill-secondary);
+  }
+}
+
+.pickerItemText {
+  min-width: 0;
+}
+
+.pickerItemName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ag-ant-color-text-base);
+}
+
+.pickerItemMeta {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--ag-ant-color-text-tertiary);
+}
+
+.pickerEmpty {
+  padding: 56px 20px;
+  text-align: center;
+  color: var(--ag-ant-color-text-tertiary);
+}

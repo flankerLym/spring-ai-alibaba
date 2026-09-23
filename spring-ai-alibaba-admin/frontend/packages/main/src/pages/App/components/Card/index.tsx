@@ -9,8 +9,16 @@ import React, { useMemo } from 'react';
 import styles from './index.module.less';
 import Status from './Status';
 
+export interface AppCardMenuItem {
+  label: React.ReactNode;
+  key: string;
+  danger?: boolean;
+}
+
 export interface AppCardProps extends IAppCard {
   onClickAction: (key: string) => void;
+  /** Override the default three-dot menu. */
+  menuItems?: AppCardMenuItem[];
 }
 
 const typeLabelMap: Record<IAppType, string> = {
@@ -31,12 +39,38 @@ const AppCard: React.FC<AppCardProps> = ({
   type,
   status,
   onClickAction,
+  menuItems,
 }) => {
   const updateTime = useMemo(() => {
     return dayjs(gmt_modified).format('YYYY-MM-DD HH:mm:ss');
   }, [gmt_modified]);
 
   const language = $i18n.getCurrentLanguage();
+
+  const defaultMenuItems: AppCardMenuItem[] = [
+    {
+      label: $i18n.get({
+        id: 'main.pages.App.components.Card.index.modifyAppName',
+        dm: '修改应用名',
+      }),
+      key: 'editName',
+    },
+    {
+      label: $i18n.get({
+        id: 'main.pages.App.components.Card.index.copyApp',
+        dm: '复制应用',
+      }),
+      key: 'copy',
+    },
+    {
+      label: $i18n.get({
+        id: 'main.pages.App.components.Card.index.delete',
+        dm: '删除',
+      }),
+      danger: true,
+      key: 'delete',
+    },
+  ];
 
   return (
     <ProCard
@@ -80,30 +114,7 @@ const AppCard: React.FC<AppCardProps> = ({
               onClick: (e) => {
                 onClickAction(e.key);
               },
-              items: [
-                {
-                  label: $i18n.get({
-                    id: 'main.pages.App.components.Card.index.modifyAppName',
-                    dm: '修改应用名',
-                  }),
-                  key: 'editName',
-                },
-                {
-                  label: $i18n.get({
-                    id: 'main.pages.App.components.Card.index.copyApp',
-                    dm: '复制应用',
-                  }),
-                  key: 'copy',
-                },
-                {
-                  label: $i18n.get({
-                    id: 'main.pages.App.components.Card.index.delete',
-                    dm: '删除',
-                  }),
-                  danger: true,
-                  key: 'delete',
-                },
-              ],
+              items: menuItems || defaultMenuItems,
             }}
           >
             <IconButton shape="default" icon="spark-more-line" />

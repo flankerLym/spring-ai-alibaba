@@ -16,8 +16,9 @@ import { useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import AppCard from './components/Card';
 import CreateModal from './components/CreateModal';
-import ImportDslButton from './components/ImportDslButton';
 import { EditNameModal } from './components/EditNameModal';
+import ImportDslButton from './components/ImportDslButton';
+import ProjectArchive from './components/ProjectArchive';
 
 const tabs = [
   {
@@ -40,6 +41,10 @@ const tabs = [
       dm: '工作流应用',
     }),
     key: 'workflow',
+  },
+  {
+    label: '项目归档',
+    key: 'archive',
   },
 ];
 
@@ -99,7 +104,11 @@ export default function () {
   };
 
   useMount(() => {
-    fetchList();
+    if (state.activeTab !== 'archive') {
+      fetchList();
+    } else {
+      setState({ loading: false });
+    }
   });
 
   const onTabChange = (key: string) => {
@@ -110,6 +119,12 @@ export default function () {
       name: '',
       activeTab: key,
     });
+
+    if (key === 'archive') {
+      setState({ loading: false });
+      return;
+    }
+
     fetchList({
       current: 1,
       type: typeMap[key],
@@ -213,42 +228,8 @@ export default function () {
     }
   };
 
-  return (
-    <InnerLayout
-      breadcrumbLinks={[
-        {
-          title: $i18n.get({
-            id: 'main.pages.App.index.home',
-            dm: '首页',
-          }),
-          path: '/',
-        },
-        {
-          title: $i18n.get({
-            id: 'main.pages.App.index.applicationManagement',
-            dm: '应用管理',
-          }),
-        },
-      ]}
-      activeTab={state.activeTab}
-      tabs={tabs}
-      right={
-        <div style={{ display: 'flex', gap: 12 }}>
-        <ImportDslButton onImported={(app_id) => gotoAppDetail({ type: IAppType.WORKFLOW, app_id })} />
-        <Button
-          onClick={() => setState({ showCreateModal: true })}
-          icon={<IconFont type="spark-plus-line" />}
-          type="primary"
-        >
-          {$i18n.get({
-            id: 'main.pages.App.index.createApplication',
-            dm: '创建应用',
-          })}
-        </Button>
-        </div>
-      }
-      onTabChange={onTabChange}
-    >
+  const normalListContent = (
+    <>
       {!state.list.length && !isSearchRef.current ? null : (
         <Search
           placeholder={$i18n.get({
@@ -318,6 +299,52 @@ export default function () {
           description={state.activeRecord.description}
         />
       )}
+    </>
+  );
+
+  return (
+    <InnerLayout
+      breadcrumbLinks={[
+        {
+          title: $i18n.get({
+            id: 'main.pages.App.index.home',
+            dm: '首页',
+          }),
+          path: '/',
+        },
+        {
+          title: $i18n.get({
+            id: 'main.pages.App.index.applicationManagement',
+            dm: '应用管理',
+          }),
+        },
+      ]}
+      activeTab={state.activeTab}
+      tabs={tabs}
+      right={
+        state.activeTab === 'archive' ? null : (
+          <div style={{ display: 'flex', gap: 12 }}>
+            <ImportDslButton
+              onImported={(app_id) =>
+                gotoAppDetail({ type: IAppType.WORKFLOW, app_id })
+              }
+            />
+            <Button
+              onClick={() => setState({ showCreateModal: true })}
+              icon={<IconFont type="spark-plus-line" />}
+              type="primary"
+            >
+              {$i18n.get({
+                id: 'main.pages.App.index.createApplication',
+                dm: '创建应用',
+              })}
+            </Button>
+          </div>
+        )
+      }
+      onTabChange={onTabChange}
+    >
+      {state.activeTab === 'archive' ? <ProjectArchive /> : normalListContent}
     </InnerLayout>
   );
 }

@@ -31,55 +31,66 @@ import java.io.Serializable;
 /**
  * Response model for agent completion requests.
  *
+ * Runtime/debug fields stay available internally, but external JSON is limited to
+ * business-facing fields.
+ *
  * @since 1.0.0.3
  */
-
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class AgentResponse implements Serializable {
 
-	/** Unique identifier for the request */
-	@JsonProperty("request_id")
+	@JsonIgnore
 	private String requestId;
 
-	/** Unique identifier for the trace */
-	@JsonProperty("trace_id")
+	@JsonIgnore
 	private String traceId;
 
-	/** Unique identifier for the conversation */
-	@JsonProperty("conversation_id")
 	private String conversationId;
 
-	/** Current status of the agent */
 	private AgentStatus status;
 
-	/** Index of the response in the conversation */
+	@JsonIgnore
 	private String index;
 
-	/** The chat message content */
+	@JsonIgnore
 	private ChatMessage message;
 
-	/** Timestamp when the response was created */
+	@JsonIgnore
 	private Long created;
 
-	/** Model identifier used for generating the response */
+	@JsonIgnore
 	private String model;
 
-	/** Usage statistics for the request */
+	@JsonIgnore
 	private Usage usage;
 
-	/** Error information if the request failed */
+	@JsonIgnore
 	private Error error;
 
-	/** Checks if the response was successful */
+	@JsonIgnore
+	private String providerResponseId;
+
+	@JsonProperty("content")
+	public Object getBusinessContent() {
+		return message == null ? null : message.getContent();
+	}
+
+	@JsonProperty("errorCode")
+	public String getBusinessErrorCode() {
+		return error == null ? null : error.getCode();
+	}
+
+	@JsonProperty("errorMessage")
+	public String getBusinessErrorMessage() {
+		return error == null ? null : error.getMessage();
+	}
+
 	@JsonIgnore
 	public boolean isSuccess() {
 		return error == null;
 	}
-
-	@JsonIgnore
-	private String providerResponseId;
 
 }
