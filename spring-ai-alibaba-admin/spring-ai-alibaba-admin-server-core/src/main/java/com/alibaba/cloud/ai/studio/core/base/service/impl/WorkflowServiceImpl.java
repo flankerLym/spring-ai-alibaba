@@ -60,6 +60,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.SignalType;
 import reactor.core.publisher.Sinks;
+import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
 import java.util.List;
@@ -67,6 +68,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -99,6 +101,12 @@ public class WorkflowServiceImpl implements WorkflowService {
 
 	@Resource
 	private CommonConfig commonConfig;
+
+	/**
+	 * Live API workflow contexts. API invocations intentionally do not persist every
+	 * execution step to Redis, so manual stop needs an in-memory lookup for running tasks.
+	 */
+	private final Map<String, WorkflowContext> activeApiContexts = new ConcurrentHashMap<>();
 
 	@Override
 	public WorkflowResponse call(WorkflowRequest request) {
@@ -195,12 +203,27 @@ public class WorkflowServiceImpl implements WorkflowService {
 		ApplicationVersion appVersion = appService.getAppVersion(request.getAppId(), "lastPublished");
 		WorkflowContext workflowContext = new WorkflowContext();
 		workflowContext.setInvokeSource(InvokeSourceEnum.async.getCode());
-		return workflowExecuteManager.runTask(appVersion, request.getInputParams(), request.getConversationId(),
-				workflowContext);
+		List<com.alibaba.cloud.ai.studio.runtime.domain.workflow.debug.TaskRunParam> inputParams =
+				request.getInputParams() == null ? List.of() : request.getInputParams();
+		return workflowExecuteManager.runTask(appVersion, inputParams, request.getConversationId(), workflowContext);
 	}
 
 	@Override
 	public Boolean stop(TaskStopRequest request) {
+		if (request == null || StringUtils.isBlank(request.getTaskId())) {
+			return false;
+		}
+
+		WorkflowContext activeContext = activeApiContexts.get(request.getTaskId());
+		if (activeContext != null) {
+			// Set the error before STOP so the lifecycle event sees a complete state.
+			activeContext.setError(ErrorCode.WORKFLOW_RUN_CANCEL.toError("Manually terminated"));
+			activeContext.setTaskStatus(NodeStatusEnum.STOP.getCode());
+			activeApiContexts.remove(request.getTaskId(), activeContext);
+			return true;
+		}
+
+		// Console/async tasks are Redis-backed and keep the existing stop path.
 		return workflowExecuteManager.stopTask(request.getTaskId());
 	}
 
@@ -369,7 +392,9 @@ public class WorkflowServiceImpl implements WorkflowService {
 		AtomicBoolean firstResponse = new AtomicBoolean(true);
 		AtomicBoolean terminalSent = new AtomicBoolean(false);
 
-		Flux<WorkflowContext.WorkflowEvent> eventFlux = workflowContext.enableStreamEvents();
+		Flux<WorkflowContext.WorkflowEvent> eventFlux = workflowContext.enableStreamEvents()
+			// Never let a slow SSE client block an LLM/Output node execution thread.
+			.publishOn(Schedulers.boundedElastic());
 		Disposable eventSubscription = eventFlux.subscribe(
 				event -> handleWorkflowEvent(sink, workflowContext, event, recmsgSeqIdMap, lastOutputMap,
 						firstResponse, terminalSent),
@@ -383,8 +408,19 @@ public class WorkflowServiceImpl implements WorkflowService {
 				});
 
 		try {
-			workflowExecuteManager.runTask(appVersion, request.getInputParams(), request.getConversationId(),
-					workflowContext);
+			List<com.alibaba.cloud.ai.studio.runtime.domain.workflow.debug.TaskRunParam> inputParams =
+					request.getInputParams() == null ? List.of() : request.getInputParams();
+			TaskRunResponse taskRunResponse = workflowExecuteManager.runTask(appVersion, inputParams,
+					request.getConversationId(), workflowContext);
+
+			String taskId = taskRunResponse.getTaskId();
+			activeApiContexts.put(taskId, workflowContext);
+			// Safety cleanup for disconnected clients whose background workflow later finishes
+			// after this stream subscription has already been disposed.
+			Schedulers.boundedElastic().schedule(
+					() -> activeApiContexts.remove(taskId, workflowContext),
+					InvokeSourceEnum.api.getTimeoutSeconds() + 60L,
+					TimeUnit.SECONDS);
 		}
 		catch (RuntimeException e) {
 			eventSubscription.dispose();
@@ -468,24 +504,27 @@ public class WorkflowServiceImpl implements WorkflowService {
 				.filter(result -> NodeStatusEnum.FAIL.getCode().equals(result.getNodeStatus()))
 				.findFirst();
 
-			// Some processors set taskStatus before the failed NodeResult is stored.
-			if (failedNode.isEmpty()) {
-				return false;
-			}
 			if (!terminalSent.compareAndSet(false, true)) {
 				return true;
 			}
 
 			Error error = context.getError();
+			if (error == null && failedNode.isPresent()) {
+				error = failedNode.get().getError();
+			}
 			if (error == null) {
-				NodeResult failed = failedNode.get();
-				error = failed.getError();
-				if (error == null) {
+				String errorInfo = StringUtils.defaultIfBlank(context.getErrorInfo(),
+						failedNode.map(NodeResult::getErrorInfo).orElse(null));
+				if ("timeout".equalsIgnoreCase(StringUtils.trimToEmpty(errorInfo))) {
+					error = ErrorCode.WORKFLOW_EXECUTION_TIMEOUT.toError();
+				}
+				else {
 					error = ErrorCode.WORKFLOW_EXECUTE_ERROR
-						.toError(StringUtils.defaultIfBlank(failed.getErrorInfo(), "Workflow execution failed"));
+						.toError(StringUtils.defaultIfBlank(errorInfo, "Workflow execution failed"));
 				}
 			}
 
+			activeApiContexts.remove(context.getTaskId(), context);
 			markFirstResponse(context, firstResponse);
 			sendErrorMessage(sink, context.getRequestId(), context.getTaskId(), context.getConversationId(), error);
 			return true;
@@ -513,6 +552,7 @@ public class WorkflowServiceImpl implements WorkflowService {
 				return true;
 			}
 
+			activeApiContexts.remove(context.getTaskId(), context);
 			markFirstResponse(context, firstResponse);
 			sendFinishMessage(sink, context.getRequestId(), context.getTaskId(), context.getConversationId());
 			return true;
@@ -523,6 +563,7 @@ public class WorkflowServiceImpl implements WorkflowService {
 				return true;
 			}
 
+			activeApiContexts.remove(context.getTaskId(), context);
 			markFirstResponse(context, firstResponse);
 			// Keep the existing wire contract: STOP closes the stream without inventing
 			// a new public WorkflowStatus value.

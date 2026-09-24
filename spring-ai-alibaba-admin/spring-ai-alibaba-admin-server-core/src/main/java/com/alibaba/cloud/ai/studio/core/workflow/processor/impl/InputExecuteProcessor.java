@@ -42,10 +42,6 @@ import static com.alibaba.cloud.ai.studio.core.base.constants.CacheConstants.WOR
  * <p>
  * This processor is responsible for handling input nodes in the workflow. It manages user
  * input collection and timeout handling for workflow execution.
- * <p>
- * Features: 1. Manages input node state transitions 2. Handles input timeout scenarios 3.
- * Supports asynchronous input collection 4. Maintains workflow context during input
- * waiting
  *
  * @version 1.0.0-M1
  */
@@ -53,73 +49,78 @@ import static com.alibaba.cloud.ai.studio.core.base.constants.CacheConstants.WOR
 @Component("InputExecuteProcessor")
 public class InputExecuteProcessor extends AbstractExecuteProcessor {
 
-	/**
-	 * Constructor for InputExecuteProcessor
-	 * @param redisManager Redis manager for caching
-	 * @param workflowInnerService Workflow inner service for context management
-	 * @param conversationChatMemory Chat memory for conversation context
-	 * @param commonConfig Common configuration settings
-	 */
 	public InputExecuteProcessor(RedisManager redisManager, WorkflowInnerService workflowInnerService,
 			ChatMemory conversationChatMemory, CommonConfig commonConfig) {
 		super(redisManager, workflowInnerService, conversationChatMemory, commonConfig);
 	}
 
-	/**
-	 * Execute the input node processing This method handles the input collection process,
-	 * including: 1. Setting up the node in pause state 2. Waiting for user input 3.
-	 * Handling timeout scenarios 4. Managing state transitions
-	 * @param graph The workflow graph
-	 * @param node The current node to execute
-	 * @param context The workflow context
-	 * @return NodeResult containing the input processing status and results
-	 */
 	@Override
 	public NodeResult innerExecute(DirectedAcyclicGraph<String, Edge> graph, Node node, WorkflowContext context) {
-		// Set to pause state
 		NodeResult nodeResult = new NodeResult();
 		nodeResult.setNodeId(node.getId());
 		nodeResult.setNodeName(node.getName());
 		nodeResult.setNodeType(node.getType());
 		nodeResult.setUsages(null);
+
 		List<Node.OutputParam> outputParams = node.getConfig().getOutputParams();
 		nodeResult.setInput(JsonUtils.toJson(outputParams));
 		nodeResult.setNodeStatus(NodeStatusEnum.PAUSE.getCode());
-		context.setTaskStatus(NodeStatusEnum.PAUSE.getCode());
+
+		/*
+		 * Store the pause node before announcing PAUSE so event-driven consumers can read
+		 * the complete pause payload immediately.
+		 */
 		context.getNodeResultMap().put(node.getId(), nodeResult);
-		// Force refresh context
-		// workflowInnerService.forceRefreshContextCache(context);
+		context.setTaskStatus(NodeStatusEnum.PAUSE.getCode());
+
+		/*
+		 * API workflows normally skip Redis writes for performance. Input resume is the
+		 * exception: the resume endpoint needs a durable task context, so persist only
+		 * when a task actually pauses for user input.
+		 */
+		workflowInnerService.forceRefreshContextCache(context);
 
 		long startTime = System.currentTimeMillis();
-		long timeout = commonConfig.getInputTimeout(); // 5 minutes timeout
+		long timeout = commonConfig.getInputTimeout();
 
 		while (NodeStatusEnum.PAUSE.getCode().equals(nodeResult.getNodeStatus())) {
-			// Re-fetch node result
-			WorkflowContext wfContext = redisManager
+			WorkflowContext cachedContext = redisManager
 				.get(WORKFLOW_TASK_CONTEXT_PREFIX + context.getWorkspaceId() + "_" + context.getTaskId());
-			nodeResult = wfContext.getNodeResultMap().get(node.getId());
-			try {
-				// Avoid CPU spinning, wait 500ms each time
-				Thread.sleep(500);
-			}
-			catch (InterruptedException e) {
-				log.error("Interrupted while waiting for input node result", e);
-				Thread.currentThread().interrupt();
+
+			if (cachedContext != null && cachedContext.getNodeResultMap() != null) {
+				NodeResult cachedNodeResult = cachedContext.getNodeResultMap().get(node.getId());
+				if (cachedNodeResult != null) {
+					nodeResult = cachedNodeResult;
+				}
 			}
 
-			// Check for timeout
+			if (!NodeStatusEnum.PAUSE.getCode().equals(nodeResult.getNodeStatus())) {
+				break;
+			}
+
 			if (System.currentTimeMillis() - startTime > timeout) {
 				nodeResult.setNodeStatus(NodeStatusEnum.FAIL.getCode());
 				nodeResult.setErrorInfo("Input node waiting timeout");
 				nodeResult.setError(ErrorCode.WORKFLOW_EXECUTE_ERROR.toError("input node waiting timeout"));
 				return nodeResult;
 			}
+
+			try {
+				Thread.sleep(500);
+			}
+			catch (InterruptedException e) {
+				log.warn("Interrupted while waiting for input node result, taskId={}", context.getTaskId());
+				Thread.currentThread().interrupt();
+				nodeResult.setNodeStatus(NodeStatusEnum.FAIL.getCode());
+				nodeResult.setErrorInfo("Input node waiting interrupted");
+				nodeResult.setError(ErrorCode.WORKFLOW_EXECUTE_ERROR.toError("input node waiting interrupted"));
+				return nodeResult;
+			}
 		}
 
-		// Restore workflow context
 		nodeResult.setNodeStatus(NodeStatusEnum.EXECUTING.getCode());
-		context.setTaskStatus(NodeStatusEnum.EXECUTING.getCode());
 		context.getNodeResultMap().put(node.getId(), nodeResult);
+		context.setTaskStatus(NodeStatusEnum.EXECUTING.getCode());
 
 		return nodeResult;
 	}
