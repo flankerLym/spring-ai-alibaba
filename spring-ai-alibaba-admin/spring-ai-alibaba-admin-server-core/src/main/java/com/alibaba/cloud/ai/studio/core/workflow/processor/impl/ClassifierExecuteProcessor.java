@@ -82,8 +82,8 @@ import java.util.stream.Collectors;
 public class ClassifierExecuteProcessor extends AbstractExecuteProcessor {
 
 	// Pattern for extracting decision results
-	private final static Pattern DECISION_PATTERN = Pattern.compile("<Decision>：(.*?)\\s|<Decision>：(.*)",
-			Pattern.DOTALL);
+	private final static Pattern DECISION_PATTERN = Pattern.compile(
+			"<Decision>\\s*[：:]\\s*(.*?)\\s|<Decision>\\s*[：:]\\s*(.*)", Pattern.DOTALL);
 
 	// Pattern for extracting thought process
 	private final static Pattern THOUGHT_PATTERN = Pattern.compile("(?<=<Thinking>：).*?(?=<Decision>)", Pattern.DOTALL);
@@ -127,6 +127,17 @@ public class ClassifierExecuteProcessor extends AbstractExecuteProcessor {
 		targetIdAndActualDecision.setTargetIds(removeDuplicates(targetIdAndActualDecision.getTargetIds()));
 		targetIdAndActualDecision.setActualDecision(removeDuplicates(targetIdAndActualDecision.getActualDecision()));
 		targetIdAndActualDecision.setConditionId(removeDuplicates(targetIdAndActualDecision.getConditionId()));
+
+		// A successful classifier without a connected target makes all real downstream
+		// branches SKIP and leaves the workflow waiting for the global timeout. Fail fast
+		// with a clear error instead of silently producing a dead route.
+		if (CollectionUtils.isEmpty(targetIdAndActualDecision.getTargetIds())
+				|| CollectionUtils.isEmpty(targetIdAndActualDecision.getActualDecision())) {
+			nodeResult.setNodeStatus(NodeStatusEnum.FAIL.getCode());
+			nodeResult.setErrorInfo("Classifier selected branch has no connected target node, decisions="
+					+ decisionAndThoughtAndUsage.getDecisions());
+			return nodeResult;
+		}
 		// 构建结束
 		// 设置输出变量
 		Map<String, Object> subjectAndThoughObj = new HashMap<>();
@@ -336,8 +347,28 @@ public class ClassifierExecuteProcessor extends AbstractExecuteProcessor {
 			log.info("log used for query classify response:{} , requestId:{}", content, context.getRequestId());
 
 			if ("efficient".equals(config.getModeSwitch())) {
-				// 快速模式 - 直接提取决策结果
-				dtu.setDecisions(Lists.newArrayList(content.trim()));
+				// Fast mode must still parse the <Decision> wrapper. Some models follow
+				// the prompt literally and return "<Decision>：2" instead of bare "2".
+				Matcher decisionMatcher = DECISION_PATTERN.matcher(content);
+				List<String> decisions = new ArrayList<>();
+				if (decisionMatcher.find()) {
+					String decisionContent = decisionMatcher.group(1) != null ? decisionMatcher.group(1)
+							: decisionMatcher.group(2);
+					if (decisionContent != null) {
+						decisionContent = decisionContent.replace("---", "").trim();
+						if (decisionContent.startsWith("[") && decisionContent.endsWith("]")) {
+							decisions.addAll(JsonUtils.fromJsonToList(decisionContent, String.class));
+						}
+						else if (NumberUtils.isCreatable(decisionContent)) {
+							decisions.add(decisionContent);
+						}
+					}
+				}
+				else if (NumberUtils.isCreatable(content.trim())) {
+					// Remain compatible with models that really return a bare number.
+					decisions.add(content.trim());
+				}
+				dtu.setDecisions(decisions);
 				dtu.setThought("");
 			}
 			else {

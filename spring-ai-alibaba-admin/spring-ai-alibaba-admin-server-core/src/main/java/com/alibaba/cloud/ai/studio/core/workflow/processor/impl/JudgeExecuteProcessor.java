@@ -292,6 +292,22 @@ public class JudgeExecuteProcessor extends AbstractExecuteProcessor {
 		if (!JudgeOperator.getOperator(operator).getScopeSet().contains(leftType)) {
 			return false;
 		}
+
+		// Missing left operand: unary null checks are handled explicitly; all other
+		// operators cannot safely evaluate a missing value. This prevents contains,
+		// length and comparison operators from dereferencing null.
+		if (leftValue == null) {
+			return JudgeOperator.IS_NULL.getCode().equals(operator);
+		}
+
+		boolean unaryOperator = JudgeOperator.IS_NULL.getCode().equals(operator)
+				|| JudgeOperator.IS_NOT_NULL.getCode().equals(operator)
+				|| JudgeOperator.IS_TRUE.getCode().equals(operator)
+				|| JudgeOperator.IS_FALSE.getCode().equals(operator);
+		if (!unaryOperator && rightValue == null) {
+			return false;
+		}
+
 		try {
 			switch (operator) {
 				case "equals":
