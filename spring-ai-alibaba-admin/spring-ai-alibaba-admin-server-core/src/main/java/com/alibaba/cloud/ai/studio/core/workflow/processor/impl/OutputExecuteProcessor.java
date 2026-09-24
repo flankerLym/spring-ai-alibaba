@@ -59,6 +59,8 @@ import java.util.Map;
 @Component("OutputExecuteProcessor")
 public class OutputExecuteProcessor extends AbstractExecuteProcessor {
 
+	private static final long NODE_UPDATE_FALLBACK_WAIT_MS = 1000L;
+
 	public OutputExecuteProcessor(RedisManager redisManager, WorkflowInnerService workflowInnerService,
 			ChatMemory conversationChatMemory, CommonConfig commonConfig) {
 		super(redisManager, workflowInnerService, conversationChatMemory, commonConfig);
@@ -103,16 +105,14 @@ public class OutputExecuteProcessor extends AbstractExecuteProcessor {
 						// If it's the first variable, add text before the variable
 						contentStringBuilder.append(outputTemplate.substring(0, keyStartIndex));
 						if (streamSwitch) {
-							nodeResult.setOutput(contentStringBuilder.toString());
-							workflowInnerService.refreshContextCache(context);
+							updateOutput(nodeResult, contentStringBuilder.toString(), context, true);
 						}
 					}
 					else if (lastIndex > 0) {
 						// If it's not the first variable, add text between variables
 						contentStringBuilder.append(outputTemplate.substring(lastIndex, keyStartIndex));
 						if (streamSwitch) {
-							nodeResult.setOutput(contentStringBuilder.toString());
-							workflowInnerService.refreshContextCache(context);
+							updateOutput(nodeResult, contentStringBuilder.toString(), context, true);
 						}
 					}
 
@@ -122,8 +122,7 @@ public class OutputExecuteProcessor extends AbstractExecuteProcessor {
 						contentStringBuilder
 							.append(VariableUtils.getValueStringFromPayload(key, context.getVariablesMap()));
 						if (streamSwitch) {
-							nodeResult.setOutput(contentStringBuilder.toString());
-							workflowInnerService.refreshContextCache(context);
+							updateOutput(nodeResult, contentStringBuilder.toString(), context, true);
 						}
 					}
 					else {
@@ -131,41 +130,54 @@ public class OutputExecuteProcessor extends AbstractExecuteProcessor {
 						if (nodeContain) {
 							String tmpContent = contentStringBuilder.toString();
 							String subPath = key.contains(".") ? key.substring(key.indexOf(".") + 1) : key;
-							do {
+							long observedVersion = context.getNodeUpdateVersion(keyFrom);
+
+							/*
+							 * Event-driven wait. The old code continuously executed a do/while
+							 * loop while the upstream LLM was streaming. Now every upstream
+							 * NodeResult replacement wakes this Output node immediately.
+							 */
+							while (true) {
 								if (streamSwitch) {
 									NodeResult keyFromNodeResult = context.getNodeResultMap().get(keyFrom);
-									String keyFromOutput = keyFromNodeResult.getOutput();
-									if (StringUtils.isNotBlank(keyFromOutput)) {
-										String value;
-										if (keyFromNodeResult.getNodeType().equals(NodeTypeEnum.START.getCode())) {
-											// Start node value can be obtained at once,
-											// other nodes get through nodeResult output
-											value = VariableUtils.getValueStringFromPayload(key,
-													context.getVariablesMap());
-										}
-										else {
-											Map<String, Object> keyFromMap = JsonUtils.fromJsonToMap(keyFromOutput);
-											value = VariableUtils.getValueStringFromPayload(subPath, keyFromMap);
-										}
-										if (value != null) {
-											nodeResult.setOutput(tmpContent + value);
-											workflowInnerService.refreshContextCache(context);
+									if (keyFromNodeResult != null) {
+										String keyFromOutput = keyFromNodeResult.getOutput();
+										if (StringUtils.isNotBlank(keyFromOutput)) {
+											String value;
+											if (NodeTypeEnum.START.getCode().equals(keyFromNodeResult.getNodeType())) {
+												// Start node value can be obtained at once,
+												// other nodes get through nodeResult output
+												value = VariableUtils.getValueStringFromPayload(key,
+														context.getVariablesMap());
+											}
+											else {
+												Map<String, Object> keyFromMap = JsonUtils.fromJsonToMap(keyFromOutput);
+												value = VariableUtils.getValueStringFromPayload(subPath, keyFromMap);
+											}
+											if (value != null) {
+												updateOutput(nodeResult, tmpContent + value, context, true);
+											}
 										}
 									}
 								}
+
+								if (isFinished(graph, context, keyFrom)) {
+									break;
+								}
+								observedVersion = context.awaitNodeUpdate(keyFrom, observedVersion,
+										NODE_UPDATE_FALLBACK_WAIT_MS);
 							}
-							while (!isFinished(graph, context, keyFrom));
+
 							// Re-insert after completion
 							NodeResult keyFromNodeResult = context.getNodeResultMap().get(keyFrom);
-							if (StringUtils.isNotBlank(keyFromNodeResult.getOutput())) {
+							if (keyFromNodeResult != null && StringUtils.isNotBlank(keyFromNodeResult.getOutput())) {
 								// Start node uses complete mode
-								if (keyFromNodeResult.getNodeType().equals(NodeTypeEnum.START.getCode())) {
+								if (NodeTypeEnum.START.getCode().equals(keyFromNodeResult.getNodeType())) {
 									contentStringBuilder.append(
 											VariableUtils.getValueStringFromPayload(key, context.getVariablesMap()));
 								}
 								else {
-									Map<String, Object> keyFromMap = JsonUtils
-										.fromJsonToMap(context.getNodeResultMap().get(keyFrom).getOutput());
+									Map<String, Object> keyFromMap = JsonUtils.fromJsonToMap(keyFromNodeResult.getOutput());
 									// Extract subpath from complete expression, e.g.,
 									// "xxx.yyy" from "LLM_sss.xxx.yyy"
 									contentStringBuilder
@@ -173,8 +185,7 @@ public class OutputExecuteProcessor extends AbstractExecuteProcessor {
 								}
 							}
 							if (streamSwitch) {
-								nodeResult.setOutput(contentStringBuilder.toString());
-								workflowInnerService.refreshContextCache(context);
+								updateOutput(nodeResult, contentStringBuilder.toString(), context, true);
 							}
 						}
 					}
@@ -188,20 +199,29 @@ public class OutputExecuteProcessor extends AbstractExecuteProcessor {
 			if (lastIndex < outputTemplate.length()) {
 				contentStringBuilder.append(outputTemplate.substring(lastIndex));
 				if (streamSwitch) {
-					nodeResult.setOutput(contentStringBuilder.toString());
-					workflowInnerService.refreshContextCache(context);
+					updateOutput(nodeResult, contentStringBuilder.toString(), context, true);
 				}
 			}
 			// Set processed content to result
-			nodeResult.setOutput(contentStringBuilder.toString());
-			workflowInnerService.refreshContextCache(context);
+			updateOutput(nodeResult, contentStringBuilder.toString(), context, streamSwitch);
 		}
 		else {
 			// If no variables, use original text directly
-			nodeResult.setOutput(outputTemplate);
-			workflowInnerService.refreshContextCache(context);
+			updateOutput(nodeResult, outputTemplate, context, streamSwitch);
 		}
 		nodeResult.setOutputType("text");
+	}
+
+	/**
+	 * Update Output/End content and publish an in-memory stream event when streaming is
+	 * enabled. Redis/cache behavior is unchanged.
+	 */
+	private void updateOutput(NodeResult nodeResult, String output, WorkflowContext context, boolean publishEvent) {
+		nodeResult.setOutput(output);
+		workflowInnerService.refreshContextCache(context);
+		if (publishEvent) {
+			context.publishNodeResult(nodeResult);
+		}
 	}
 
 	/**
@@ -222,7 +242,8 @@ public class OutputExecuteProcessor extends AbstractExecuteProcessor {
 		}
 		if (context.getTaskStatus().equals(NodeStatusEnum.FAIL.getCode())
 				|| nodeResult.getNodeStatus().equals(NodeStatusEnum.FAIL.getCode())) {
-			throw new BizException(ErrorCode.WORKFLOW_EXECUTE_ERROR.toError(context.getError().getMessage()));
+			String errorMessage = context.getError() == null ? nodeResult.getErrorInfo() : context.getError().getMessage();
+			throw new BizException(ErrorCode.WORKFLOW_EXECUTE_ERROR.toError(errorMessage));
 		}
 		if (nodeResult.getNodeStatus().equals(NodeStatusEnum.SUCCESS.getCode())
 				|| nodeResult.getNodeStatus().equals(NodeStatusEnum.SKIP.getCode())) {

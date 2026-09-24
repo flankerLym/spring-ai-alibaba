@@ -45,7 +45,6 @@ import com.alibaba.cloud.ai.studio.core.workflow.WorkflowContext;
 import com.alibaba.cloud.ai.studio.core.utils.common.BeanCopierUtils;
 import com.alibaba.cloud.ai.studio.core.utils.common.IdGenerator;
 import com.alibaba.cloud.ai.studio.core.utils.LogUtils;
-import com.alibaba.cloud.ai.studio.core.utils.concurrent.ThreadPoolUtils;
 import com.alibaba.cloud.ai.studio.core.utils.common.VariableUtils;
 import com.alibaba.cloud.ai.studio.core.workflow.runtime.WorkflowExecuteManager;
 import com.google.common.collect.Lists;
@@ -56,6 +55,7 @@ import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
+import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.SignalType;
@@ -66,6 +66,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -352,84 +353,205 @@ public class WorkflowServiceImpl implements WorkflowService {
 	private Flux<WorkflowResponse> streamExecute(WorkflowContext workflowContext, WorkflowRequest request) {
 
 		String version = BooleanUtils.isTrue(request.getDraft()) ? "latest" : "lastPublished";
-
 		ApplicationVersion appVersion = appService.getAppVersion(request.getAppId(), version);
 
-		TaskRunResponse taskRunResponse = workflowExecuteManager.runTask(appVersion, request.getInputParams(),
-				request.getConversationId(), workflowContext);
-
-		String taskId = taskRunResponse.getTaskId();
-		String requestId = taskRunResponse.getRequestId();
-		String conversationId = taskRunResponse.getConversationId();
+		/*
+		 * Event-driven streaming:
+		 *
+		 * The old implementation started a dedicated polling thread and scanned
+		 * executeOrderList every 50 ms. The workflow context now exposes a transient
+		 * in-memory event stream. Node updates and task-status changes are pushed into
+		 * that stream directly, so no polling thread is needed.
+		 */
 		Sinks.Many<WorkflowResponse> sink = Sinks.many().unicast().onBackpressureBuffer();
-		AtomicBoolean cancelled = new AtomicBoolean(false);
+		Map<String, AtomicInteger> recmsgSeqIdMap = new ConcurrentHashMap<>();
+		Map<String, String> lastOutputMap = new ConcurrentHashMap<>();
+		AtomicBoolean firstResponse = new AtomicBoolean(true);
+		AtomicBoolean terminalSent = new AtomicBoolean(false);
 
-		ThreadPoolUtils.DEFAULT_TASK_EXECUTOR.execute(() -> {
-			List<NodeResult> lastNodeResults = Lists.newArrayList();
-			Map<String, AtomicInteger> recmsgSeqIdMap = Maps.newHashMap();
-			boolean firstResponse = true;
-			boolean isCompleted = false;
-			while (!cancelled.get()) {
-				if (isCompleted) {
-					if (firstResponse) {
-						workflowContext.setFirstResponseTime(System.currentTimeMillis());
-					}
-					handleCompletedMsg(sink, workflowContext, requestId, taskId, conversationId);
-					break;
-				}
-
-				String taskStatus = workflowContext.getTaskStatus();
-				isCompleted = NodeStatusEnum.FAIL.getCode().equals(taskStatus)
-						|| NodeStatusEnum.PAUSE.getCode().equals(taskStatus)
-						|| NodeStatusEnum.SUCCESS.getCode().equals(taskStatus)
-						|| NodeStatusEnum.STOP.getCode().equals(taskStatus);
-
-				List<NodeResult> currentNodeResults = Lists.newArrayList();
-				workflowContext.getExecuteOrderList().forEach(nodeId -> {
-					NodeResult currentNodeResult = workflowContext.getNodeResultMap().get(nodeId);
-					if (currentNodeResult == null) {
-						return;
-					}
-					if ((NodeTypeEnum.OUTPUT.getCode().equals(currentNodeResult.getNodeType())
-							|| NodeTypeEnum.END.getCode().equals(currentNodeResult.getNodeType())
-							|| NodeTypeEnum.INPUT.getCode().equals(currentNodeResult.getNodeType()))
-							&& (NodeStatusEnum.EXECUTING.getCode().equals(currentNodeResult.getNodeStatus())
-									|| NodeStatusEnum.SUCCESS.getCode().equals(currentNodeResult.getNodeStatus())
-									|| NodeStatusEnum.PAUSE.getCode().equals(currentNodeResult.getNodeStatus()))) {
-						NodeResult copyNodeResult = BeanCopierUtils.copy(currentNodeResult, NodeResult.class);
-						currentNodeResults.add(copyNodeResult);
+		Flux<WorkflowContext.WorkflowEvent> eventFlux = workflowContext.enableStreamEvents();
+		Disposable eventSubscription = eventFlux.subscribe(
+				event -> handleWorkflowEvent(sink, workflowContext, event, recmsgSeqIdMap, lastOutputMap,
+						firstResponse, terminalSent),
+				err -> {
+					if (terminalSent.compareAndSet(false, true)) {
+						markFirstResponse(workflowContext, firstResponse);
+						Error error = ErrorCode.WORKFLOW_EXECUTE_ERROR.toError(err.getMessage());
+						sendErrorMessage(sink, workflowContext.getRequestId(), workflowContext.getTaskId(),
+								workflowContext.getConversationId(), error);
 					}
 				});
 
-				boolean handleResult = handleNodeMessage(sink, requestId, taskId, conversationId, recmsgSeqIdMap,
-						lastNodeResults, currentNodeResults);
-				if (handleResult) {
-					if (firstResponse) {
-						firstResponse = false;
-						workflowContext.setFirstResponseTime(System.currentTimeMillis());
-					}
-					lastNodeResults = currentNodeResults;
-				}
-				else {
-					try {
-						Thread.sleep(50);
-					}
-					catch (InterruptedException e) {
-						Thread.currentThread().interrupt();
-						cancelled.set(true);
-						break;
-					}
+		try {
+			workflowExecuteManager.runTask(appVersion, request.getInputParams(), request.getConversationId(),
+					workflowContext);
+		}
+		catch (RuntimeException e) {
+			eventSubscription.dispose();
+			workflowContext.closeStreamEvents();
+			throw e;
+		}
+
+		return sink.asFlux().doFinally(signal -> {
+			eventSubscription.dispose();
+			workflowContext.closeStreamEvents();
+		});
+	}
+
+	private void handleWorkflowEvent(Sinks.Many<WorkflowResponse> sink, WorkflowContext context,
+			WorkflowContext.WorkflowEvent event, Map<String, AtomicInteger> recmsgSeqIdMap,
+			Map<String, String> lastOutputMap, AtomicBoolean firstResponse, AtomicBoolean terminalSent) {
+
+		if (terminalSent.get() || event == null) {
+			return;
+		}
+
+		/*
+		 * SUCCESS and STOP are lifecycle events that do not necessarily have a following
+		 * node-result update. FAIL and PAUSE may be announced before their node result is
+		 * fully stored, so handleTerminalEventIfReady() checks the context map before
+		 * closing the stream.
+		 */
+		if (WorkflowContext.WorkflowEvent.Type.TASK_STATUS.equals(event.getType())) {
+			handleTerminalEventIfReady(sink, context, firstResponse, terminalSent);
+			return;
+		}
+
+		NodeResult nodeResult = event.getNodeResult();
+		if (nodeResult == null) {
+			return;
+		}
+
+		if (handleTerminalEventIfReady(sink, context, firstResponse, terminalSent)) {
+			return;
+		}
+
+		if (!isBusinessStreamNode(nodeResult)) {
+			return;
+		}
+
+		/*
+		 * AutoEnd is a lifecycle-only End node. It is not part of executeOrderList and
+		 * must not emit the same user-facing Output content a second time.
+		 */
+		if (NodeTypeEnum.END.getCode().equals(nodeResult.getNodeType())
+				&& !context.getExecuteOrderList().contains(nodeResult.getNodeId())) {
+			return;
+		}
+
+		String currentOutput = nodeResult.getOutput() == null ? "" : nodeResult.getOutput();
+		String previousOutput = lastOutputMap.getOrDefault(nodeResult.getNodeId(), "");
+		String incrementalContent = calculateIncrementalContent(currentOutput, previousOutput);
+		boolean nodeCompleted = NodeStatusEnum.SUCCESS.getCode().equals(nodeResult.getNodeStatus());
+
+		if (StringUtils.isNotBlank(incrementalContent) || nodeCompleted) {
+			AtomicInteger sequence = recmsgSeqIdMap.computeIfAbsent(nodeResult.getNodeId(),
+					key -> new AtomicInteger(0));
+			if (sendNodeMessage(sink, nodeResult, context.getRequestId(), context.getTaskId(),
+					context.getConversationId(), sequence.incrementAndGet(), incrementalContent)) {
+				markFirstResponse(context, firstResponse);
+			}
+		}
+
+		lastOutputMap.put(nodeResult.getNodeId(), currentOutput);
+	}
+
+	private boolean handleTerminalEventIfReady(Sinks.Many<WorkflowResponse> sink, WorkflowContext context,
+			AtomicBoolean firstResponse, AtomicBoolean terminalSent) {
+
+		String taskStatus = context.getTaskStatus();
+
+		if (NodeStatusEnum.FAIL.getCode().equals(taskStatus)) {
+			Optional<NodeResult> failedNode = context.getNodeResultMap()
+				.values()
+				.stream()
+				.filter(result -> NodeStatusEnum.FAIL.getCode().equals(result.getNodeStatus()))
+				.findFirst();
+
+			// Some processors set taskStatus before the failed NodeResult is stored.
+			if (failedNode.isEmpty()) {
+				return false;
+			}
+			if (!terminalSent.compareAndSet(false, true)) {
+				return true;
+			}
+
+			Error error = context.getError();
+			if (error == null) {
+				NodeResult failed = failedNode.get();
+				error = failed.getError();
+				if (error == null) {
+					error = ErrorCode.WORKFLOW_EXECUTE_ERROR
+						.toError(StringUtils.defaultIfBlank(failed.getErrorInfo(), "Workflow execution failed"));
 				}
 			}
-		});
 
-		return sink.asFlux()
-			.doOnCancel(() -> cancelled.set(true))
-			.doFinally(signal -> {
-				if (SignalType.CANCEL == signal) {
-					cancelled.set(true);
-				}
-			});
+			markFirstResponse(context, firstResponse);
+			sendErrorMessage(sink, context.getRequestId(), context.getTaskId(), context.getConversationId(), error);
+			return true;
+		}
+
+		if (NodeStatusEnum.PAUSE.getCode().equals(taskStatus)) {
+			boolean pauseNodeReady = context.getNodeResultMap()
+				.values()
+				.stream()
+				.anyMatch(result -> NodeStatusEnum.PAUSE.getCode().equals(result.getNodeStatus()));
+			if (!pauseNodeReady) {
+				return false;
+			}
+			if (!terminalSent.compareAndSet(false, true)) {
+				return true;
+			}
+
+			markFirstResponse(context, firstResponse);
+			sendPauseMessage(sink, context, context.getRequestId(), context.getTaskId(), context.getConversationId());
+			return true;
+		}
+
+		if (NodeStatusEnum.SUCCESS.getCode().equals(taskStatus)) {
+			if (!terminalSent.compareAndSet(false, true)) {
+				return true;
+			}
+
+			markFirstResponse(context, firstResponse);
+			sendFinishMessage(sink, context.getRequestId(), context.getTaskId(), context.getConversationId());
+			return true;
+		}
+
+		if (NodeStatusEnum.STOP.getCode().equals(taskStatus)) {
+			if (!terminalSent.compareAndSet(false, true)) {
+				return true;
+			}
+
+			markFirstResponse(context, firstResponse);
+			// Keep the existing wire contract: STOP closes the stream without inventing
+			// a new public WorkflowStatus value.
+			completeSink(sink);
+			return true;
+		}
+
+		return false;
+	}
+
+	private boolean isBusinessStreamNode(NodeResult nodeResult) {
+		if (nodeResult == null) {
+			return false;
+		}
+		String nodeType = nodeResult.getNodeType();
+		String nodeStatus = nodeResult.getNodeStatus();
+		boolean supportedType = NodeTypeEnum.OUTPUT.getCode().equals(nodeType)
+				|| NodeTypeEnum.END.getCode().equals(nodeType)
+				|| NodeTypeEnum.INPUT.getCode().equals(nodeType);
+		boolean supportedStatus = NodeStatusEnum.EXECUTING.getCode().equals(nodeStatus)
+				|| NodeStatusEnum.SUCCESS.getCode().equals(nodeStatus)
+				|| NodeStatusEnum.PAUSE.getCode().equals(nodeStatus);
+		return supportedType && supportedStatus;
+	}
+
+	private void markFirstResponse(WorkflowContext context, AtomicBoolean firstResponse) {
+		if (firstResponse.compareAndSet(true, false)) {
+			context.setFirstResponseTime(System.currentTimeMillis());
+		}
 	}
 
 	private boolean handleNodeMessage(Sinks.Many<WorkflowResponse> sink, String requestId, String taskId,
