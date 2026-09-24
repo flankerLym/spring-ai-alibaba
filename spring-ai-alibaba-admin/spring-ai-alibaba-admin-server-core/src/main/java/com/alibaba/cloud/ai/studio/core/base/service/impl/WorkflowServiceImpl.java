@@ -102,33 +102,71 @@ public class WorkflowServiceImpl implements WorkflowService {
 	@Override
 	public WorkflowResponse call(WorkflowRequest request) {
 		List<WorkflowResponse> allResponses = streamCall(Flux.just(request)).collectList().block();
-
-		Optional<WorkflowResponse> any = allResponses.stream()
-			.filter(workflowResponse -> workflowResponse.getStatus().equals(WorkflowStatus.FAILED)
-					|| workflowResponse.getStatus().equals(WorkflowStatus.PAUSE))
-			.findAny();
-		if (any.isPresent()) {
-			return any.get();
+		if (CollectionUtils.isEmpty(allResponses)) {
+			throw new BizException(ErrorCode.WORKFLOW_EXECUTE_ERROR.toError("Workflow did not return any response"));
 		}
 
-		// 筛选出nodeType为End的响应
-		List<WorkflowResponse> endNodeResponses = allResponses.stream()
-			.filter(resp -> NodeTypeEnum.END.getCode().equals(resp.getNodeType()))
-			.sorted((r1, r2) -> Integer.compare(r1.getNodeMsgSeqId(), r2.getNodeMsgSeqId()))
-			.collect(Collectors.toList());
+		Optional<WorkflowResponse> terminalResponse = allResponses.stream()
+			.filter(response -> WorkflowStatus.FAILED.equals(response.getStatus())
+					|| WorkflowStatus.PAUSE.equals(response.getStatus()))
+			.findFirst();
+		if (terminalResponse.isPresent()) {
+			return terminalResponse.get();
+		}
 
-		// 拼接已完成节点的内容
+		/*
+		 * Non-streaming calls reuse streamCall() internally. A normal SAA workflow may
+		 * emit an explicit End node, while a Dify-imported workflow often ends at an
+		 * Output node and is completed later by AutoEnd. AutoEnd is not emitted as a
+		 * business stream message, so aggregating End messages only produces empty
+		 * content in that case.
+		 *
+		 * Prefer explicit End output. If no End message was emitted, aggregate only the
+		 * last business Output node, so intermediate Output/debug data is not mixed into
+		 * the final non-streaming response.
+		 */
+		List<WorkflowResponse> businessResponses = collectNodeResponses(allResponses, NodeTypeEnum.END.getCode());
+		if (CollectionUtils.isEmpty(businessResponses)) {
+			businessResponses = collectLastOutputResponses(allResponses);
+		}
+
 		StringBuilder contentBuilder = new StringBuilder();
-		for (WorkflowResponse resp : endNodeResponses) {
-			if (resp.getMessage() != null) {
-				contentBuilder.append(resp.getMessage().getContent());
+		for (WorkflowResponse response : businessResponses) {
+			if (response.getMessage() != null && response.getMessage().getContent() != null) {
+				contentBuilder.append(response.getMessage().getContent());
 			}
 		}
 
-		// 构建最终响应
 		WorkflowResponse finalResponse = allResponses.get(allResponses.size() - 1);
 		finalResponse.setMessage(new ChatMessage(MessageRole.ASSISTANT, contentBuilder.toString()));
 		return finalResponse;
+	}
+
+	private List<WorkflowResponse> collectNodeResponses(List<WorkflowResponse> responses, String nodeType) {
+		return responses.stream()
+			.filter(response -> nodeType.equals(response.getNodeType()))
+			.sorted((left, right) -> Integer.compare(sequence(left), sequence(right)))
+			.collect(Collectors.toList());
+	}
+
+	private List<WorkflowResponse> collectLastOutputResponses(List<WorkflowResponse> responses) {
+		Optional<WorkflowResponse> lastOutput = responses.stream()
+			.filter(response -> NodeTypeEnum.OUTPUT.getCode().equals(response.getNodeType()))
+			.reduce((first, second) -> second);
+		if (lastOutput.isEmpty()) {
+			return Lists.newArrayList();
+		}
+
+		String outputNodeId = lastOutput.get().getNodeId();
+		return responses.stream()
+			.filter(response -> NodeTypeEnum.OUTPUT.getCode().equals(response.getNodeType())
+					&& Objects.equals(outputNodeId, response.getNodeId()))
+			.sorted((left, right) -> Integer.compare(sequence(left), sequence(right)))
+			.collect(Collectors.toList());
+	}
+
+	private int sequence(WorkflowResponse response) {
+		return response.getNodeMsgSeqId() == null ? 0 : response.getNodeMsgSeqId();
 	}
 
 	@Override
