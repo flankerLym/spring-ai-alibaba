@@ -25,6 +25,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.EnableAspectJAutoProxy;
 import org.springframework.context.annotation.FilterType;
 
 
@@ -41,6 +42,7 @@ import org.springframework.context.annotation.FilterType;
  * @since 1.0.0-M1
  */
 @SpringBootApplication
+@EnableAspectJAutoProxy(proxyTargetClass = true)
 @MapperScan("com.alibaba.cloud.ai.studio.admin.mapper")
 @ComponentScan(basePackages = { "com.alibaba.cloud.ai.studio" },
 		excludeFilters = {

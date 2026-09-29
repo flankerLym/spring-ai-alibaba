@@ -60,6 +60,10 @@ public class WorkflowTraceManager {
 
         context.setTraceId(trace.getTraceId());
         traceRegistry.register(trace);
+
+        log.debug("workflow trace started, traceId={}, appId={}, invokeSource={}",
+                trace.getTraceId(), trace.getAppId(), trace.getInvokeSource());
+
         return trace;
     }
 
@@ -76,34 +80,51 @@ public class WorkflowTraceManager {
             WorkflowSpanContext parentSpan) {
 
         WorkflowTraceContext trace = getTrace(context);
-        if (trace == null || node == null || trace.getFinishRequested().get()) {
+        if (trace == null || node == null) {
+            if (context != null && StringUtils.isNotBlank(context.getTraceId())) {
+                log.warn("cannot start NODE span because trace is not in registry, traceId={}, nodeId={}, taskId={}",
+                        context.getTraceId(), node == null ? null : node.getId(), context.getTaskId());
+            }
             return null;
         }
 
-        WorkflowSpanContext span = new WorkflowSpanContext();
-        span.setSpanId(IdGenerator.uuid());
-        span.setTraceId(trace.getTraceId());
-        span.setParentSpanId(parentSpan == null ? null : parentSpan.getSpanId());
-        span.setSpanKind(SpanKind.NODE.name());
-        span.setSpanName(node.getName() == null ? node.getId() : node.getName());
-        span.setSequenceNo(trace.getSequence().getAndIncrement());
-        span.setNodeId(node.getId());
-        span.setNodeName(node.getName());
-        span.setNodeType(node.getType());
-        span.setAttemptNo(0);
-        span.setStatus(NodeStatusEnum.EXECUTING.getCode());
-        span.setStartTime(System.currentTimeMillis());
-
-        if (span.getParentSpanId() == null && trace.getRootSpanId() == null) {
-            synchronized (trace) {
-                if (trace.getRootSpanId() == null) {
-                    trace.setRootSpanId(span.getSpanId());
-                }
+        /*
+         * Span admission and activeSpans++ must be atomic with tryPersist().
+         * Otherwise an API/event thread can finish the trace between the old
+         * finishRequested check and activeSpans++, leaving the later node span detached.
+         */
+        synchronized (trace) {
+            if (trace.getPersisted().get()) {
+                log.warn("cannot start NODE span because trace is already persisted, traceId={}, nodeId={}",
+                        trace.getTraceId(), node.getId());
+                return null;
             }
-        }
 
-        trace.getActiveSpans().incrementAndGet();
-        return span;
+            WorkflowSpanContext span = new WorkflowSpanContext();
+            span.setSpanId(IdGenerator.uuid());
+            span.setTraceId(trace.getTraceId());
+            span.setParentSpanId(parentSpan == null ? null : parentSpan.getSpanId());
+            span.setSpanKind(SpanKind.NODE.name());
+            span.setSpanName(node.getName() == null ? node.getId() : node.getName());
+            span.setSequenceNo(trace.getSequence().getAndIncrement());
+            span.setNodeId(node.getId());
+            span.setNodeName(node.getName());
+            span.setNodeType(node.getType());
+            span.setAttemptNo(0);
+            span.setStatus(NodeStatusEnum.EXECUTING.getCode());
+            span.setStartTime(System.currentTimeMillis());
+
+            if (span.getParentSpanId() == null && trace.getRootSpanId() == null) {
+                trace.setRootSpanId(span.getSpanId());
+            }
+
+            trace.getActiveSpans().incrementAndGet();
+
+            log.debug("workflow NODE span started, traceId={}, spanId={}, nodeId={}, activeSpans={}",
+                    trace.getTraceId(), span.getSpanId(), node.getId(), trace.getActiveSpans().get());
+
+            return span;
+        }
     }
 
     public void finishNodeSpan(
@@ -117,6 +138,8 @@ public class WorkflowTraceManager {
 
         WorkflowTraceContext trace = traceRegistry.get(span.getTraceId());
         if (trace == null) {
+            log.error("NODE span cannot finish because trace is missing from registry, traceId={}, spanId={}, nodeId={}",
+                    span.getTraceId(), span.getSpanId(), span.getNodeId());
             return;
         }
 
@@ -130,13 +153,38 @@ public class WorkflowTraceManager {
                 span.setNodeId(result.getNodeId() == null ? span.getNodeId() : result.getNodeId());
                 span.setNodeName(result.getNodeName() == null ? span.getNodeName() : result.getNodeName());
                 span.setNodeType(result.getNodeType() == null ? span.getNodeType() : result.getNodeType());
-                span.setInputData(normalizeJson(result.getInput()));
-                span.setOutputData(normalizeJson(result.getOutput()));
+
+                /*
+                 * One malformed diagnostic payload must never make the whole real NODE span
+                 * disappear. Each optional diagnostic field is filled independently.
+                 */
+                try {
+                    span.setInputData(normalizeJson(result.getInput()));
+                }
+                catch (Exception e) {
+                    log.warn("normalize NODE span input failed, traceId={}, spanId={}",
+                            span.getTraceId(), span.getSpanId(), e);
+                }
+
+                try {
+                    span.setOutputData(normalizeJson(result.getOutput()));
+                }
+                catch (Exception e) {
+                    log.warn("normalize NODE span output failed, traceId={}, spanId={}",
+                            span.getTraceId(), span.getSpanId(), e);
+                }
+
                 span.setErrorCode(result.getErrorCode());
                 span.setErrorMessage(result.getErrorInfo());
 
                 if (result.getError() != null) {
-                    span.setErrorData(JsonUtils.toJson(result.getError()));
+                    try {
+                        span.setErrorData(JsonUtils.toJson(result.getError()));
+                    }
+                    catch (Exception e) {
+                        log.warn("serialize NODE span error failed, traceId={}, spanId={}",
+                                span.getTraceId(), span.getSpanId(), e);
+                    }
                 }
 
                 if (result.getRetry() != null
@@ -148,11 +196,18 @@ public class WorkflowTraceManager {
             else if (StringUtils.isNotBlank(span.getErrorMessage())) {
                 span.setStatus(NodeStatusEnum.FAIL.getCode());
             }
-
-            trace.getSpans().add(span);
         }
         finally {
-            trace.getActiveSpans().decrementAndGet();
+            /*
+             * This is a real span that did start. Always collect it even if optional
+             * diagnostic enrichment failed above.
+             */
+            trace.getSpans().add(span);
+            int active = trace.getActiveSpans().decrementAndGet();
+
+            log.debug("workflow NODE span finished, traceId={}, spanId={}, nodeId={}, activeSpans={}",
+                    trace.getTraceId(), span.getSpanId(), span.getNodeId(), active);
+
             tryPersist(trace);
         }
     }
@@ -167,36 +222,44 @@ public class WorkflowTraceManager {
         }
 
         WorkflowTraceContext trace = traceRegistry.get(parentSpan.getTraceId());
-        if (trace == null || trace.getFinishRequested().get()) {
+        if (trace == null) {
+            log.warn("cannot start MODEL_CALL span because trace is missing, traceId={}, parentSpanId={}",
+                    parentSpan.getTraceId(), parentSpan.getSpanId());
             return null;
         }
 
-        WorkflowSpanContext span = new WorkflowSpanContext();
-        span.setSpanId(IdGenerator.uuid());
-        span.setTraceId(parentSpan.getTraceId());
-        span.setParentSpanId(parentSpan.getSpanId());
-        span.setSpanKind(SpanKind.MODEL_CALL.name());
-        span.setSpanName("MODEL_CALL " + safe(provider) + ":" + safe(modelId));
-        span.setSequenceNo(trace.getSequence().getAndIncrement());
-        span.setAttemptNo(parentSpan.getChildAttemptSequence().getAndIncrement());
+        synchronized (trace) {
+            if (trace.getPersisted().get()) {
+                return null;
+            }
 
-        span.setNodeId(parentSpan.getNodeId());
-        span.setNodeName(parentSpan.getNodeName());
-        span.setNodeType(parentSpan.getNodeType());
+            WorkflowSpanContext span = new WorkflowSpanContext();
+            span.setSpanId(IdGenerator.uuid());
+            span.setTraceId(parentSpan.getTraceId());
+            span.setParentSpanId(parentSpan.getSpanId());
+            span.setSpanKind(SpanKind.MODEL_CALL.name());
+            span.setSpanName("MODEL_CALL " + safe(provider) + ":" + safe(modelId));
+            span.setSequenceNo(trace.getSequence().getAndIncrement());
+            span.setAttemptNo(parentSpan.getChildAttemptSequence().getAndIncrement());
 
-        span.setProvider(provider);
-        span.setModelId(modelId);
-        span.setModelName(modelId);
-        span.setStatus(NodeStatusEnum.EXECUTING.getCode());
-        span.setStartTime(System.currentTimeMillis());
+            span.setNodeId(parentSpan.getNodeId());
+            span.setNodeName(parentSpan.getNodeName());
+            span.setNodeType(parentSpan.getNodeType());
 
-        Map<String, Object> input = new HashMap<>();
-        input.put("provider", provider);
-        input.put("modelId", modelId);
-        span.setInputData(JsonUtils.toJson(input));
+            span.setProvider(provider);
+            span.setModelId(modelId);
+            span.setModelName(modelId);
+            span.setStatus(NodeStatusEnum.EXECUTING.getCode());
+            span.setStartTime(System.currentTimeMillis());
 
-        trace.getActiveSpans().incrementAndGet();
-        return span;
+            Map<String, Object> input = new HashMap<>();
+            input.put("provider", provider);
+            input.put("modelId", modelId);
+            span.setInputData(JsonUtils.toJson(input));
+
+            trace.getActiveSpans().incrementAndGet();
+            return span;
+        }
     }
 
     public void recordModelResponse(WorkflowSpanContext span, AgentResponse response) {
@@ -240,6 +303,8 @@ public class WorkflowTraceManager {
 
         WorkflowTraceContext trace = traceRegistry.get(span.getTraceId());
         if (trace == null) {
+            log.error("MODEL_CALL span cannot finish because trace is missing, traceId={}, spanId={}",
+                    span.getTraceId(), span.getSpanId());
             return;
         }
 
@@ -256,19 +321,14 @@ public class WorkflowTraceManager {
                     span.setStatus(NodeStatusEnum.SUCCESS.getCode());
                 }
             }
-
-            trace.getSpans().add(span);
         }
         finally {
+            trace.getSpans().add(span);
             trace.getActiveSpans().decrementAndGet();
             tryPersist(trace);
         }
     }
 
-    /**
-     * END aspect or workflow async-finally calls this method.
-     * Persistence happens only after all active spans have completed.
-     */
     public void requestFinish(WorkflowContext context, TraceFinishReason reason) {
         requestFinish(context, reason, null);
     }
@@ -277,9 +337,17 @@ public class WorkflowTraceManager {
         requestFinish(context, TraceFinishReason.EXCEPTION, error);
     }
 
+    /**
+     * Global trace completion is owned by the workflow execution lifecycle
+     * (WorkflowExecuteManager async finally), not by the API/SSE lifecycle.
+     */
     public void finishIfNecessary(WorkflowContext context) {
         WorkflowTraceContext trace = getTrace(context);
         if (trace == null) {
+            if (context != null && StringUtils.isNotBlank(context.getTraceId())) {
+                log.error("workflow finish cannot find trace in registry, traceId={}, taskId={}",
+                        context.getTraceId(), context.getTaskId());
+            }
             return;
         }
 
@@ -393,23 +461,45 @@ public class WorkflowTraceManager {
     }
 
     private void tryPersist(WorkflowTraceContext trace) {
-        if (trace == null
-                || !trace.getFinishRequested().get()
-                || trace.getActiveSpans().get() != 0
-                || !trace.getPersisted().compareAndSet(false, true)) {
+        if (trace == null) {
             return;
         }
 
+        /*
+         * Use the same monitor as span admission. This makes
+         * "activeSpans == 0 -> freeze persistence" atomic against a new span start.
+         */
+        synchronized (trace) {
+            if (!trace.getFinishRequested().get()
+                    || trace.getActiveSpans().get() != 0
+                    || trace.getPersisted().get()) {
+                return;
+            }
+            trace.getPersisted().set(true);
+        }
+
+        boolean saved = false;
         try {
             aggregate(trace);
+
+            log.debug("persist workflow trace, traceId={}, rootSpanId={}, spanCount={}, modelCallCount={}",
+                    trace.getTraceId(), trace.getRootSpanId(), trace.getSpanCount(), trace.getModelCallCount());
+
             traceStore.save(trace);
+            saved = true;
         }
         catch (Exception e) {
-            // Trace failure must never fail the workflow itself.
+            /*
+             * Do not permanently poison/remove the trace on a failed DB write.
+             * A later finish callback may retry.
+             */
+            trace.getPersisted().set(false);
             log.error("persist workflow trace failed, traceId={}", trace.getTraceId(), e);
         }
         finally {
-            traceRegistry.remove(trace.getTraceId());
+            if (saved) {
+                traceRegistry.remove(trace.getTraceId());
+            }
         }
     }
 
@@ -445,10 +535,6 @@ public class WorkflowTraceManager {
         trace.setTraceData(JsonUtils.toJson(data));
     }
 
-    /**
-     * Keep valid JSON objects/arrays as-is; encode plain text as a JSON string so the
-     * PostgreSQL JSONB cast is always valid.
-     */
     private String normalizeJson(String value) {
         if (StringUtils.isBlank(value)) {
             return null;
