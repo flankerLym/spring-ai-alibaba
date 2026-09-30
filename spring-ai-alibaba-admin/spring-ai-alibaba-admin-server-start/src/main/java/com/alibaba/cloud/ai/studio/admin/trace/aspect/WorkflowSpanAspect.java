@@ -1,11 +1,9 @@
 package com.alibaba.cloud.ai.studio.admin.trace.aspect;
 
 import com.alibaba.cloud.ai.studio.core.workflow.WorkflowContext;
-import com.alibaba.cloud.ai.studio.core.workflow.trace.context.WorkflowSpanContext;
-import com.alibaba.cloud.ai.studio.core.workflow.trace.reporter.SpanReporter;
 import com.alibaba.cloud.ai.studio.core.workflow.trace.service.WorkflowTraceManager;
+import com.alibaba.cloud.ai.studio.core.workflow.trace.service.WorkflowNodeTraceScope;
 import com.alibaba.cloud.ai.studio.runtime.domain.workflow.Node;
-import com.alibaba.cloud.ai.studio.runtime.domain.workflow.NodeResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -59,35 +57,13 @@ public class WorkflowSpanAspect {
             return joinPoint.proceed();
         }
 
-        WorkflowSpanContext parent = SpanReporter.current();
-        WorkflowSpanContext span = traceManager.startNodeSpan(context, node, parent);
-
-        if (span == null) {
-            log.warn("workflow node span was not created, traceId={}, nodeId={}, nodeType={}, taskId={}",
-                    context.getTraceId(), node.getId(), node.getType(), context.getTaskId());
-            return joinPoint.proceed();
-        }
-
-        SpanReporter.push(span);
-        try {
-            return joinPoint.proceed();
-        }
-        catch (Throwable e) {
-            traceManager.recordSpanError(span, e);
-            throw e;
-        }
-        finally {
+        try (WorkflowNodeTraceScope scope = WorkflowNodeTraceScope.open(traceManager, context, node)) {
             try {
-                NodeResult result = context.getNodeResultMap().get(node.getId());
-                traceManager.finishNodeSpan(context, span, result);
+                return joinPoint.proceed();
             }
-            catch (Exception e) {
-                // Trace errors never alter node execution.
-                log.error("finish workflow node span failed, traceId={}, nodeId={}",
-                        context.getTraceId(), node.getId(), e);
-            }
-            finally {
-                SpanReporter.pop(span);
+            catch (Throwable e) {
+                scope.recordError(e);
+                throw e;
             }
         }
     }

@@ -67,6 +67,28 @@ public class WorkflowTraceManager {
         return trace;
     }
 
+    /** Reserve before submitting to the executor; release on completion or rejection. */
+    public WorkflowTraceContext retainExecution(WorkflowContext context) {
+        WorkflowTraceContext trace = getTrace(context);
+        if (trace == null) {
+            return null;
+        }
+        synchronized (trace) {
+            if (trace.getPersisted().get()) {
+                return null;
+            }
+            trace.getPendingExecutions().incrementAndGet();
+            return trace;
+        }
+    }
+
+    public void releaseExecution(WorkflowTraceContext trace) {
+        if (trace != null) {
+            trace.getPendingExecutions().decrementAndGet();
+            tryPersist(trace);
+        }
+    }
+
     public void refreshTrace(WorkflowContext context) {
         WorkflowTraceContext trace = getTrace(context);
         if (trace != null) {
@@ -472,6 +494,7 @@ public class WorkflowTraceManager {
         synchronized (trace) {
             if (!trace.getFinishRequested().get()
                     || trace.getActiveSpans().get() != 0
+                    || trace.getPendingExecutions().get() != 0
                     || trace.getPersisted().get()) {
                 return;
             }
@@ -487,6 +510,9 @@ public class WorkflowTraceManager {
 
             traceStore.save(trace);
             saved = true;
+            log.info("workflow trace persisted, traceId={}, taskId={}, invokeSource={}, spanCount={}, modelCallCount={}",
+                    trace.getTraceId(), trace.getTaskId(), trace.getInvokeSource(),
+                    trace.getSpanCount(), trace.getModelCallCount());
         }
         catch (Exception e) {
             /*

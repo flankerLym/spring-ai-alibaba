@@ -54,6 +54,9 @@ public class WorkflowTraceContext {
      */
     private final AtomicInteger activeSpans = new AtomicInteger(0);
 
+    /** Submitted node work, including work that has not entered the NODE advice yet. */
+    private final AtomicInteger pendingExecutions = new AtomicInteger(0);
+
     private final AtomicBoolean finishRequested = new AtomicBoolean(false);
     private final AtomicBoolean persisted = new AtomicBoolean(false);
 }

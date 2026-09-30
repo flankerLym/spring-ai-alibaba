@@ -57,6 +57,8 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import com.alibaba.cloud.ai.studio.core.workflow.trace.annotation.WorkflowTrace;
 import com.alibaba.cloud.ai.studio.core.workflow.trace.service.WorkflowTraceManager;
+import com.alibaba.cloud.ai.studio.core.workflow.trace.service.WorkflowNodeTraceScope;
+import com.alibaba.cloud.ai.studio.core.workflow.trace.context.WorkflowTraceContext;
 import jakarta.annotation.Resource;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -308,16 +310,25 @@ public class WorkflowExecuteManager {
 							Thread.currentThread().getId(), context.getTaskId(), currentThreads, taskCount,
 							completedTaskCount);
 				}
-				ThreadPoolUtils.nodeExecutorService.submit(() -> {
-					try {
-						// Execute node work
-						executeNodeWork(graph, nodeId, context);
-						nodeMonitorQueue.add("nodeExecuteSuccess");
-					}
-					catch (Exception e) {
-						Thread.currentThread().interrupt();
-					}
-				});
+				WorkflowTraceContext executionTrace = workflowTraceManager.retainExecution(context);
+				try {
+					ThreadPoolUtils.nodeExecutorService.submit(() -> {
+						try {
+							executeNodeWork(graph, nodeId, context);
+							nodeMonitorQueue.add("nodeExecuteSuccess");
+						}
+						catch (Exception e) {
+							Thread.currentThread().interrupt();
+						}
+						finally {
+							workflowTraceManager.releaseExecution(executionTrace);
+						}
+					});
+				}
+				catch (RuntimeException e) {
+					workflowTraceManager.releaseExecution(executionTrace);
+					throw e;
+				}
 			}
 			else if (WORKFLOW_TASK_FINISH_FLAG.equals(nodeId)) {
 				break;
@@ -635,7 +646,15 @@ public class WorkflowExecuteManager {
 			 * 4. session variables
 			 * 5. taskStatus = SUCCESS
 			 */
-			endProcessor.handleNodeResult(graph, endNode, context, endResult, System.currentTimeMillis());
+			try (WorkflowNodeTraceScope scope = WorkflowNodeTraceScope.open(workflowTraceManager, context, endNode)) {
+				try {
+					endProcessor.handleNodeResult(graph, endNode, context, endResult, System.currentTimeMillis());
+				}
+				catch (RuntimeException | Error e) {
+					scope.recordError(e);
+					throw e;
+				}
+			}
 		}
 	}
 
@@ -744,7 +763,17 @@ public class WorkflowExecuteManager {
 			String type = capitalizeFirstLetter(node.getType());
 			context.getExecuteOrderList().add(node.getId());
 			node.setType(type);
-			processorMap.get(type + "ExecuteProcessor").execute(graph, node, context);
+			// Keep the original proxied call (including conversation and annotation advice).
+			// The scope also covers raw processor references and the Auto END path above.
+			try (WorkflowNodeTraceScope scope = WorkflowNodeTraceScope.open(workflowTraceManager, context, node)) {
+				try {
+					processorMap.get(type + "ExecuteProcessor").execute(graph, node, context);
+				}
+				catch (RuntimeException | Error e) {
+					scope.recordError(e);
+					throw e;
+				}
+			}
 			NodeResult result = context.getNodeResultMap().get(nodeId);
 		}
 		catch (Exception e) {
