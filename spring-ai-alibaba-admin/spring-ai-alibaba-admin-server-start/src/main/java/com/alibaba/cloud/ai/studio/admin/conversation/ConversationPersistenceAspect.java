@@ -45,7 +45,7 @@ public class ConversationPersistenceAspect {
         conversationManager.prepareConversation(
                 appVersion.getAppId(),
                 conversationId,
-                workflowContext.getInvokeSource(),
+                resolvePersistenceInvokeSource(workflowContext),
                 workflowContext.getUserId());
 
         return joinPoint.proceed(args);
@@ -93,6 +93,14 @@ public class ConversationPersistenceAspect {
         finally {
             ConversationPersistenceScope.exitWorkflowEnd();
         }
+    }
+
+    private String resolvePersistenceInvokeSource(WorkflowContext context) {
+        if (context != null && context.getApiKeyId() != null
+                && StringUtils.isNotBlank(context.getApiKeyCompanyName())) {
+            return context.getApiKeyCompanyName().trim();
+        }
+        return context == null ? null : context.getInvokeSource();
     }
 
     private boolean isEnd(Node node) {

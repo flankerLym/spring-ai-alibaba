@@ -96,9 +96,10 @@ public class ConversationManager {
 		Long conversationId = requireLong(context.getConversationId(), "conversation_id");
 		String userId = normalizeUserId(context.getUserId());
 		String requestId = context.getRequestId();
+		String invokeSource = resolveWorkflowInvokeSource(context);
 
 		ConversationRecordEntity record =
-				lockOrCreateConversation(appId, conversationId, context.getInvokeSource(), userId);
+				lockOrCreateConversation(appId, conversationId, invokeSource, userId);
 
 		if (messageExists(conversationId, requestId, "user")) {
 			return;
@@ -115,8 +116,8 @@ public class ConversationManager {
 		fillConversationName(record, input);
 		record.setMessageCount(sequence);
 		record.setUpdatedAt(new Date());
-		if (StringUtils.isNotBlank(context.getInvokeSource())) {
-			record.setInvokeSource(context.getInvokeSource());
+		if (StringUtils.isNotBlank(invokeSource)) {
+			record.setInvokeSource(invokeSource);
 		}
 		if (userId != null) {
 			record.setUserId(userId);
@@ -135,9 +136,10 @@ public class ConversationManager {
 		Long conversationId = requireLong(context.getConversationId(), "conversation_id");
 		String userId = normalizeUserId(context.getUserId());
 		String requestId = context.getRequestId();
+		String invokeSource = resolveWorkflowInvokeSource(context);
 
 		ConversationRecordEntity record =
-				lockOrCreateConversation(appId, conversationId, context.getInvokeSource(), userId);
+				lockOrCreateConversation(appId, conversationId, invokeSource, userId);
 
 		if (messageExists(conversationId, requestId, "assistant")) {
 			redisManager.delete(memoryRedisKey(memoryConversationId(appId, conversationId)));
@@ -158,8 +160,8 @@ public class ConversationManager {
 
 		record.setMessageCount(sequence);
 		record.setUpdatedAt(new Date());
-		if (StringUtils.isNotBlank(context.getInvokeSource())) {
-			record.setInvokeSource(context.getInvokeSource());
+		if (StringUtils.isNotBlank(invokeSource)) {
+			record.setInvokeSource(invokeSource);
 		}
 		if (userId != null) {
 			record.setUserId(userId);
@@ -416,6 +418,14 @@ public class ConversationManager {
 			throw new BizException(ErrorCode.INVALID_PARAMS.toError("userId", "must be 32 characters or fewer"));
 		}
 		return normalized;
+	}
+
+	private String resolveWorkflowInvokeSource(WorkflowContext context) {
+		if (context != null && context.getApiKeyId() != null
+				&& StringUtils.isNotBlank(context.getApiKeyCompanyName())) {
+			return context.getApiKeyCompanyName().trim();
+		}
+		return context == null ? null : context.getInvokeSource();
 	}
 
 	private String resolvePersistentUserId(RequestContext context) {

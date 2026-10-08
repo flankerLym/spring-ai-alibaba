@@ -9,6 +9,7 @@ import com.alibaba.cloud.ai.studio.core.workflow.trace.context.WorkflowTraceCont
 import com.alibaba.cloud.ai.studio.core.workflow.trace.store.WorkflowTraceStore;
 import com.alibaba.cloud.ai.studio.runtime.utils.JsonUtils;
 import lombok.RequiredArgsConstructor;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -53,7 +54,9 @@ public class DatabaseWorkflowTraceStore implements WorkflowTraceStore {
         entity.setWorkflowVersion(trace.getWorkflowVersion());
         entity.setConversationId(trace.getConversationId());
         entity.setUserId(trace.getUserId());
-        entity.setInvokeSource(trace.getInvokeSource());
+        entity.setInvokeSource(StringUtils.isNotBlank(trace.getApiKeyCompanyName())
+                ? trace.getApiKeyCompanyName().trim()
+                : trace.getInvokeSource());
 
         entity.setStatus(trace.getStatus());
         entity.setFinishReason(trace.getFinishReason());

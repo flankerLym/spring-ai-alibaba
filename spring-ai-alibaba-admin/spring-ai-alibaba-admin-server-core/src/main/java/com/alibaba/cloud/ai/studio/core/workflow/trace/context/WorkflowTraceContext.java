@@ -21,6 +21,8 @@ public class WorkflowTraceContext {
     private String workflowVersion;
     private String conversationId;
     private String userId;
+    /** API-key company name used only when persisting invoke_source. */
+    private String apiKeyCompanyName;
     private String invokeSource;
 
     private String status;

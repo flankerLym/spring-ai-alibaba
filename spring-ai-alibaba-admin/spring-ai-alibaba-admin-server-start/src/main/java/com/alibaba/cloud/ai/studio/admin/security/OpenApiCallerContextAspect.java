@@ -20,8 +20,9 @@ import org.springframework.stereotype.Component;
 /**
  * Binds third-party caller metadata to the request/workflow context.
  *
- * OpenAPI userId comes from the request body. For API-key workflow calls, invokeSource
- * becomes the API key company_name instead of the generic "api" value.
+ * OpenAPI userId comes from the request body. API-key company_name is propagated as
+ * persistence metadata only; the runtime invokeSource remains api/async/console so enum
+ * based workflow behavior (cache/timeout) is never broken.
  */
 @Aspect
 @Component
@@ -63,6 +64,8 @@ public class OpenApiCallerContextAspect {
             }
 
             if (apiKeyId != null) {
+                workflowContext.setApiKeyId(apiKeyId);
+
                 String userId = workflowContext.getUserId();
                 if (StringUtils.isBlank(userId) && requestContext != null) {
                     userId = requestContext.getUserId();
@@ -73,7 +76,14 @@ public class OpenApiCallerContextAspect {
                 if (companyName == null && requestContext != null) {
                     companyName = StringUtils.trimToNull(requestContext.getApiKeyCompanyName());
                 }
-                workflowContext.setInvokeSource(companyName == null ? "api" : companyName);
+                workflowContext.setApiKeyCompanyName(companyName);
+
+                // invokeSource is a runtime enum contract. Never put company_name here.
+                // Keep the source selected by the caller (api/async); only provide a safe
+                // fallback for unexpected internal callers that left it blank.
+                if (StringUtils.isBlank(workflowContext.getInvokeSource())) {
+                    workflowContext.setInvokeSource("api");
+                }
             }
             else if (StringUtils.isBlank(workflowContext.getUserId()) && requestContext != null) {
                 // Preserve the previous console behavior: the signed-in account is the user.

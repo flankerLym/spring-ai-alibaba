@@ -33,6 +33,7 @@ public class WorkflowTraceAspect {
                 WorkflowTraceContext trace = traceManager.startTrace(appVersion, context, rawInput);
                 if (trace != null) {
                     trace.setUserId(context.getUserId());
+                    trace.setApiKeyCompanyName(context.getApiKeyCompanyName());
                 }
             }
         }
