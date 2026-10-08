@@ -20,52 +20,30 @@ import com.alibaba.cloud.ai.studio.runtime.domain.BaseQuery;
 import com.alibaba.cloud.ai.studio.runtime.domain.PagingList;
 import com.alibaba.cloud.ai.studio.runtime.domain.account.ApiKey;
 
-/**
- * Service interface for managing API keys. Provides operations for creating, updating,
- * deleting, and retrieving API keys.
- *
- * @since 1.0.0.3
- */
+import java.util.Set;
+
+/** Service interface for API key management and app-level authorization. */
 public interface ApiKeyService {
 
-	/**
-	 * Creates a new API key.
-	 * @param apiKey The API key information to create
-	 * @return The ID of the created API key
-	 */
-	Long createApiKey(ApiKey apiKey);
+    Long createApiKey(ApiKey apiKey);
 
-	/**
-	 * Updates an existing API key.
-	 * @param apiKey The API key information to update
-	 */
-	void updateApiKey(ApiKey apiKey);
+    void updateApiKey(ApiKey apiKey);
 
-	/**
-	 * Deletes an API key by its ID.
-	 * @param id The ID of the API key to delete
-	 */
-	void deleteApiKey(Long id);
+    void deleteApiKey(Long id);
 
-	/**
-	 * Lists API keys with pagination support.
-	 * @param query The query parameters for filtering and pagination
-	 * @return A paged list of API keys
-	 */
-	PagingList<ApiKey> listApiKeys(BaseQuery query);
+    PagingList<ApiKey> listApiKeys(BaseQuery query);
 
-	/**
-	 * Retrieves an API key by its ID.
-	 * @param id The ID of the API key to retrieve
-	 * @return The API key information
-	 */
-	ApiKey getApiKey(Long id);
+    ApiKey getApiKey(Long id);
 
-	/**
-	 * Retrieves an API key by its key value.
-	 * @param apiKey The API key value to look up
-	 * @return The API key information
-	 */
-	ApiKey getApiKey(String apiKey);
+    ApiKey getApiKey(String apiKey);
 
+    /**
+     * Returns accessible application ids for a CUSTOM key. Returns null for ALL scope.
+     * The returned set is already de-duplicated across direct APP permissions and all
+     * selected FOLDER permissions.
+     */
+    Set<String> getAccessibleAppIds(Long apiKeyId, String workspaceId);
+
+    /** Throws a 403 business exception when this API key cannot access the app. */
+    void checkAppAccess(Long apiKeyId, String workspaceId, String appId);
 }

@@ -39,71 +39,70 @@ import org.springframework.web.servlet.HandlerInterceptor;
 
 import java.io.IOException;
 
-/**
- * Interceptor for API key authentication in OpenAPI requests.
- */
+/** Interceptor for API key authentication in OpenAPI requests. */
 @Component
 @RequiredArgsConstructor
 public class ApiKeyAuthInterceptor implements HandlerInterceptor {
 
-	private final AccountService accountService;
+    private final AccountService accountService;
 
-	private final ApiKeyService apiKeyService;
+    private final ApiKeyService apiKeyService;
 
-	@Override
-	public boolean preHandle(@NotNull HttpServletRequest request, @NotNull HttpServletResponse response,
-			@NotNull Object handler) {
-		long start = System.currentTimeMillis();
+    @Override
+    public boolean preHandle(@NotNull HttpServletRequest request, @NotNull HttpServletResponse response,
+            @NotNull Object handler) {
+        long start = System.currentTimeMillis();
 
-		if (RequestMethod.OPTIONS.name().equals(request.getMethod().toUpperCase())) {
-			return true;
-		}
+        if (RequestMethod.OPTIONS.name().equals(request.getMethod().toUpperCase())) {
+            return true;
+        }
 
-		String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
-		if (authorization == null || !authorization.startsWith(ApiConstants.TOKEN_PREFIX)) {
-			returnAuthError(start, response, ErrorCode.INVALID_API_KEY);
-			return false;
-		}
+        String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
+        if (authorization == null || !authorization.startsWith(ApiConstants.TOKEN_PREFIX)) {
+            returnAuthError(start, response, ErrorCode.INVALID_API_KEY);
+            return false;
+        }
 
-		String token = authorization.replace(ApiConstants.TOKEN_PREFIX + " ", "");
-		ApiKey apiKey = apiKeyService.getApiKey(token);
-		if (apiKey == null) {
-			returnAuthError(start, response, ErrorCode.INVALID_API_KEY);
-			return false;
-		}
+        String token = authorization.replace(ApiConstants.TOKEN_PREFIX + " ", "");
+        ApiKey apiKey = apiKeyService.getApiKey(token);
+        if (apiKey == null) {
+            returnAuthError(start, response, ErrorCode.INVALID_API_KEY);
+            return false;
+        }
 
-		Account account = accountService.getAccount(apiKey.getAccountId());
-		if (account == null) {
-			returnAuthError(start, response, ErrorCode.INVALID_API_KEY);
-			return false;
-		}
+        Account account = accountService.getAccount(apiKey.getAccountId());
+        if (account == null) {
+            returnAuthError(start, response, ErrorCode.INVALID_API_KEY);
+            return false;
+        }
 
-		RequestContext context = new RequestContext();
-		context.setRequestId(IdGenerator.uuid());
-		context.setAccountId(account.getAccountId());
-		context.setUsername(account.getUsername());
-		context.setWorkspaceId(account.getDefaultWorkspaceId());
-		context.setAccountType(account.getType());
-		context.setCallerIp(request.getRemoteAddr());
-		context.setStartTime(System.currentTimeMillis());
+        RequestContext context = new RequestContext();
+        context.setRequestId(IdGenerator.uuid());
+        context.setAccountId(account.getAccountId());
+        context.setApiKeyId(apiKey.getId());
+        context.setUsername(account.getUsername());
+        context.setWorkspaceId(account.getDefaultWorkspaceId());
+        context.setAccountType(account.getType());
+        context.setCallerIp(request.getRemoteAddr());
+        context.setStartTime(System.currentTimeMillis());
+        context.setSource("api");
 
-		RequestContextHolder.setRequestContext(context);
-		return true;
-	}
+        RequestContextHolder.setRequestContext(context);
+        return true;
+    }
 
-	public void returnAuthError(long start, HttpServletResponse response, ErrorCode errorCode) {
-		response.setContentType("application/json;charset=UTF-8");
-		response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-		OpenApiResult<String> result = OpenApiResult.error(IdGenerator.uuid(), errorCode);
+    public void returnAuthError(long start, HttpServletResponse response, ErrorCode errorCode) {
+        response.setContentType("application/json;charset=UTF-8");
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        OpenApiResult<String> result = OpenApiResult.error(IdGenerator.uuid(), errorCode);
 
-		LogUtils.monitor("ApiAuthInterceptor", "apiKeyAuth", start, "unauthorized", "", result);
+        LogUtils.monitor("ApiAuthInterceptor", "apiKeyAuth", start, "unauthorized", "", result);
 
-		try {
-			response.getWriter().write(JsonUtils.toJson(result));
-		}
-		catch (IOException e) {
-			LogUtils.error("failed to unauthorized api key: {}", result, e);
-		}
-	}
-
+        try {
+            response.getWriter().write(JsonUtils.toJson(result));
+        }
+        catch (IOException e) {
+            LogUtils.error("failed to unauthorized api key: {}", result, e);
+        }
+    }
 }

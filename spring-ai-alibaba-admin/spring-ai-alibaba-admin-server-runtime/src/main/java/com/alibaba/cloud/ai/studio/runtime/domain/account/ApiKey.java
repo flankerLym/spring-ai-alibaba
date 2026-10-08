@@ -21,7 +21,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 
 /** API Key business information. */
 @Data
@@ -34,8 +36,14 @@ public class ApiKey implements Serializable {
 
     private String description;
 
-    /** Company name, stored in api_key.company_name (varchar(200)). */
+    /** Company/caller name, stored in api_key.company_name. */
     private String companyName;
+
+    /** ALL = all apps in workspace, CUSTOM = folders/apps configured in resources. */
+    private String scopeType;
+
+    /** Resource selections used when scopeType is CUSTOM. */
+    private List<ResourcePermission> resources = new ArrayList<>();
 
     @JsonProperty("account_id")
     private String accountId;
@@ -51,4 +59,14 @@ public class ApiKey implements Serializable {
     private String creator;
 
     private String modifier;
+
+    @Data
+    public static class ResourcePermission implements Serializable {
+
+        /** FOLDER or APP. */
+        private String type;
+
+        /** folderId or appId. */
+        private String id;
+    }
 }

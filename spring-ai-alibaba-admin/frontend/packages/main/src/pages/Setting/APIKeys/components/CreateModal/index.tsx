@@ -1,7 +1,8 @@
-import $i18n from '@/i18n';
 import { createApiKey } from '@/services/apiKey';
-import { Form, Input, message, Modal } from '@spark-ai/design';
-import React, { useState } from 'react';
+import type { IApiKeyResource } from '@/types/apiKey';
+import { Form, Input, message, Modal } from 'antd';
+import React, { useEffect, useState } from 'react';
+import ScopeFields from '../ScopeFields';
 
 interface CreateModalProps {
   open: boolean;
@@ -13,16 +14,38 @@ const CreateModal: React.FC<CreateModalProps> = ({ open, onCancel, onSuccess }) 
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (open) {
+      form.setFieldsValue({ scopeType: 'ALL', folderIds: [], appIds: [] });
+    }
+  }, [open, form]);
+
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
       setLoading(true);
-      const res = await createApiKey(values);
-      if (res && res.data) {
-        message.success($i18n.get({
-          id: 'main.pages.Setting.APIKeys.components.CreateModal.index.createSuccess',
-          dm: '创建成功',
-        }));
+      const resources: IApiKeyResource[] =
+        values.scopeType === 'CUSTOM'
+          ? [
+              ...(values.folderIds || []).map((id: string) => ({
+                type: 'FOLDER' as const,
+                id,
+              })),
+              ...(values.appIds || []).map((id: string) => ({
+                type: 'APP' as const,
+                id,
+              })),
+            ]
+          : [];
+
+      const res = await createApiKey({
+        companyName: values.companyName,
+        description: values.description,
+        scopeType: values.scopeType,
+        resources,
+      });
+      if (res?.data) {
+        message.success('创建成功');
         form.resetFields();
         onSuccess();
       }
@@ -46,6 +69,8 @@ const CreateModal: React.FC<CreateModalProps> = ({ open, onCancel, onSuccess }) 
       onOk={handleSubmit}
       confirmLoading={loading}
       maskClosable={false}
+      width={680}
+      destroyOnClose
     >
       <Form form={form} layout="vertical">
         <Form.Item
@@ -60,8 +85,9 @@ const CreateModal: React.FC<CreateModalProps> = ({ open, onCancel, onSuccess }) 
           label="描述"
           rules={[{ required: true, whitespace: true, message: '请输入 API KEY 描述' }]}
         >
-          <Input.TextArea placeholder="请输入 API KEY 描述" rows={4} />
+          <Input.TextArea placeholder="请输入 API KEY 描述" rows={3} />
         </Form.Item>
+        <ScopeFields open={open} form={form} />
       </Form>
     </Modal>
   );

@@ -46,6 +46,10 @@ public class ApiKeyEntity {
     @TableField("company_name")
     private String companyName;
 
+    /** ALL or CUSTOM. Existing keys default to ALL for backward compatibility. */
+    @TableField("scope_type")
+    private String scopeType;
+
     @TableField("gmt_create")
     private Date gmtCreate;
 

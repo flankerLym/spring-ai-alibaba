@@ -27,37 +27,39 @@ import java.io.Serializable;
  *
  * @since 1.0.0.3
  */
-
 @Data
 public class RequestContext implements Serializable {
 
-	/** Request start timestamp */
-	private long startTime;
+    /** Request start timestamp */
+    private long startTime;
 
-	/** Unique identifier for the request */
-	@JsonProperty("request_id")
-	private String requestId;
+    /** Unique identifier for the request */
+    @JsonProperty("request_id")
+    private String requestId;
 
-	/** User account identifier */
-	@JsonProperty("account_id")
-	private String accountId;
+    /** User account identifier */
+    @JsonProperty("account_id")
+    private String accountId;
 
-	/** User account name */
-	private String username;
+    /** API key identifier for OpenAPI calls; null for console/session calls. */
+    @JsonProperty("api_key_id")
+    private Long apiKeyId;
 
-	/** Type of the user account */
-	@JsonProperty("account_type")
-	private AccountType accountType;
+    /** User account name */
+    private String username;
 
-	/** Workspace identifier */
-	@JsonProperty("workspace_id")
-	private String workspaceId;
+    /** Type of the user account */
+    @JsonProperty("account_type")
+    private AccountType accountType;
 
-	/** IP address of the request caller */
-	@JsonProperty("caller_ip")
-	private String callerIp;
+    /** Workspace identifier */
+    @JsonProperty("workspace_id")
+    private String workspaceId;
 
-	/** Source of the request, defaults to "console" */
-	private String source = "console";
+    /** IP address of the request caller */
+    @JsonProperty("caller_ip")
+    private String callerIp;
 
+    /** Source of the request, defaults to "console" */
+    private String source = "console";
 }

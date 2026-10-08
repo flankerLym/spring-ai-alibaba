@@ -3,7 +3,7 @@ import $i18n from '@/i18n';
 import { deleteApiKey, getApiKey, listApiKeys } from '@/services/apiKey';
 import type { IApiKey } from '@/types/apiKey';
 import { AlertDialog, Button, IconFont, message, Pagination } from '@spark-ai/design';
-import { Table } from 'antd';
+import { Table, Tag } from 'antd';
 import type { TableProps } from 'antd';
 import copy from 'copy-to-clipboard';
 import dayjs from 'dayjs';
@@ -70,7 +70,7 @@ export default function APIKeys() {
       title: 'API KEY',
       dataIndex: 'api_key',
       key: 'api_key',
-      width: 260,
+      width: 250,
       render: (value: string, record) => (
         <div className={styles['api-key-cell']}>
           <span className={styles['api-key-text']}>
@@ -85,8 +85,16 @@ export default function APIKeys() {
       title: '企业名称',
       dataIndex: 'companyName',
       key: 'companyName',
-      width: 180,
+      width: 170,
       render: (value?: string) => value || '--',
+    },
+    {
+      title: '访问范围',
+      dataIndex: 'scopeType',
+      key: 'scopeType',
+      width: 130,
+      render: (value?: string) =>
+        value === 'CUSTOM' ? <Tag>指定范围</Tag> : <Tag color="blue">全部应用</Tag>,
     },
     {
       title: $i18n.get({
@@ -175,7 +183,7 @@ export default function APIKeys() {
           dataSource={apiKeys}
           rowKey="id"
           pagination={false}
-          scroll={{ x: 1150 }}
+          scroll={{ x: 1200 }}
         />
       </div>
       <CreateModal
