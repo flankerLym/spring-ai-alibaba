@@ -19,7 +19,6 @@ package com.alibaba.cloud.ai.studio.interceptor;
 import com.alibaba.cloud.ai.studio.runtime.constants.ApiConstants;
 import com.alibaba.cloud.ai.studio.runtime.enums.ErrorCode;
 import com.alibaba.cloud.ai.studio.runtime.domain.RequestContext;
-import com.alibaba.cloud.ai.studio.runtime.domain.Result;
 import com.alibaba.cloud.ai.studio.runtime.domain.account.Account;
 import com.alibaba.cloud.ai.studio.runtime.domain.account.ApiKey;
 import com.alibaba.cloud.ai.studio.runtime.utils.JsonUtils;
@@ -28,6 +27,7 @@ import com.alibaba.cloud.ai.studio.core.base.service.ApiKeyService;
 import com.alibaba.cloud.ai.studio.core.context.RequestContextHolder;
 import com.alibaba.cloud.ai.studio.core.utils.common.IdGenerator;
 import com.alibaba.cloud.ai.studio.core.utils.LogUtils;
+import com.alibaba.cloud.ai.studio.openapi.OpenApiResult;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -40,26 +40,16 @@ import org.springframework.web.servlet.HandlerInterceptor;
 import java.io.IOException;
 
 /**
- * Interceptor for API key authentication in OpenAPI requests. Validates API keys and sets
- * up request context for authenticated users.
- *
- * @since 1.0.0.3
+ * Interceptor for API key authentication in OpenAPI requests.
  */
 @Component
 @RequiredArgsConstructor
 public class ApiKeyAuthInterceptor implements HandlerInterceptor {
 
-	/** Service for managing account-related operations */
 	private final AccountService accountService;
 
-	/** Service for managing API key operations */
 	private final ApiKeyService apiKeyService;
 
-	/**
-	 * Intercepts requests to validate API key authentication. Sets up request context for
-	 * authenticated users.
-	 * @return true if authentication succeeds, false otherwise
-	 */
 	@Override
 	public boolean preHandle(@NotNull HttpServletRequest request, @NotNull HttpServletResponse response,
 			@NotNull Object handler) {
@@ -82,7 +72,6 @@ public class ApiKeyAuthInterceptor implements HandlerInterceptor {
 			return false;
 		}
 
-		// login info
 		Account account = accountService.getAccount(apiKey.getAccountId());
 		if (account == null) {
 			returnAuthError(start, response, ErrorCode.INVALID_API_KEY);
@@ -102,14 +91,10 @@ public class ApiKeyAuthInterceptor implements HandlerInterceptor {
 		return true;
 	}
 
-	/**
-	 * Returns an unauthorized error response with the specified error code. Logs the
-	 * authentication failure for monitoring purposes.
-	 */
 	public void returnAuthError(long start, HttpServletResponse response, ErrorCode errorCode) {
 		response.setContentType("application/json;charset=UTF-8");
 		response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-		Result<String> result = Result.error(IdGenerator.uuid(), errorCode);
+		OpenApiResult<String> result = OpenApiResult.error(IdGenerator.uuid(), errorCode);
 
 		LogUtils.monitor("ApiAuthInterceptor", "apiKeyAuth", start, "unauthorized", "", result);
 

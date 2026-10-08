@@ -19,9 +19,10 @@ package com.alibaba.cloud.ai.studio.controller;
 import com.alibaba.cloud.ai.studio.core.base.service.AppService;
 import com.alibaba.cloud.ai.studio.core.context.RequestContextHolder;
 import com.alibaba.cloud.ai.studio.core.workflow.WorkflowConfig;
+import com.alibaba.cloud.ai.studio.openapi.OpenApiResult;
+import com.alibaba.cloud.ai.studio.runtime.domain.Error;
 import com.alibaba.cloud.ai.studio.runtime.domain.PagingList;
 import com.alibaba.cloud.ai.studio.runtime.domain.RequestContext;
-import com.alibaba.cloud.ai.studio.runtime.domain.Result;
 import com.alibaba.cloud.ai.studio.runtime.domain.app.AgentConfig;
 import com.alibaba.cloud.ai.studio.runtime.domain.app.AppQuery;
 import com.alibaba.cloud.ai.studio.runtime.domain.app.Application;
@@ -34,12 +35,16 @@ import com.alibaba.cloud.ai.studio.runtime.enums.AppType;
 import com.alibaba.cloud.ai.studio.runtime.enums.ErrorCode;
 import com.alibaba.cloud.ai.studio.runtime.exception.BizException;
 import com.alibaba.cloud.ai.studio.runtime.utils.JsonUtils;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.util.CollectionUtils;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -51,10 +56,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * OpenAPI application detail endpoint.
+ * OpenAPI application query endpoint.
  *
- * Queries application information by JSON filter conditions and returns the application
- * metadata together with its published OpenAPI schema when a published version exists.
+ * Supports paginated application queries and returns business-facing OpenAPI metadata.
+ * External request and response field names use lower camel case.
  */
 @RestController
 @RequiredArgsConstructor
@@ -62,7 +67,11 @@ import java.util.Map;
 @RequestMapping("/api/v1/apps")
 public class OpenApiAppController {
 
-	private static final int PAGE_SIZE = 200;
+	private static final int DEFAULT_PAGE_NUM = 1;
+
+	private static final int DEFAULT_PAGE_SIZE = 20;
+
+	private static final int MAX_PAGE_SIZE = 100;
 
 	private static final String WORKFLOW_API = "/api/v1/apps/workflow/completions";
 
@@ -73,78 +82,103 @@ public class OpenApiAppController {
 	private final AppService appService;
 
 	/**
-	 * Queries applications by one or more filter conditions.
+	 * Queries applications by filter conditions with pagination.
 	 *
-	 * Supported filters:
-	 * appId: exact match
-	 * name: fuzzy match
-	 * type: basic/workflow
-	 * status: draft/published/published_editing
+	 * Request example:
+	 * {
+	 *   "name": "demo",
+	 *   "type": "workflow",
+	 *   "status": "published",
+	 *   "pageNum": 1,
+	 *   "pageSize": 20
+	 * }
 	 */
 	@PostMapping("")
-	@Operation(summary = "Query application details by filter conditions")
-	public Result<List<PublishedAppApiInfo>> queryAppDetails(@RequestBody AppDetailQuery filter) {
+	@Operation(summary = "Query application details by filter conditions with pagination")
+	public OpenApiResult<AppPageResponse> queryAppDetails(@RequestBody AppDetailQuery filter) {
 		RequestContext context = RequestContextHolder.getRequestContext();
 		validateFilter(filter);
 
-		List<Application> applications = loadApps(filter);
-		List<PublishedAppApiInfo> result = new ArrayList<>();
+		PagingList<Application> page = loadApps(filter);
+		List<PublishedAppApiInfo> records = new ArrayList<>();
 
-		for (Application app : applications) {
-			result.add(buildApiInfo(app));
+		if (page != null && !CollectionUtils.isEmpty(page.getRecords())) {
+			for (Application app : page.getRecords()) {
+				records.add(buildApiInfo(app));
+			}
 		}
 
-		return Result.success(context.getRequestId(), result);
+		AppPageResponse response = new AppPageResponse();
+		response.setPageNum(page == null || page.getCurrent() == null ? filter.getPageNum() : page.getCurrent());
+		response.setPageSize(page == null || page.getSize() == null ? filter.getPageSize() : page.getSize());
+		response.setTotal(page == null || page.getTotal() == null ? 0L : page.getTotal());
+		response.setRecords(records);
+
+		return OpenApiResult.success(context.getRequestId(), response);
 	}
 
 	private void validateFilter(AppDetailQuery filter) {
-		if (filter == null || (StringUtils.isBlank(filter.getAppId())
+		if (filter == null) {
+			throw new BizException(ErrorCode.MISSING_PARAMS.toError("request body is required"));
+		}
+
+		if (StringUtils.isBlank(filter.getAppId())
 				&& StringUtils.isBlank(filter.getName())
 				&& StringUtils.isBlank(filter.getType())
-				&& StringUtils.isBlank(filter.getStatus()))) {
+				&& StringUtils.isBlank(filter.getStatus())) {
 			throw new BizException(ErrorCode.MISSING_PARAMS
 				.toError("At least one filter is required: appId, name, type or status"));
+		}
+
+		if (filter.getPageNum() == null) {
+			filter.setPageNum(DEFAULT_PAGE_NUM);
+		}
+		if (filter.getPageSize() == null) {
+			filter.setPageSize(DEFAULT_PAGE_SIZE);
+		}
+
+		if (filter.getPageNum() < 1) {
+			throw new BizException(ErrorCode.INVALID_PARAMS
+				.toError("pageNum", "pageNum must be greater than or equal to 1"));
+		}
+		if (filter.getPageSize() < 1 || filter.getPageSize() > MAX_PAGE_SIZE) {
+			throw new BizException(ErrorCode.INVALID_PARAMS
+				.toError("pageSize", "pageSize must be between 1 and " + MAX_PAGE_SIZE));
 		}
 
 		normalizeType(filter.getType());
 		parseStatus(filter.getStatus());
 	}
 
-	private List<Application> loadApps(AppDetailQuery filter) {
+	private PagingList<Application> loadApps(AppDetailQuery filter) {
 		if (StringUtils.isNotBlank(filter.getAppId())) {
 			Application app = appService.getApp(filter.getAppId());
-			if (matchesFilter(app, filter)) {
-				return List.of(app);
-			}
-			return List.of();
+			boolean matched = matchesFilter(app, filter);
+			long total = matched ? 1L : 0L;
+
+			List<Application> records = matched && filter.getPageNum() == 1
+					? List.of(app)
+					: List.of();
+
+			return new PagingList<>(filter.getPageNum(), filter.getPageSize(), total, records);
 		}
 
-		List<Application> result = new ArrayList<>();
-		int current = 1;
+		AppQuery query = new AppQuery();
+		query.setCurrent(filter.getPageNum());
+		query.setSize(filter.getPageSize());
+		query.setName(StringUtils.trimToNull(filter.getName()));
+		query.setType(normalizeType(filter.getType()));
+		query.setStatus(parseStatus(filter.getStatus()));
 
-		while (true) {
-			AppQuery query = new AppQuery();
-			query.setCurrent(current);
-			query.setSize(PAGE_SIZE);
-			query.setName(StringUtils.trimToNull(filter.getName()));
-			query.setType(normalizeType(filter.getType()));
-			query.setStatus(parseStatus(filter.getStatus()));
-
-			PagingList<Application> page = appService.listApps(query);
-			if (page == null || CollectionUtils.isEmpty(page.getRecords())) {
-				break;
-			}
-
-			result.addAll(page.getRecords());
-
-			long total = page.getTotal() == null ? result.size() : page.getTotal();
-			if ((long) current * PAGE_SIZE >= total) {
-				break;
-			}
-			current++;
+		PagingList<Application> page = appService.listApps(query);
+		if (page == null) {
+			return new PagingList<>(
+					filter.getPageNum(),
+					filter.getPageSize(),
+					0L,
+					List.of());
 		}
-
-		return result;
+		return page;
 	}
 
 	private boolean matchesFilter(Application app, AppDetailQuery filter) {
@@ -301,8 +335,8 @@ public class OpenApiAppController {
 			List<ApiInputParam> params) {
 
 		Map<String, Object> request = new LinkedHashMap<>();
-		request.put("app_id", appId);
-		request.put("conversation_id", "");
+		request.put("appId", appId);
+		request.put("conversationId", "");
 		request.put("stream", false);
 		request.put("draft", false);
 
@@ -315,7 +349,7 @@ public class OpenApiAppController {
 			input.put("value", exampleValue(param));
 			inputParams.add(input);
 		}
-		request.put("input_params", inputParams);
+		request.put("inputParams", inputParams);
 
 		return request;
 	}
@@ -355,14 +389,14 @@ public class OpenApiAppController {
 		}
 
 		Map<String, Object> request = new LinkedHashMap<>();
-		request.put("app_id", app.getAppId());
-		request.put("conversation_id", "");
+		request.put("appId", app.getAppId());
+		request.put("conversationId", "");
 		request.put("stream", false);
 
 		List<Map<String, Object>> messagesExample = new ArrayList<>();
 		Map<String, Object> userMessage = new LinkedHashMap<>();
 		userMessage.put("role", "user");
-		userMessage.put("content_type", "text");
+		userMessage.put("contentType", "text");
 		userMessage.put("content", "你好");
 		messagesExample.add(userMessage);
 		request.put("messages", messagesExample);
@@ -373,7 +407,7 @@ public class OpenApiAppController {
 				promptVariables.put(param.getKey(), exampleValue(param));
 			}
 		}
-		request.put("prompt_variables", promptVariables);
+		request.put("promptVariables", promptVariables);
 
 		info.setApi(CHAT_API);
 		info.setInputSchema(params);
@@ -409,6 +443,26 @@ public class OpenApiAppController {
 		};
 	}
 
+	@ExceptionHandler(Exception.class)
+	public ResponseEntity<OpenApiResult<Void>> handleException(Exception exception) {
+		RequestContext context = RequestContextHolder.getRequestContext();
+		String requestId = context == null ? "" : context.getRequestId();
+
+		Error error;
+		if (exception instanceof BizException bizException) {
+			error = bizException.getError();
+		}
+		else if (exception instanceof HttpMessageNotReadableException) {
+			error = ErrorCode.INVALID_JSON.toError();
+		}
+		else {
+			error = ErrorCode.SYSTEM_ERROR.toError();
+		}
+
+		return ResponseEntity.status(error.getStatusCode())
+			.body(OpenApiResult.error(requestId, error));
+	}
+
 	@Data
 	public static class AppDetailQuery {
 
@@ -419,6 +473,25 @@ public class OpenApiAppController {
 		private String type;
 
 		private String status;
+
+		@JsonAlias({ "current", "page" })
+		private Integer pageNum = DEFAULT_PAGE_NUM;
+
+		@JsonAlias("size")
+		private Integer pageSize = DEFAULT_PAGE_SIZE;
+
+	}
+
+	@Data
+	public static class AppPageResponse {
+
+		private Integer pageNum;
+
+		private Integer pageSize;
+
+		private Long total;
+
+		private List<PublishedAppApiInfo> records = new ArrayList<>();
 
 	}
 
@@ -445,7 +518,6 @@ public class OpenApiAppController {
 
 		private String publishedVersion;
 
-		/** Opening statement configured for BASIC applications. */
 		private String prologueText;
 
 		private String method;

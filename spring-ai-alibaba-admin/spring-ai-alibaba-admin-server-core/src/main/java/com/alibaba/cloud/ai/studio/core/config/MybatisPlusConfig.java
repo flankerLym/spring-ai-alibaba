@@ -34,13 +34,13 @@ import org.springframework.context.annotation.Configuration;
 public class MybatisPlusConfig {
 
 	/**
-	 * Configures MyBatis-Plus interceptor with MySQL pagination support.
+	 * Configures MyBatis-Plus interceptor with PostgreSQL pagination support.
 	 * @return MybatisPlusInterceptor instance
 	 */
 	@Bean
 	public MybatisPlusInterceptor mybatisPlusInterceptor() {
 		MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
-		interceptor.addInnerInterceptor(new PaginationInnerInterceptor(DbType.MYSQL));
+		interceptor.addInnerInterceptor(new PaginationInnerInterceptor(DbType.POSTGRE_SQL));
 		return interceptor;
 	}
 

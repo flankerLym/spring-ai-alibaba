@@ -17,6 +17,7 @@
 package com.alibaba.cloud.ai.studio.runtime.domain.agent;
 
 import com.alibaba.cloud.ai.studio.runtime.domain.chat.ChatMessage;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -29,40 +30,38 @@ import java.util.Map;
 /**
  * Request model for agent operations.
  *
- * @since 1.0.0.3
+ * Canonical external field names use lower camel case. Legacy snake_case names remain
+ * accepted as aliases for backward compatibility.
  */
-
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 public class AgentRequest implements Serializable {
 
-	/** Application identifier */
-	@JsonProperty("app_id")
+	@JsonProperty("appId")
+	@JsonAlias("app_id")
 	private String appId;
 
-	/** Unique identifier for the conversation */
-	@JsonProperty("conversation_id")
+	@JsonProperty("conversationId")
+	@JsonAlias("conversation_id")
 	private String conversationId;
 
-	/** List of chat messages in the conversation */
 	@JsonProperty("messages")
 	private List<ChatMessage> messages;
 
-	/** Flag indicating if streaming is enabled */
 	@JsonProperty("stream")
 	private Boolean stream = false;
 
-	/** Map of variables used in prompt templates */
-	@JsonProperty("prompt_variables")
+	@JsonProperty("promptVariables")
+	@JsonAlias("prompt_variables")
 	private Map<String, String> promptVariables;
 
-	/** Additional parameters for the request */
-	@JsonProperty("extra_params")
+	@JsonProperty("extraParams")
+	@JsonAlias("extra_params")
 	private Map<String, Object> extraPrams;
 
-	/** Flag indicating if this is a draft request */
-	@JsonProperty("is_draft")
+	@JsonProperty("draft")
+	@JsonAlias("is_draft")
 	private boolean draft = false;
 
 }

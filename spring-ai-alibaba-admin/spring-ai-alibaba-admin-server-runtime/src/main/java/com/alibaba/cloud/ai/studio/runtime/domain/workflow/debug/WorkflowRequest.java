@@ -13,9 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.alibaba.cloud.ai.studio.runtime.domain.workflow.debug;
 
 import com.alibaba.cloud.ai.studio.runtime.domain.chat.ChatMessage;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -25,26 +27,26 @@ import java.io.Serializable;
 import java.util.List;
 
 /**
- * workflow request.
+ * Workflow request.
  *
- * @author guning.lt
- * @since 1.0.0.3
+ * Canonical external field names use lower camel case. Legacy snake_case names remain
+ * accepted as aliases for backward compatibility.
  */
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 public class WorkflowRequest implements Serializable {
 
-	/**
-	 * ID of the app.
-	 */
-	@JsonProperty("app_id")
+	@JsonProperty("appId")
+	@JsonAlias("app_id")
 	private String appId;
 
-	@JsonProperty("conversation_id")
+	@JsonProperty("conversationId")
+	@JsonAlias("conversation_id")
 	private String conversationId;
 
-	@JsonProperty("request_id")
+	@JsonProperty("requestId")
+	@JsonAlias("request_id")
 	private String requestId;
 
 	@JsonProperty("messages")
@@ -56,7 +58,8 @@ public class WorkflowRequest implements Serializable {
 	@JsonProperty("draft")
 	private Boolean draft = false;
 
-	@JsonProperty("input_params")
+	@JsonProperty("inputParams")
+	@JsonAlias("input_params")
 	private List<TaskRunParam> inputParams;
 
 }
