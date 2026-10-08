@@ -8,51 +8,49 @@ import lombok.Data;
 
 import java.util.Date;
 
-/**
- * Conversation message record.
- *
- * Replaces the preliminary conversation_message mapping and persists to
- * conversation_message_record.
- */
+/** Conversation message record. */
 @Data
 @TableName("conversation_message_record")
 public class ConversationMessageEntity {
 
-	@TableId(value = "id", type = IdType.AUTO)
-	private Long id;
+    @TableId(value = "id", type = IdType.AUTO)
+    private Long id;
 
-	@TableField("app_id")
-	private Long appId;
+    @TableField("app_id")
+    private Long appId;
 
-	@TableField("conversation_id")
-	private Long conversationId;
+    @TableField("conversation_id")
+    private Long conversationId;
 
-	@TableField("message_id")
-	private Long messageId;
+    @TableField("message_id")
+    private Long messageId;
 
-	@TableField("parent_message_id")
-	private Long parentMessageId;
+    @TableField("parent_message_id")
+    private Long parentMessageId;
 
-	private Integer sequence;
+    private Integer sequence;
 
-	private String role;
+    private String role;
 
-	private String content;
+    private String content;
 
-	@TableField("content_type")
-	private String contentType;
+    @TableField("content_type")
+    private String contentType;
 
-	@TableField("trace_id")
-	private String traceId;
+    @TableField("trace_id")
+    private String traceId;
 
-	@TableField("request_id")
-	private String requestId;
+    @TableField("request_id")
+    private String requestId;
 
-	private String status;
+    @TableField("user_id")
+    private String userId;
 
-	@TableField("created_at")
-	private Date createdAt;
+    private String status;
 
-	@TableField("updated_at")
-	private Date updatedAt;
+    @TableField("created_at")
+    private Date createdAt;
+
+    @TableField("updated_at")
+    private Date updatedAt;
 }

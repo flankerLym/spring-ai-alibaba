@@ -27,41 +27,51 @@ import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Request model for agent operations.
- *
- * Canonical external field names use lower camel case. Legacy snake_case names remain
- * accepted as aliases for backward compatibility.
- */
+/** Agent request. */
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 public class AgentRequest implements Serializable {
 
-	@JsonProperty("appId")
-	@JsonAlias("app_id")
-	private String appId;
+    @JsonProperty("appId")
+    @JsonAlias("app_id")
+    private String appId;
 
-	@JsonProperty("conversationId")
-	@JsonAlias("conversation_id")
-	private String conversationId;
+    @JsonProperty("userId")
+    @JsonAlias("user_id")
+    private String userId;
 
-	@JsonProperty("messages")
-	private List<ChatMessage> messages;
+    @JsonProperty("conversationId")
+    @JsonAlias("conversation_id")
+    private String conversationId;
 
-	@JsonProperty("stream")
-	private Boolean stream = false;
+    @JsonProperty("messages")
+    private List<ChatMessage> messages;
 
-	@JsonProperty("promptVariables")
-	@JsonAlias("prompt_variables")
-	private Map<String, String> promptVariables;
+    @JsonProperty("stream")
+    private Boolean stream = false;
 
-	@JsonProperty("extraParams")
-	@JsonAlias("extra_params")
-	private Map<String, Object> extraPrams;
+    @JsonProperty("promptVariables")
+    @JsonAlias("prompt_variables")
+    private Map<String, String> promptVariables;
 
-	@JsonProperty("draft")
-	@JsonAlias("is_draft")
-	private boolean draft = false;
+    @JsonProperty("extraParams")
+    @JsonAlias("extra_params")
+    private Map<String, Object> extraPrams;
 
+    @JsonProperty("draft")
+    @JsonAlias("is_draft")
+    private boolean draft = false;
+
+    /** Backward-compatible constructor used by existing internal callers/tests. */
+    public AgentRequest(String appId, String conversationId, List<ChatMessage> messages, Boolean stream,
+            Map<String, String> promptVariables, Map<String, Object> extraPrams, boolean draft) {
+        this.appId = appId;
+        this.conversationId = conversationId;
+        this.messages = messages;
+        this.stream = stream;
+        this.promptVariables = promptVariables;
+        this.extraPrams = extraPrams;
+        this.draft = draft;
+    }
 }

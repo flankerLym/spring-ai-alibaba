@@ -1,6 +1,7 @@
 package com.alibaba.cloud.ai.studio.core.base.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -23,6 +24,10 @@ public class WorkflowTraceEntity {
     private String appId;
     private String workflowVersion;
     private String conversationId;
+
+    @TableField("user_id")
+    private String userId;
+
     private String invokeSource;
 
     private String status;

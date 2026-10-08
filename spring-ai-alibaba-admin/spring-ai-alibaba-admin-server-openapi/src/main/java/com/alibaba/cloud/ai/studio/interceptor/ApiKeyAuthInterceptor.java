@@ -45,7 +45,6 @@ import java.io.IOException;
 public class ApiKeyAuthInterceptor implements HandlerInterceptor {
 
     private final AccountService accountService;
-
     private final ApiKeyService apiKeyService;
 
     @Override
@@ -80,6 +79,7 @@ public class ApiKeyAuthInterceptor implements HandlerInterceptor {
         context.setRequestId(IdGenerator.uuid());
         context.setAccountId(account.getAccountId());
         context.setApiKeyId(apiKey.getId());
+        context.setApiKeyCompanyName(apiKey.getCompanyName());
         context.setUsername(account.getUsername());
         context.setWorkspaceId(account.getDefaultWorkspaceId());
         context.setAccountType(account.getType());

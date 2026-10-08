@@ -26,40 +26,50 @@ import lombok.NoArgsConstructor;
 import java.io.Serializable;
 import java.util.List;
 
-/**
- * Workflow request.
- *
- * Canonical external field names use lower camel case. Legacy snake_case names remain
- * accepted as aliases for backward compatibility.
- */
+/** Workflow request. */
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 public class WorkflowRequest implements Serializable {
 
-	@JsonProperty("appId")
-	@JsonAlias("app_id")
-	private String appId;
+    @JsonProperty("appId")
+    @JsonAlias("app_id")
+    private String appId;
 
-	@JsonProperty("conversationId")
-	@JsonAlias("conversation_id")
-	private String conversationId;
+    @JsonProperty("userId")
+    @JsonAlias("user_id")
+    private String userId;
 
-	@JsonProperty("requestId")
-	@JsonAlias("request_id")
-	private String requestId;
+    @JsonProperty("conversationId")
+    @JsonAlias("conversation_id")
+    private String conversationId;
 
-	@JsonProperty("messages")
-	private List<ChatMessage> messages;
+    @JsonProperty("requestId")
+    @JsonAlias("request_id")
+    private String requestId;
 
-	@JsonProperty("stream")
-	private Boolean stream = false;
+    @JsonProperty("messages")
+    private List<ChatMessage> messages;
 
-	@JsonProperty("draft")
-	private Boolean draft = false;
+    @JsonProperty("stream")
+    private Boolean stream = false;
 
-	@JsonProperty("inputParams")
-	@JsonAlias("input_params")
-	private List<TaskRunParam> inputParams;
+    @JsonProperty("draft")
+    private Boolean draft = false;
 
+    @JsonProperty("inputParams")
+    @JsonAlias("input_params")
+    private List<TaskRunParam> inputParams;
+
+    /** Backward-compatible constructor used by existing internal callers/tests. */
+    public WorkflowRequest(String appId, String conversationId, String requestId,
+            List<ChatMessage> messages, Boolean stream, Boolean draft, List<TaskRunParam> inputParams) {
+        this.appId = appId;
+        this.conversationId = conversationId;
+        this.requestId = requestId;
+        this.messages = messages;
+        this.stream = stream;
+        this.draft = draft;
+        this.inputParams = inputParams;
+    }
 }

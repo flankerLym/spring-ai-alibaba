@@ -20,6 +20,7 @@ public class WorkflowTraceContext {
     private String appId;
     private String workflowVersion;
     private String conversationId;
+    private String userId;
     private String invokeSource;
 
     private String status;
@@ -45,18 +46,9 @@ public class WorkflowTraceContext {
     private String errorMessage;
 
     private final Queue<WorkflowSpanContext> spans = new ConcurrentLinkedQueue<>();
-
     private final AtomicInteger sequence = new AtomicInteger(0);
-
-    /**
-     * Number of NODE/MODEL_CALL spans currently running. This prevents AUTO_END/finally
-     * from persisting a trace before the last node aspect has finished.
-     */
     private final AtomicInteger activeSpans = new AtomicInteger(0);
-
-    /** Submitted node work, including work that has not entered the NODE advice yet. */
     private final AtomicInteger pendingExecutions = new AtomicInteger(0);
-
     private final AtomicBoolean finishRequested = new AtomicBoolean(false);
     private final AtomicBoolean persisted = new AtomicBoolean(false);
 }

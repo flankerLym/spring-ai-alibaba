@@ -1,6 +1,7 @@
 package com.alibaba.cloud.ai.studio.admin.trace.aspect;
 
 import com.alibaba.cloud.ai.studio.core.workflow.WorkflowContext;
+import com.alibaba.cloud.ai.studio.core.workflow.trace.context.WorkflowTraceContext;
 import com.alibaba.cloud.ai.studio.core.workflow.trace.service.WorkflowTraceManager;
 import com.alibaba.cloud.ai.studio.runtime.domain.app.ApplicationVersion;
 import lombok.RequiredArgsConstructor;
@@ -10,12 +11,7 @@ import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.springframework.stereotype.Component;
 
-/**
- * Workflow entry trace aspect.
- *
- * The annotation is the primary extension point. The direct runTask execution pointcut
- * is kept as a fallback so a future refactor does not silently disable tracing.
- */
+/** Workflow entry trace aspect. */
 @Slf4j
 @Aspect
 @Component
@@ -34,11 +30,13 @@ public class WorkflowTraceAspect {
 
         try {
             if (context != null && appVersion != null && context.getTraceId() == null) {
-                traceManager.startTrace(appVersion, context, rawInput);
+                WorkflowTraceContext trace = traceManager.startTrace(appVersion, context, rawInput);
+                if (trace != null) {
+                    trace.setUserId(context.getUserId());
+                }
             }
         }
         catch (Exception e) {
-            // Trace creation must not block the workflow.
             log.error("create workflow trace failed", e);
         }
 

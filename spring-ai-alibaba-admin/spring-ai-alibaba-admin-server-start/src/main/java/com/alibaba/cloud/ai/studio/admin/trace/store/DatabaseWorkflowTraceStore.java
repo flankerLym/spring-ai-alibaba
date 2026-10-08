@@ -52,6 +52,7 @@ public class DatabaseWorkflowTraceStore implements WorkflowTraceStore {
         entity.setAppId(trace.getAppId());
         entity.setWorkflowVersion(trace.getWorkflowVersion());
         entity.setConversationId(trace.getConversationId());
+        entity.setUserId(trace.getUserId());
         entity.setInvokeSource(trace.getInvokeSource());
 
         entity.setStatus(trace.getStatus());

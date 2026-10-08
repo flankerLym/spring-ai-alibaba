@@ -45,6 +45,14 @@ public class RequestContext implements Serializable {
     @JsonProperty("api_key_id")
     private Long apiKeyId;
 
+    /** Third-party caller user identifier, supplied by OpenAPI request. */
+    @JsonProperty("user_id")
+    private String userId;
+
+    /** Company/caller name bound to the API key. */
+    @JsonProperty("api_key_company_name")
+    private String apiKeyCompanyName;
+
     /** User account name */
     private String username;
 

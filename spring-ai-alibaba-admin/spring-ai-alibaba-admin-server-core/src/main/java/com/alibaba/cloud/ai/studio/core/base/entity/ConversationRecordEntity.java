@@ -8,36 +8,33 @@ import lombok.Data;
 
 import java.util.Date;
 
-/**
- * Conversation record.
- */
+/** Conversation record. */
 @Data
 @TableName("conversation_record")
 public class ConversationRecordEntity {
 
-	@TableId(value = "id", type = IdType.INPUT)
-	private Long id;
+    @TableId(value = "id", type = IdType.INPUT)
+    private Long id;
 
-	@TableField("app_id")
-	private Long appId;
+    @TableField("app_id")
+    private Long appId;
 
-	private String status;
+    private String status;
 
-	private String name;
+    private String name;
 
-	@TableField("invoke_source")
-	private String invokeSource;
+    @TableField("invoke_source")
+    private String invokeSource;
 
-	@TableField("message_count")
-	private Integer messageCount;
+    @TableField("message_count")
+    private Integer messageCount;
 
-	@TableField("user_id")
-	private Long userId;
+    @TableField("user_id")
+    private String userId;
 
-	@TableField("created_at")
-	private Date createdAt;
+    @TableField("created_at")
+    private Date createdAt;
 
-	@TableField("updated_at")
-	private Date updatedAt;
-
+    @TableField("updated_at")
+    private Date updatedAt;
 }

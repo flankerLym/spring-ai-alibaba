@@ -12,6 +12,7 @@
                     OR task_id ILIKE CONCAT('%', #{keyword}, '%')
                     OR request_id ILIKE CONCAT('%', #{keyword}, '%')
                     OR conversation_id ILIKE CONCAT('%', #{keyword}, '%')
+                    OR user_id ILIKE CONCAT('%', #{keyword}, '%')
                 )
             </if>
             <if test="status != null and status != ''">AND status = #{status}</if>
@@ -23,7 +24,7 @@
 
     <sql id="TraceColumns">
         id, trace_id, root_span_id, task_id, request_id, app_id, workflow_version,
-        conversation_id, invoke_source, status, finish_reason, start_time, end_time,
+        conversation_id, user_id, invoke_source, status, finish_reason, start_time, end_time,
         duration_ms, prompt_tokens, completion_tokens, total_tokens, total_cost,
         span_count, model_call_count, input_data::text AS input_data,
         output_data::text AS output_data, trace_data::text AS trace_data,

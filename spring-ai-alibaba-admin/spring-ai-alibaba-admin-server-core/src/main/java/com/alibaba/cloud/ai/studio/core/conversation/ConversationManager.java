@@ -5,8 +5,10 @@ import com.alibaba.cloud.ai.studio.core.base.entity.ConversationRecordEntity;
 import com.alibaba.cloud.ai.studio.core.base.manager.RedisManager;
 import com.alibaba.cloud.ai.studio.core.base.mapper.ConversationMessageMapper;
 import com.alibaba.cloud.ai.studio.core.base.mapper.ConversationRecordMapper;
+import com.alibaba.cloud.ai.studio.core.context.RequestContextHolder;
 import com.alibaba.cloud.ai.studio.core.utils.common.IdGenerator;
 import com.alibaba.cloud.ai.studio.core.workflow.WorkflowContext;
+import com.alibaba.cloud.ai.studio.runtime.domain.RequestContext;
 import com.alibaba.cloud.ai.studio.runtime.enums.ErrorCode;
 import com.alibaba.cloud.ai.studio.runtime.exception.BizException;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -39,29 +41,20 @@ import static com.alibaba.cloud.ai.studio.core.workflow.constants.WorkflowConsta
 public class ConversationManager {
 
 	private static final String NORMAL = "normal";
-
 	private static final String SUCCESS = "success";
-
 	private static final String TEXT = "text";
-
 	private static final String MEMORY_SOURCE = "memory";
-
 	private static final String CONVERSATION_CHAT_MEMORY_PREFIX = "conversation_chat:%s";
 
 	private final ConversationRecordMapper conversationRecordMapper;
-
 	private final ConversationMessageMapper conversationMessageMapper;
-
 	private final RedisManager redisManager;
 
-	/**
-	 * Creates or touches a conversation when a request enters the workflow.
-	 */
 	@Transactional(rollbackFor = Exception.class)
 	public Long prepareConversation(String appId, String conversationId, String invokeSource, String userId) {
 		Long app = requireLong(appId, "app_id");
 		Long conversation = requireLong(conversationId, "conversation_id");
-		Long user = nullableLong(userId);
+		String user = normalizeUserId(userId);
 
 		ConversationRecordEntity entity = conversationRecordMapper.selectById(conversation);
 		Date now = new Date();
@@ -92,13 +85,6 @@ public class ConversationManager {
 		return conversation;
 	}
 
-	/**
-	 * Persists the current workflow user message before asynchronous node execution.
-	 *
-	 * This must be called after old history has been loaded. Otherwise a cold Redis cache
-	 * may reload the current user message from DB and incorrectly treat it as history of
-	 * the same request.
-	 */
 	@Transactional(rollbackFor = Exception.class)
 	public void saveWorkflowUserMessage(WorkflowContext context) {
 		if (context == null || StringUtils.isBlank(context.getAppId())
@@ -108,7 +94,7 @@ public class ConversationManager {
 
 		Long appId = requireLong(context.getAppId(), "app_id");
 		Long conversationId = requireLong(context.getConversationId(), "conversation_id");
-		Long userId = nullableLong(context.getAccountId());
+		String userId = normalizeUserId(context.getUserId());
 		String requestId = context.getRequestId();
 
 		ConversationRecordEntity record =
@@ -122,13 +108,8 @@ public class ConversationManager {
 		String input = resolveWorkflowInput(context);
 
 		ConversationMessageEntity userMessage = newMessage(
-				appId,
-				conversationId,
-				sequence,
-				"user",
-				input,
-				context.getTraceId(),
-				requestId);
+				appId, conversationId, sequence, "user", input,
+				context.getTraceId(), requestId, userId);
 		conversationMessageMapper.insert(userMessage);
 
 		fillConversationName(record, input);
@@ -143,12 +124,6 @@ public class ConversationManager {
 		conversationRecordMapper.updateById(record);
 	}
 
-	/**
-	 * Persists only the assistant message after END succeeds.
-	 *
-	 * The matching user message has already been persisted before workflow execution.
-	 * The request id makes both the normal END and auto END paths idempotent.
-	 */
 	@Transactional(rollbackFor = Exception.class)
 	public void saveWorkflowAssistantMessage(WorkflowContext context) {
 		if (context == null || StringUtils.isBlank(context.getAppId())
@@ -158,7 +133,7 @@ public class ConversationManager {
 
 		Long appId = requireLong(context.getAppId(), "app_id");
 		Long conversationId = requireLong(context.getConversationId(), "conversation_id");
-		Long userId = nullableLong(context.getAccountId());
+		String userId = normalizeUserId(context.getUserId());
 		String requestId = context.getRequestId();
 
 		ConversationRecordEntity record =
@@ -174,13 +149,8 @@ public class ConversationManager {
 		String output = context.getTaskResult() == null ? "" : context.getTaskResult();
 
 		ConversationMessageEntity assistantMessage = newMessage(
-				appId,
-				conversationId,
-				sequence,
-				"assistant",
-				output,
-				context.getTraceId(),
-				requestId);
+				appId, conversationId, sequence, "assistant", output,
+				context.getTraceId(), requestId, userId);
 		if (userMessage != null) {
 			assistantMessage.setParentMessageId(userMessage.getMessageId());
 		}
@@ -196,18 +166,9 @@ public class ConversationManager {
 		}
 		conversationRecordMapper.updateById(record);
 
-		// END may already have appended the completed round to Redis. Remove the cache so
-		// the next request reloads the authoritative DB history without duplicates.
 		redisManager.delete(memoryRedisKey(memoryConversationId(appId, conversationId)));
 	}
 
-	/**
-	 * Durable write used by generic Spring AI ChatMemory callers such as Agent.
-	 *
-	 * Workflow END calls are excluded by ConversationPersistenceScope and the workflow
-	 * assistant row is persisted once by saveWorkflowAssistantMessage(), carrying
-	 * trace/request metadata.
-	 */
 	@Transactional(rollbackFor = Exception.class)
 	public void appendMemoryMessages(String memoryConversationId, List<Message> messages) {
 		if (messages == null || messages.isEmpty()) {
@@ -220,8 +181,12 @@ public class ConversationManager {
 			return;
 		}
 
+		RequestContext requestContext = RequestContextHolder.getRequestContext();
+		String userId = resolvePersistentUserId(requestContext);
+		String invokeSource = resolveInvokeSource(requestContext);
+
 		ConversationRecordEntity record = lockOrCreateConversation(
-				key.appId(), key.conversationId(), MEMORY_SOURCE, null);
+				key.appId(), key.conversationId(), invokeSource, userId);
 
 		int sequence = safeCount(record) + 1;
 		Long lastUserMessageId = null;
@@ -233,13 +198,8 @@ public class ConversationManager {
 			}
 
 			ConversationMessageEntity entity = newMessage(
-					key.appId(),
-					key.conversationId(),
-					sequence++,
-					role(message),
-					message.getText(),
-					null,
-					null);
+					key.appId(), key.conversationId(), sequence++, role(message),
+					message.getText(), null, null, userId);
 
 			if ("assistant".equals(entity.getRole())) {
 				entity.setParentMessageId(lastUserMessageId);
@@ -256,13 +216,16 @@ public class ConversationManager {
 		if (inserted > 0) {
 			record.setMessageCount(safeCount(record) + inserted);
 			record.setUpdatedAt(new Date());
+			if (StringUtils.isNotBlank(invokeSource)) {
+				record.setInvokeSource(invokeSource);
+			}
+			if (userId != null) {
+				record.setUserId(userId);
+			}
 			conversationRecordMapper.updateById(record);
 		}
 	}
 
-	/**
-	 * Loads recent messages for ChatMemory DB fallback.
-	 */
 	public List<ConversationMessageEntity> loadMemoryMessages(String memoryConversationId, int limit) {
 		if (limit <= 0) {
 			return List.of();
@@ -291,9 +254,6 @@ public class ConversationManager {
 		return result;
 	}
 
-	/**
-	 * Clears durable conversation messages and resets message_count.
-	 */
 	@Transactional(rollbackFor = Exception.class)
 	public void clearMemory(String memoryConversationId) {
 		ConversationKey key = parseMemoryConversationId(memoryConversationId);
@@ -341,7 +301,7 @@ public class ConversationManager {
 	}
 
 	private ConversationRecordEntity lockOrCreateConversation(
-			Long appId, Long conversationId, String invokeSource, Long userId) {
+			Long appId, Long conversationId, String invokeSource, String userId) {
 
 		ConversationRecordEntity record = conversationRecordMapper.selectByIdForUpdate(conversationId);
 		if (record != null) {
@@ -365,7 +325,7 @@ public class ConversationManager {
 
 	private ConversationMessageEntity newMessage(
 			Long appId, Long conversationId, int sequence, String role,
-			String content, String traceId, String requestId) {
+			String content, String traceId, String requestId, String userId) {
 
 		Date now = new Date();
 		ConversationMessageEntity entity = new ConversationMessageEntity();
@@ -378,6 +338,7 @@ public class ConversationManager {
 		entity.setContentType(TEXT);
 		entity.setTraceId(traceId);
 		entity.setRequestId(requestId);
+		entity.setUserId(userId);
 		entity.setStatus(SUCCESS);
 		entity.setCreatedAt(now);
 		entity.setUpdatedAt(now);
@@ -446,16 +407,33 @@ public class ConversationManager {
 		}
 	}
 
-	private Long nullableLong(String value) {
+	private String normalizeUserId(String value) {
 		if (StringUtils.isBlank(value)) {
 			return null;
 		}
-		try {
-			return Long.parseLong(value);
+		String normalized = value.trim();
+		if (normalized.length() > 32) {
+			throw new BizException(ErrorCode.INVALID_PARAMS.toError("userId", "must be 32 characters or fewer"));
 		}
-		catch (NumberFormatException e) {
+		return normalized;
+	}
+
+	private String resolvePersistentUserId(RequestContext context) {
+		if (context == null) {
 			return null;
 		}
+		if (context.getApiKeyId() != null) {
+			return normalizeUserId(context.getUserId());
+		}
+		return normalizeUserId(context.getAccountId());
+	}
+
+	private String resolveInvokeSource(RequestContext context) {
+		if (context != null && context.getApiKeyId() != null
+				&& StringUtils.isNotBlank(context.getApiKeyCompanyName())) {
+			return context.getApiKeyCompanyName().trim();
+		}
+		return MEMORY_SOURCE;
 	}
 
 	private ConversationKey parseMemoryConversationId(String memoryConversationId) {
@@ -488,5 +466,4 @@ public class ConversationManager {
 
 	private record ConversationKey(Long appId, Long conversationId) {
 	}
-
 }

@@ -14,6 +14,7 @@ public class WorkflowTraceView {
     private String appId;
     private String workflowVersion;
     private String conversationId;
+    private String userId;
     private String invokeSource;
     private String status;
     private String finishReason;
