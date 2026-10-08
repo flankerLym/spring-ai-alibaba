@@ -1,23 +1,27 @@
-// API Key base info
+// API Key response from the existing console API.
 export interface IApiKey {
   id?: number;
   api_key?: string;
+  companyName?: string;
   description?: string;
+  account_id?: string;
+  status?: 'normal' | 'deleted';
   gmt_create?: string;
+  gmt_modified?: string;
+  creator?: string;
+  modifier?: string;
 }
 
-// Create API Key parameters
 export interface ICreateApiKeyParams {
   description: string;
+  companyName?: string;
 }
 
-// Update API Key parameters
 export interface IUpdateApiKeyParams {
-  id: number | string;
   description: string;
+  companyName?: string;
 }
 
-// Pagination list response
 export interface IPagingList<T> {
   current: number;
   size: number;

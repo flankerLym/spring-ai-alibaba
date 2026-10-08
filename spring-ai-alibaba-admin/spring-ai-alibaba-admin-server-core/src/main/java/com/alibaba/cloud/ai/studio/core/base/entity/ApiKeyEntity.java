@@ -20,52 +20,39 @@ import com.alibaba.cloud.ai.studio.runtime.enums.CommonStatus;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.util.Date;
 
-/**
- * Entity class representing an API key record.
- *
- * @since 1.0.0.3
- */
-
+/** API Key persistence entity. */
 @Data
 @TableName("api_key")
 public class ApiKeyEntity {
 
-	/** Primary key */
-	@TableId(value = "id", type = IdType.AUTO)
-	private Long id;
+    @TableId(value = "id", type = IdType.AUTO)
+    private Long id;
 
-	/** Associated account identifier */
-	@TableField("account_id")
-	private String accountId;
+    @TableField("account_id")
+    private String accountId;
 
-	/** The API key value */
-	@TableField("api_key")
-	private String apiKey;
+    @TableField("api_key")
+    private String apiKey;
 
-	/** Current status of the API key */
-	private CommonStatus status;
+    private CommonStatus status;
 
-	/** Description of the API key's purpose */
-	private String description;
+    private String description;
 
-	/** Creation timestamp */
-	@TableField("gmt_create")
-	private Date gmtCreate;
+    @TableField("company_name")
+    private String companyName;
 
-	/** Last modification timestamp */
-	@TableField("gmt_modified")
-	private Date gmtModified;
+    @TableField("gmt_create")
+    private Date gmtCreate;
 
-	/** Username of the creator */
-	private String creator;
+    @TableField("gmt_modified")
+    private Date gmtModified;
 
-	/** Username of the last modifier */
-	private String modifier;
+    private String creator;
 
+    private String modifier;
 }

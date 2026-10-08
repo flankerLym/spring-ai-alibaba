@@ -23,44 +23,32 @@ import lombok.Data;
 import java.io.Serializable;
 import java.util.Date;
 
-/**
- * Represents an API key entity for authentication and authorization.
- *
- * @since 1.0.0.3
- */
-
+/** API Key business information. */
 @Data
 public class ApiKey implements Serializable {
 
-	/** Unique identifier for the API key */
-	private Long id;
+    private Long id;
 
-	/** The actual API key value used for authentication */
-	@JsonProperty("api_key")
-	private String apiKey;
+    @JsonProperty("api_key")
+    private String apiKey;
 
-	/** Description of the API key's purpose */
-	private String description;
+    private String description;
 
-	/** ID of the account this API key belongs to */
-	@JsonProperty("account_id")
-	private String accountId;
+    /** Company name, stored in api_key.company_name (varchar(200)). */
+    private String companyName;
 
-	/** Current status of the API key (e.g., active, inactive) */
-	private CommonStatus status;
+    @JsonProperty("account_id")
+    private String accountId;
 
-	/** Creation timestamp */
-	@JsonProperty("gmt_create")
-	private Date gmtCreate;
+    private CommonStatus status;
 
-	/** Last modification timestamp */
-	@JsonProperty("gmt_modified")
-	private Date gmtModified;
+    @JsonProperty("gmt_create")
+    private Date gmtCreate;
 
-	/** Username of the creator */
-	private String creator;
+    @JsonProperty("gmt_modified")
+    private Date gmtModified;
 
-	/** Username of the last modifier */
-	private String modifier;
+    private String creator;
 
+    private String modifier;
 }

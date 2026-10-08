@@ -18,6 +18,7 @@ import {
   ApartmentOutlined,
   ToolOutlined,
   SwapOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import $i18n from '@/i18n';
 import Header from './Header';
@@ -33,85 +34,31 @@ import PromptAPI from '@/legacy/services';
 
 const { Sider, Content } = AntLayout;
 
-// 获取应该高亮的菜单项 key
 const getSelectedMenuKey = (pathname: string): string => {
-  // 应用相关页面
-  if (pathname.startsWith('/app')) {
-    return '/app';
-  }
-
-  // MCP 相关页面
-  if (pathname.startsWith('/mcp')) {
-    return '/mcp';
-  }
-
-  // 组件相关页面
-  if (pathname.startsWith('/component')) {
-    return '/component';
-  }
-
-  // 知识库相关页面
-  if (pathname.startsWith('/knowledge')) {
-    return '/knowledge';
-  }
-
-  // 设置相关页面
-  if (pathname.startsWith('/setting')) {
-    return '/setting';
-  }
-
-  // 调试页面
-  if (pathname.startsWith('/debug')) {
-    return '/debug';
-  }
-
-  // Dify 转换页面
-  if (pathname.startsWith('/dify')) {
-    return '/dify';
-  }
-
-  // Agent Schema 页面
-  if (pathname.startsWith('/agent-schema')) {
-    return '/agent-schema';
-  }
-
-  // 评测集相关页面
-  if (pathname.startsWith('/admin/evaluation/gather')) {
-    return '/admin/evaluation/gather';
-  }
-
-  // 评估器相关页面
+  if (pathname.startsWith('/app')) return '/app';
+  if (pathname.startsWith('/permission')) return '/permission';
+  if (pathname.startsWith('/mcp')) return '/mcp';
+  if (pathname.startsWith('/component')) return '/component';
+  if (pathname.startsWith('/knowledge')) return '/knowledge';
+  if (pathname.startsWith('/setting')) return '/setting';
+  if (pathname.startsWith('/debug')) return '/debug';
+  if (pathname.startsWith('/dify')) return '/dify';
+  if (pathname.startsWith('/agent-schema')) return '/agent-schema';
+  if (pathname.startsWith('/admin/evaluation/gather')) return '/admin/evaluation/gather';
   if (pathname.startsWith('/admin/evaluation/evaluator') || pathname === '/admin/evaluation/debug') {
     return '/admin/evaluation/evaluator';
   }
-
-  // 实验相关页面
-  if (pathname.startsWith('/admin/evaluation/experiment')) {
-    return '/admin/evaluation/experiment';
-  }
-
-  // Prompt 相关页面
+  if (pathname.startsWith('/admin/evaluation/experiment')) return '/admin/evaluation/experiment';
   if (
     pathname.startsWith('/admin/prompt') ||
     pathname === '/admin/prompts' ||
     pathname === '/admin/playground' ||
     pathname === '/admin/version-history'
   ) {
-    if (pathname === '/admin/playground') {
-      return '/admin/playground';
-    }
-    return '/admin/prompts';
+    return pathname === '/admin/playground' ? '/admin/playground' : '/admin/prompts';
   }
-
-  if (pathname.startsWith('/admin/workflow-tracing')) {
-    return '/admin/workflow-tracing';
-  }
-  // Tracing 页面
-  if (pathname.startsWith('/admin/tracing')) {
-    return '/admin/tracing';
-  }
-
-  // 默认情况，直接返回当前路径
+  if (pathname.startsWith('/admin/workflow-tracing')) return '/admin/workflow-tracing';
+  if (pathname.startsWith('/admin/tracing')) return '/admin/tracing';
   return pathname;
 };
 
@@ -122,12 +69,10 @@ export default function SideMenuLayout({ children }: { children: React.ReactNode
   const [models, setModels] = useState<any[]>([]);
   const [modelNameMap, setModelNameMap] = useState<Record<number, string>>({});
 
-  // 加载模型列表（用于 legacy 页面）
   useEffect(() => {
     PromptAPI.getModels()
       .then((res: any) => {
         const items = res.pageItems || [];
-
         const nameMap = items.reduce(
           (acc: Record<number, string>, item: any) => {
             acc[item.id] = item.name;
@@ -135,7 +80,6 @@ export default function SideMenuLayout({ children }: { children: React.ReactNode
           },
           {},
         );
-
         setModelNameMap(nameMap);
         setModels(items);
       })
@@ -144,10 +88,8 @@ export default function SideMenuLayout({ children }: { children: React.ReactNode
       });
   }, []);
 
-  // 获取应该高亮的菜单项 key
   const selectedKey = useMemo(() => getSelectedMenuKey(location.pathname), [location.pathname]);
 
-  // 构建菜单项
   const menuItems = useMemo(
     () => [
       {
@@ -166,11 +108,7 @@ export default function SideMenuLayout({ children }: { children: React.ReactNode
             }),
             icon: <AppstoreOutlined />,
           },
-          {
-            key: '/mcp',
-            label: 'MCP',
-            icon: <ApiOutlined />,
-          },
+          { key: '/mcp', label: 'MCP', icon: <ApiOutlined /> },
           {
             key: '/component',
             label: $i18n.get({
@@ -197,6 +135,12 @@ export default function SideMenuLayout({ children }: { children: React.ReactNode
           },
         ],
       },
+      // Permission management is the second top-level navigation item.
+      {
+        key: '/permission',
+        label: '权限管理',
+        icon: <SafetyCertificateOutlined />,
+      },
       {
         key: 'prompt',
         label: $i18n.get({
@@ -205,16 +149,8 @@ export default function SideMenuLayout({ children }: { children: React.ReactNode
         }),
         icon: <BulbOutlined />,
         children: [
-          {
-            key: '/admin/prompts',
-            label: 'Prompts',
-            icon: <UnorderedListOutlined />,
-          },
-          {
-            key: '/admin/playground',
-            label: 'Playground',
-            icon: <PlayCircleOutlined />,
-          },
+          { key: '/admin/prompts', label: 'Prompts', icon: <UnorderedListOutlined /> },
+          { key: '/admin/playground', label: 'Playground', icon: <PlayCircleOutlined /> },
         ],
       },
       {
@@ -227,26 +163,17 @@ export default function SideMenuLayout({ children }: { children: React.ReactNode
         children: [
           {
             key: '/admin/evaluation/gather',
-            label: $i18n.get({
-              id: 'main.layouts.SideMenu.evaluationSet',
-              dm: '评测集',
-            }),
+            label: $i18n.get({ id: 'main.layouts.SideMenu.evaluationSet', dm: '评测集' }),
             icon: <UnorderedListOutlined />,
           },
           {
             key: '/admin/evaluation/evaluator',
-            label: $i18n.get({
-              id: 'main.layouts.SideMenu.evaluator',
-              dm: '评估器',
-            }),
+            label: $i18n.get({ id: 'main.layouts.SideMenu.evaluator', dm: '评估器' }),
             icon: <BarChartOutlined />,
           },
           {
             key: '/admin/evaluation/experiment',
-            label: $i18n.get({
-              id: 'main.layouts.SideMenu.experiment',
-              dm: '实验',
-            }),
+            label: $i18n.get({ id: 'main.layouts.SideMenu.experiment', dm: '实验' }),
             icon: <ExperimentOutlined />,
           },
         ],
@@ -259,16 +186,8 @@ export default function SideMenuLayout({ children }: { children: React.ReactNode
         }),
         icon: <LineChartOutlined />,
         children: [
-          {
-            key: '/admin/tracing',
-            label: 'Tracing',
-            icon: <NodeIndexOutlined />,
-          },
-          {
-            key: '/admin/workflow-tracing',
-            label: '工作流Trace',
-            icon: <ApartmentOutlined />,
-          },
+          { key: '/admin/tracing', label: 'Tracing', icon: <NodeIndexOutlined /> },
+          { key: '/admin/workflow-tracing', label: '工作流Trace', icon: <ApartmentOutlined /> },
         ],
       },
       {
@@ -283,11 +202,7 @@ export default function SideMenuLayout({ children }: { children: React.ReactNode
     [],
   );
 
-  const handleMenuClick = ({ key }: { key: string }) => {
-    navigate(key);
-  };
-
-  // 判断是否应该隐藏侧边栏（登录页、首页等）
+  const handleMenuClick = ({ key }: { key: string }) => navigate(key);
   const shouldHideSidebar = ['/login', '/', '/home'].includes(location.pathname);
 
   if (shouldHideSidebar) {
@@ -313,13 +228,7 @@ export default function SideMenuLayout({ children }: { children: React.ReactNode
   return (
     <PureLayout>
       <LoginProvider>
-        <ModelsContext.Provider
-          value={{
-            models,
-            modelNameMap,
-            setModels,
-          }}
-        >
+        <ModelsContext.Provider value={{ models, modelNameMap, setModels }}>
           <AntLayout className="h-screen">
             <Sider
               width={256}
@@ -336,7 +245,6 @@ export default function SideMenuLayout({ children }: { children: React.ReactNode
                     {!collapsed && 'SAA Admin'}
                   </h1>
                 </div>
-
                 <div className={styles['sidebar-menu']}>
                   <Menu
                     mode="inline"
@@ -348,10 +256,7 @@ export default function SideMenuLayout({ children }: { children: React.ReactNode
                     inlineCollapsed={collapsed}
                   />
                 </div>
-
-                <div
-                  className={`${styles['sidebar-fixed-section']} border-t border-gray-200 bg-white`}
-                >
+                <div className={`${styles['sidebar-fixed-section']} border-t border-gray-200 bg-white`}>
                   <div
                     className="flex items-center justify-center p-4 cursor-pointer hover:bg-gray-50 transition-colors"
                     onClick={() => setCollapsed(!collapsed)}
@@ -373,7 +278,6 @@ export default function SideMenuLayout({ children }: { children: React.ReactNode
                 </div>
               </div>
             </Sider>
-
             <AntLayout style={{ marginLeft: collapsed ? 80 : 256, transition: 'margin-left 0.2s' }}>
               <Header
                 right={

@@ -1,19 +1,15 @@
 import InnerLayout from '@/components/InnerLayout';
 import $i18n from '@/i18n';
 import { deleteApiKey, getApiKey, listApiKeys } from '@/services/apiKey';
-import { IApiKey } from '@/types/apiKey';
-import {
-  AlertDialog,
-  Button,
-  IconFont,
-  message,
-  Pagination,
-} from '@spark-ai/design';
+import type { IApiKey } from '@/types/apiKey';
+import { AlertDialog, Button, IconFont, message, Pagination } from '@spark-ai/design';
 import { Table } from 'antd';
+import type { TableProps } from 'antd';
 import copy from 'copy-to-clipboard';
 import dayjs from 'dayjs';
 import { useEffect, useState } from 'react';
 import CreateModal from './components/CreateModal';
+import EditModal from './components/EditModal';
 import styles from './index.module.less';
 
 export default function APIKeys() {
@@ -23,22 +19,19 @@ export default function APIKeys() {
   const [current, setCurrent] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [isKeyVisible, setIsKeyVisible] = useState<
-    Record<string, string | boolean>
-  >({});
+  const [editingKey, setEditingKey] = useState<IApiKey | null>(null);
+  const [visibleKeys, setVisibleKeys] = useState<Record<string, string>>({});
 
   const fetchApiKeys = async (page = current, size = pageSize) => {
     setLoading(true);
     try {
-      const res = await listApiKeys({
-        current: page,
-        size: size,
-      });
+      const res = await listApiKeys({ current: page, size });
       if (res.data) {
-        setApiKeys(res.data.records);
-        setTotal(res.data.total);
-        setCurrent(res.data.current);
-        setPageSize(res.data.size);
+        setApiKeys(res.data.records || []);
+        setTotal(res.data.total || 0);
+        setCurrent(res.data.current || page);
+        setPageSize(res.data.size || size);
+        setVisibleKeys({});
       }
     } finally {
       setLoading(false);
@@ -46,68 +39,54 @@ export default function APIKeys() {
   };
 
   useEffect(() => {
-    fetchApiKeys();
+    fetchApiKeys(1, 10);
   }, []);
 
   const handleDeleteApiKey = (id: number | string) => {
     AlertDialog.warning({
-      title: $i18n.get({
-        id: 'main.pages.Setting.APIKeys.index.deleteApiKey',
-        dm: '删除API KEY',
-      }),
-      children: $i18n.get({
-        id: 'main.pages.Setting.APIKeys.index.confirmDelete',
-        dm: '删除后将无法使用该API KEY，确定要删除吗？',
-      }),
+      title: '删除 API KEY',
+      children: '删除后将无法使用该 API KEY，确定要删除吗？',
       onOk: async () => {
-        const res = await deleteApiKey(id);
-        if (res) {
-          message.success(
-            $i18n.get({
-              id: 'main.pages.Setting.APIKeys.index.deleteSuccess',
-              dm: '删除成功',
-            }),
-          );
-          fetchApiKeys();
-        }
+        await deleteApiKey(id);
+        message.success('删除成功');
+        const previousPage = apiKeys.length === 1 && current > 1 ? current - 1 : current;
+        await fetchApiKeys(previousPage, pageSize);
       },
     });
-  };
-
-  const handleCreateApiKey = () => {
-    setIsCreateModalOpen(true);
-  };
-
-  const handleCreateSuccess = () => {
-    setIsCreateModalOpen(false);
-    fetchApiKeys();
   };
 
   const showApiKey = async (id: number | string) => {
     const res = await getApiKey(id);
     if (res?.data?.api_key) {
-      setIsKeyVisible({
-        [id]: res.data.api_key,
-      });
+      setVisibleKeys((previous) => ({
+        ...previous,
+        [String(id)]: res.data.api_key as string,
+      }));
     }
   };
 
-  const columns = [
+  const columns: TableProps<IApiKey>['columns'] = [
     {
       title: 'API KEY',
       dataIndex: 'api_key',
       key: 'api_key',
-      width: 500,
-      render: (text: string, record: IApiKey) => {
-        const id = record.id || '';
-        return (
-          <div className={styles['api-key-cell']}>
-            <span className={styles['api-key-text']}>
-              {isKeyVisible[id] ? isKeyVisible[id] : text}
-            </span>
-          </div>
-        );
-      },
+      width: 260,
+      render: (value: string, record) => (
+        <div className={styles['api-key-cell']}>
+          <span className={styles['api-key-text']}>
+            {record.id != null && visibleKeys[String(record.id)]
+              ? visibleKeys[String(record.id)]
+              : value || '--'}
+          </span>
+        </div>
+      ),
+    },
+    {
+      title: '企业名称',
+      dataIndex: 'companyName',
+      key: 'companyName',
+      width: 180,
+      render: (value?: string) => value || '--',
     },
     {
       title: $i18n.get({
@@ -116,113 +95,78 @@ export default function APIKeys() {
       }),
       dataIndex: 'description',
       key: 'description',
+      ellipsis: true,
+      render: (value?: string) => value || '--',
     },
     {
-      title: $i18n.get({
-        id: 'main.pages.Setting.APIKeys.index.createTime',
-        dm: '创建时间',
-      }),
+      title: '创建时间',
       dataIndex: 'gmt_create',
       key: 'gmt_create',
-      render: (text: string) => {
-        return (
-          <span>{text ? dayjs(text).format('YYYY-MM-DD HH:mm:ss') : ''}</span>
-        );
-      },
+      width: 170,
+      render: (value?: string) => value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '--',
     },
     {
-      title: $i18n.get({
-        id: 'main.pages.Setting.APIKeys.index.operation',
-        dm: '操作',
-      }),
+      title: '操作',
       key: 'action',
-      render: (_: any, record: IApiKey) => {
-        const id = record.id || '';
+      width: 240,
+      render: (_, record) => {
+        if (record.id == null) return null;
+        const id = String(record.id);
         return (
           <div className={styles['action-column']}>
-            {isKeyVisible[id] ? (
-              <Button
-                type="link"
-                onClick={() => {
-                  copy(isKeyVisible[id] as string);
-                  message.success(
-                    $i18n.get({
-                      id: 'main.utils.base.copySuccess',
-                      dm: '复制成功',
-                    }),
-                  );
-                }}
-              >
-                {$i18n.get({
-                  id: 'main.pages.Setting.APIKeys.index.copy',
-                  dm: '复制',
-                })}
-              </Button>
+            {visibleKeys[id] ? (
+              <>
+                <Button type="link" onClick={() => {
+                  copy(visibleKeys[id]);
+                  message.success('复制成功');
+                }}>复制</Button>
+                <Button type="link" onClick={() => {
+                  setVisibleKeys((prev) => {
+                    const next = { ...prev };
+                    delete next[id];
+                    return next;
+                  });
+                }}>隐藏</Button>
+              </>
             ) : (
-              <Button type="link" onClick={() => showApiKey(id)}>
-                {$i18n.get({
-                  id: 'main.pages.Setting.APIKeys.index.view',
-                  dm: '查看',
-                })}
-              </Button>
+              <Button type="link" onClick={() => showApiKey(id)}>查看</Button>
             )}
-            <Button type="link" onClick={() => handleDeleteApiKey(id)}>
-              {$i18n.get({
-                id: 'main.pages.Setting.APIKeys.index.delete',
-                dm: '删除',
-              })}
-            </Button>
+            <Button type="link" onClick={() => setEditingKey(record)}>编辑</Button>
+            <Button type="link" onClick={() => handleDeleteApiKey(id)}>删除</Button>
           </div>
         );
       },
     },
   ];
 
-  const pagination = (
-    <div className={styles.pagination}>
-      <Pagination
-        hideTips
-        current={current}
-        pageSize={pageSize}
-        total={total}
-        onChange={async (current, pageSize) => {
-          await fetchApiKeys(current, pageSize);
-        }}
-      />
-    </div>
-  );
-
   return (
     <InnerLayout
       breadcrumbLinks={[
-        {
-          title: $i18n.get({
-            id: 'main.pages.App.index.home',
-            dm: '首页',
-          }),
-          path: '/',
-        },
-        {
-          title: $i18n.get({
-            id: 'main.pages.Setting.APIKeys.index.apiKeyManagement',
-            dm: 'API KEY 管理',
-          }),
-        },
+        { title: '首页', path: '/' },
+        { title: '权限管理', path: '/permission' },
+        { title: 'API KEY 管理' },
       ]}
-      left={total}
+      left={`共 ${total} 个 API KEY`}
       right={
         <Button
           type="primary"
           icon={<IconFont type="spark-plus-line" />}
-          onClick={handleCreateApiKey}
+          onClick={() => setIsCreateModalOpen(true)}
         >
-          {$i18n.get({
-            id: 'main.pages.Setting.APIKeys.index.createApiKey',
-            dm: '创建API KEY',
-          })}
+          新增 API KEY
         </Button>
       }
-      bottom={pagination}
+      bottom={
+        <div className={styles.pagination}>
+          <Pagination
+            hideTips
+            current={current}
+            pageSize={pageSize}
+            total={total}
+            onChange={(page, size) => fetchApiKeys(page, size)}
+          />
+        </div>
+      }
     >
       <div className={styles.container}>
         <Table
@@ -231,14 +175,26 @@ export default function APIKeys() {
           dataSource={apiKeys}
           rowKey="id"
           pagination={false}
-        />
-
-        <CreateModal
-          open={isCreateModalOpen}
-          onCancel={() => setIsCreateModalOpen(false)}
-          onSuccess={handleCreateSuccess}
+          scroll={{ x: 1150 }}
         />
       </div>
+      <CreateModal
+        open={isCreateModalOpen}
+        onCancel={() => setIsCreateModalOpen(false)}
+        onSuccess={() => {
+          setIsCreateModalOpen(false);
+          fetchApiKeys(1, pageSize);
+        }}
+      />
+      <EditModal
+        open={!!editingKey}
+        record={editingKey}
+        onCancel={() => setEditingKey(null)}
+        onSuccess={() => {
+          setEditingKey(null);
+          fetchApiKeys(current, pageSize);
+        }}
+      />
     </InnerLayout>
   );
 }

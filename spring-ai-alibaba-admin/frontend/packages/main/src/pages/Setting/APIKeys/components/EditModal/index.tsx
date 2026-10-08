@@ -1,28 +1,36 @@
-import $i18n from '@/i18n';
-import { createApiKey } from '@/services/apiKey';
+import { updateApiKey } from '@/services/apiKey';
+import type { IApiKey } from '@/types/apiKey';
 import { Form, Input, message, Modal } from '@spark-ai/design';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
-interface CreateModalProps {
+interface EditModalProps {
   open: boolean;
+  record: IApiKey | null;
   onCancel: () => void;
   onSuccess: () => void;
 }
 
-const CreateModal: React.FC<CreateModalProps> = ({ open, onCancel, onSuccess }) => {
+const EditModal: React.FC<EditModalProps> = ({ open, record, onCancel, onSuccess }) => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (open && record) {
+      form.setFieldsValue({
+        companyName: record.companyName || '',
+        description: record.description || '',
+      });
+    }
+  }, [open, record, form]);
+
   const handleSubmit = async () => {
+    if (record?.id == null) return;
     try {
       const values = await form.validateFields();
       setLoading(true);
-      const res = await createApiKey(values);
-      if (res && res.data) {
-        message.success($i18n.get({
-          id: 'main.pages.Setting.APIKeys.components.CreateModal.index.createSuccess',
-          dm: '创建成功',
-        }));
+      const res = await updateApiKey(record.id, values);
+      if (res) {
+        message.success('保存成功');
         form.resetFields();
         onSuccess();
       }
@@ -40,7 +48,7 @@ const CreateModal: React.FC<CreateModalProps> = ({ open, onCancel, onSuccess }) 
 
   return (
     <Modal
-      title="创建 API KEY"
+      title="编辑 API KEY"
       open={open}
       onCancel={handleCancel}
       onOk={handleSubmit}
@@ -67,4 +75,4 @@ const CreateModal: React.FC<CreateModalProps> = ({ open, onCancel, onSuccess }) 
   );
 };
 
-export default CreateModal;
+export default EditModal;

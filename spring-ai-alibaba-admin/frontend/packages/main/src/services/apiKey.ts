@@ -1,12 +1,12 @@
 import { request } from '@/request';
-import type { IApiKey, ICreateApiKeyParams, IPagingList } from '@/types/apiKey';
-import { IApiResponse } from '@/types/common';
+import type {
+  IApiKey,
+  ICreateApiKeyParams,
+  IUpdateApiKeyParams,
+  IPagingList,
+} from '@/types/apiKey';
+import type { IApiResponse } from '@/types/common';
 
-/**
- * Create API Key
- * @param params Creation parameters
- * @returns Promise<IApiResponse<string>> Creation result
- */
 export async function createApiKey(
   params: ICreateApiKeyParams,
 ): Promise<IApiResponse<string>> {
@@ -18,11 +18,18 @@ export async function createApiKey(
   return response.data;
 }
 
-/**
- * Delete API Key
- * @param id API Key ID
- * @returns Promise<IApiResponse<null>> Deletion result
- */
+export async function updateApiKey(
+  id: string | number,
+  params: IUpdateApiKeyParams,
+): Promise<IApiResponse<null>> {
+  const response = await request({
+    url: `/console/v1/api-keys/${id}`,
+    method: 'PUT',
+    data: params,
+  });
+  return response.data;
+}
+
 export async function deleteApiKey(
   id: string | number,
 ): Promise<IApiResponse<null>> {
@@ -33,11 +40,6 @@ export async function deleteApiKey(
   return response.data;
 }
 
-/**
- * Get single API Key
- * @param id API Key ID
- * @returns Promise<IApiResponse<IApiKey>> API Key details
- */
 export async function getApiKey(
   id: string | number,
 ): Promise<IApiResponse<IApiKey>> {
@@ -48,11 +50,6 @@ export async function getApiKey(
   return response.data;
 }
 
-/**
- * Get API Key list
- * @param params Query parameters
- * @returns Promise<IApiResponse<IPagingList<IApiKey>>> API Key list
- */
 export async function listApiKeys(params?: {
   size?: number;
   current?: number;
