@@ -7,3 +7,4 @@ src/.umi-production
 src/.umi-test
 dist
 .swc
+dist.7z
