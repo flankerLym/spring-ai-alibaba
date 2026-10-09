@@ -47,8 +47,11 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.CollectionUtils;
 
 import java.util.ArrayList;
@@ -68,6 +71,9 @@ import static com.alibaba.cloud.ai.studio.core.base.constants.CacheConstants.CAC
 /** API Key service with account isolation, encryption, cache and app-level access scope. */
 @Service
 public class ApiKeyServiceImpl extends ServiceImpl<ApiKeyMapper, ApiKeyEntity> implements ApiKeyService {
+
+    @Autowired
+    private ApiKeyPermissionCacheService permissionCache;
 
     private static final int MAX_API_KEY_PER_ACCOUNT = 20;
 
@@ -132,7 +138,10 @@ public class ApiKeyServiceImpl extends ServiceImpl<ApiKeyMapper, ApiKeyEntity> i
         this.save(entity);
 
         replacePermissions(entity.getId(), entity.getScopeType(), apiKey.getResources(), context);
-        refreshCaches(entity, apiKeyString, context.getAccountId());
+        afterCommit(() -> {
+            refreshCaches(entity, apiKeyString, context.getAccountId());
+            permissionCache.refresh(context.getWorkspaceId(), entity.getId());
+        });
         return entity.getId();
     }
 
@@ -162,7 +171,10 @@ public class ApiKeyServiceImpl extends ServiceImpl<ApiKeyMapper, ApiKeyEntity> i
         this.updateById(entity);
 
         String originalKey = AESCryptUtils.decrypt(entity.getApiKey());
-        refreshCaches(entity, originalKey, context.getAccountId());
+        afterCommit(() -> {
+            refreshCaches(entity, originalKey, context.getAccountId());
+            permissionCache.refresh(context.getWorkspaceId(), entity.getId());
+        });
     }
 
     @Override
@@ -183,8 +195,11 @@ public class ApiKeyServiceImpl extends ServiceImpl<ApiKeyMapper, ApiKeyEntity> i
                 .eq(ApiKeyResourcePermissionEntity::getApiKeyId, id));
 
         String originalKey = AESCryptUtils.decrypt(entity.getApiKey());
-        redisManager.delete(getApiKeyCacheKey(originalKey));
-        redisManager.delete(getApiKeyCacheKey(context.getAccountId(), entity.getId()));
+        afterCommit(() -> {
+            redisManager.delete(getApiKeyCacheKey(originalKey));
+            redisManager.delete(getApiKeyCacheKey(context.getAccountId(), entity.getId()));
+            permissionCache.evict(context.getWorkspaceId(), id);
+        });
     }
 
     @Override
@@ -247,10 +262,8 @@ public class ApiKeyServiceImpl extends ServiceImpl<ApiKeyMapper, ApiKeyEntity> i
             return null;
         }
 
-        List<ApiKeyResourcePermissionEntity> permissions = permissionMapper.selectList(
-                new LambdaQueryWrapper<ApiKeyResourcePermissionEntity>()
-                        .eq(ApiKeyResourcePermissionEntity::getApiKeyId, apiKeyId)
-                        .eq(ApiKeyResourcePermissionEntity::getWorkspaceId, workspaceId));
+        List<ApiKeyResourcePermissionEntity> permissions =
+                permissionCache.get(workspaceId, apiKeyId);
 
         Set<String> appIds = new LinkedHashSet<>();
         Set<String> folderIds = new LinkedHashSet<>();
@@ -463,5 +476,15 @@ public class ApiKeyServiceImpl extends ServiceImpl<ApiKeyMapper, ApiKeyEntity> i
             apiKey.setApiKey(originApiKey);
         }
         return apiKey;
+    }
+    private void afterCommit(Runnable action) {
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        action.run();
+                    }
+                }
+        );
     }
 }
