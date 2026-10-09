@@ -1,6 +1,7 @@
 package com.alibaba.cloud.ai.studio.admin.conversation;
 
 import com.alibaba.cloud.ai.studio.core.conversation.ConversationManager;
+import com.alibaba.cloud.ai.studio.core.conversation.ConversationSessionVariablesService;
 import com.alibaba.cloud.ai.studio.core.conversation.ConversationPersistenceScope;
 import com.alibaba.cloud.ai.studio.core.utils.common.IdGenerator;
 import com.alibaba.cloud.ai.studio.core.workflow.WorkflowContext;
@@ -25,6 +26,8 @@ import org.springframework.stereotype.Component;
 public class ConversationPersistenceAspect {
 
     private final ConversationManager conversationManager;
+
+    private final ConversationSessionVariablesService sessionVariablesService;
 
     @Around("@annotation(com.alibaba.cloud.ai.studio.core.conversation.annotation.Conversation)")
     public Object aroundRunTask(ProceedingJoinPoint joinPoint) throws Throwable {
@@ -64,6 +67,7 @@ public class ConversationPersistenceAspect {
         try {
             Object result = joinPoint.proceed();
             if (NodeStatusEnum.SUCCESS.getCode().equals(context.getTaskStatus())) {
+                sessionVariablesService.save(context);
                 conversationManager.saveWorkflowAssistantMessage(context);
             }
             return result;
@@ -86,6 +90,7 @@ public class ConversationPersistenceAspect {
         try {
             Object result = joinPoint.proceed();
             if (NodeStatusEnum.SUCCESS.getCode().equals(context.getTaskStatus())) {
+                sessionVariablesService.save(context);
                 conversationManager.saveWorkflowAssistantMessage(context);
             }
             return result;
