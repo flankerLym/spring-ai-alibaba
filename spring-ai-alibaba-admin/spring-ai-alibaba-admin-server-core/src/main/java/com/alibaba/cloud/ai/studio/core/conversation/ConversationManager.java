@@ -42,7 +42,6 @@ public class ConversationManager {
 
 	private static final String NORMAL = "normal";
 	private static final String SUCCESS = "success";
-	private static final String TEXT = "text";
 	private static final String MEMORY_SOURCE = "memory";
 	private static final String CONVERSATION_CHAT_MEMORY_PREFIX = "conversation_chat:%s";
 
@@ -94,35 +93,23 @@ public class ConversationManager {
 
 		Long appId = requireLong(context.getAppId(), "app_id");
 		Long conversationId = requireLong(context.getConversationId(), "conversation_id");
-		String userId = normalizeUserId(context.getUserId());
 		String requestId = context.getRequestId();
+		String userId = normalizeUserId(context.getUserId());
 		String invokeSource = resolveWorkflowInvokeSource(context);
 
-		ConversationRecordEntity record =
-				lockOrCreateConversation(appId, conversationId, invokeSource, userId);
-
-		if (messageExists(conversationId, requestId, "user")) {
+		// 先锁定会话，避免同一轮请求重试造成重复的问答记录和轮次计数。
+		ConversationRecordEntity record = lockOrCreateConversation(appId, conversationId, invokeSource, userId);
+		if (findTurnByRequest(appId, conversationId, requestId) != null) {
 			return;
 		}
 
-		int sequence = safeCount(record) + 1;
-		String input = resolveWorkflowInput(context);
-
-		ConversationMessageEntity userMessage = newMessage(
-				appId, conversationId, sequence, "user", input,
+		String question = resolveWorkflowInput(context);
+		ConversationMessageEntity turn = newTurn(appId, conversationId, question,
 				context.getTraceId(), requestId, userId);
-		conversationMessageMapper.insert(userMessage);
-
-		fillConversationName(record, input);
-		record.setMessageCount(sequence);
-		record.setUpdatedAt(new Date());
-		if (StringUtils.isNotBlank(invokeSource)) {
-			record.setInvokeSource(invokeSource);
-		}
-		if (userId != null) {
-			record.setUserId(userId);
-		}
-		conversationRecordMapper.updateById(record);
+		conversationMessageMapper.insert(turn);
+		fillConversationName(record, question);
+		// message_count 现在是问答轮数，写入提问时 +1，补写回答不再 +1。
+		updateConversation(record, invokeSource, userId, 1);
 	}
 
 	@Transactional(rollbackFor = Exception.class)
@@ -137,38 +124,62 @@ public class ConversationManager {
 		String userId = normalizeUserId(context.getUserId());
 		String requestId = context.getRequestId();
 		String invokeSource = resolveWorkflowInvokeSource(context);
+		ConversationRecordEntity record = lockOrCreateConversation(appId, conversationId, invokeSource, userId);
 
-		ConversationRecordEntity record =
-				lockOrCreateConversation(appId, conversationId, invokeSource, userId);
-
-		if (messageExists(conversationId, requestId, "assistant")) {
-			redisManager.delete(memoryRedisKey(memoryConversationId(appId, conversationId)));
+		ConversationMessageEntity turn = findTurnByRequest(appId, conversationId, requestId);
+		String answer = context.getTaskResult() == null ? "" : context.getTaskResult();
+		int newTurns = 0;
+		if (turn == null) {
+			// 容错：个别执行入口没有提前写入问题，也只会生成一条完整问答记录。
+			turn = newTurn(appId, conversationId, resolveWorkflowInput(context),
+					context.getTraceId(), requestId, userId);
+			turn.setAnswer(answer);
+			turn.setStatus(SUCCESS);
+			conversationMessageMapper.insert(turn);
+			fillConversationName(record, turn.getQuestion());
+			newTurns = 1;
+		}
+		else if (!SUCCESS.equals(turn.getStatus())) {
+			turn.setAnswer(answer);
+			turn.setStatus(SUCCESS);
+			if (StringUtils.isNotBlank(context.getTraceId())) {
+				turn.setTraceId(context.getTraceId());
+			}
+			turn.setUpdatedAt(new Date());
+			conversationMessageMapper.updateById(turn);
+		}
+		else {
+			// END 的回调或重试可能多次触发，已完成轮次保持幂等。
+			invalidateMemoryCache(appId, conversationId);
 			return;
 		}
+		updateConversation(record, invokeSource, userId, newTurns);
+		// 下次 ChatMemory.get 从问答表还原 user/assistant 消息，避免旧缓存重复。
+		invalidateMemoryCache(appId, conversationId);
+	}
 
-		ConversationMessageEntity userMessage = findMessage(conversationId, requestId, "user");
-		int sequence = safeCount(record) + 1;
-		String output = context.getTaskResult() == null ? "" : context.getTaskResult();
-
-		ConversationMessageEntity assistantMessage = newMessage(
-				appId, conversationId, sequence, "assistant", output,
-				context.getTraceId(), requestId, userId);
-		if (userMessage != null) {
-			assistantMessage.setParentMessageId(userMessage.getMessageId());
+	/** Finalizes a pending question if execution failed or was stopped before reaching END. */
+	@Transactional(rollbackFor = Exception.class)
+	public void finishWorkflowFailedMessage(WorkflowContext context) {
+		if (context == null || StringUtils.isAnyBlank(
+				context.getAppId(), context.getConversationId(), context.getRequestId())) {
+			return;
 		}
-		conversationMessageMapper.insert(assistantMessage);
-
-		record.setMessageCount(sequence);
-		record.setUpdatedAt(new Date());
-		if (StringUtils.isNotBlank(invokeSource)) {
-			record.setInvokeSource(invokeSource);
+		Long appId = requireLong(context.getAppId(), "app_id");
+		Long conversationId = requireLong(context.getConversationId(), "conversation_id");
+		ConversationRecordEntity record = conversationRecordMapper.selectByIdForUpdate(conversationId);
+		if (record == null) {
+			return;
 		}
-		if (userId != null) {
-			record.setUserId(userId);
+		checkApp(record, appId);
+		ConversationMessageEntity turn = findTurnByRequest(appId, conversationId, context.getRequestId());
+		if (turn == null || SUCCESS.equals(turn.getStatus())) {
+			return;
 		}
-		conversationRecordMapper.updateById(record);
-
-		redisManager.delete(memoryRedisKey(memoryConversationId(appId, conversationId)));
+		turn.setStatus("fail");
+		turn.setUpdatedAt(new Date());
+		conversationMessageMapper.updateById(turn);
+		invalidateMemoryCache(appId, conversationId);
 	}
 
 	@Transactional(rollbackFor = Exception.class)
@@ -176,7 +187,6 @@ public class ConversationManager {
 		if (messages == null || messages.isEmpty()) {
 			return;
 		}
-
 		ConversationKey key = parseMemoryConversationId(memoryConversationId);
 		if (key == null) {
 			log.warn("Skip DB conversation persistence: unsupported memory conversation id={}", memoryConversationId);
@@ -186,45 +196,45 @@ public class ConversationManager {
 		RequestContext requestContext = RequestContextHolder.getRequestContext();
 		String userId = resolvePersistentUserId(requestContext);
 		String invokeSource = resolveInvokeSource(requestContext);
-
 		ConversationRecordEntity record = lockOrCreateConversation(
 				key.appId(), key.conversationId(), invokeSource, userId);
-
-		int sequence = safeCount(record) + 1;
-		Long lastUserMessageId = null;
-		int inserted = 0;
+		ConversationMessageEntity pending = null;
+		int newTurns = 0;
 
 		for (Message message : messages) {
 			if (message == null) {
 				continue;
 			}
-
-			ConversationMessageEntity entity = newMessage(
-					key.appId(), key.conversationId(), sequence++, role(message),
-					message.getText(), null, null, userId);
-
-			if ("assistant".equals(entity.getRole())) {
-				entity.setParentMessageId(lastUserMessageId);
+			String role = role(message);
+			String content = message.getText() == null ? "" : message.getText();
+			if ("user".equals(role)) {
+				// 新问题开启一个问答轮次；允许回答暂时为空。
+				pending = newTurn(key.appId(), key.conversationId(), content, null, null, userId);
+				conversationMessageMapper.insert(pending);
+				fillConversationName(record, content);
+				newTurns++;
 			}
-
-			conversationMessageMapper.insert(entity);
-			if ("user".equals(entity.getRole())) {
-				lastUserMessageId = entity.getMessageId();
-				fillConversationName(record, entity.getContent());
+			else if ("assistant".equals(role)) {
+				if (pending == null) {
+					// Agent 可能分两次 ChatMemory.add(user)、add(assistant)。
+					pending = findPendingTurn(key.appId(), key.conversationId());
+				}
+				if (pending == null) {
+					// 不丢失单独传入的 AI 消息；问题缺失时以空文本占位。
+					pending = newTurn(key.appId(), key.conversationId(), "", null, null, userId);
+					conversationMessageMapper.insert(pending);
+					newTurns++;
+				}
+				pending.setAnswer(content);
+				pending.setStatus(SUCCESS);
+				pending.setUpdatedAt(new Date());
+				conversationMessageMapper.updateById(pending);
+				pending = null;
 			}
-			inserted++;
+			// system/tool 没有 question/answer 的对应字段；保持在 ChatMemory 缓存中，不伪造问答行。
 		}
-
-		if (inserted > 0) {
-			record.setMessageCount(safeCount(record) + inserted);
-			record.setUpdatedAt(new Date());
-			if (StringUtils.isNotBlank(invokeSource)) {
-				record.setInvokeSource(invokeSource);
-			}
-			if (userId != null) {
-				record.setUserId(userId);
-			}
-			conversationRecordMapper.updateById(record);
+		if (newTurns > 0) {
+			updateConversation(record, invokeSource, userId, newTurns);
 		}
 	}
 
@@ -232,25 +242,23 @@ public class ConversationManager {
 		if (limit <= 0) {
 			return List.of();
 		}
-
 		ConversationKey key = parseMemoryConversationId(memoryConversationId);
 		if (key == null) {
 			return List.of();
 		}
-
+		// 数据库一行是一个问答轮次，ChatMemory 中仍按两条 Spring AI 消息计数。
+		int roundLimit = Math.max(1, (limit + 1) / 2);
 		List<ConversationMessageEntity> rows = conversationMessageMapper.selectList(
 				Wrappers.<ConversationMessageEntity>lambdaQuery()
 						.eq(ConversationMessageEntity::getAppId, key.appId())
 						.eq(ConversationMessageEntity::getConversationId, key.conversationId())
 						.eq(ConversationMessageEntity::getStatus, SUCCESS)
-						.orderByDesc(ConversationMessageEntity::getSequence)
-						.orderByDesc(ConversationMessageEntity::getMessageId)
-						.last("limit " + limit));
-
+						.orderByDesc(ConversationMessageEntity::getCreatedAt)
+						.orderByDesc(ConversationMessageEntity::getId)
+						.last("limit " + roundLimit));
 		if (rows == null || rows.isEmpty()) {
 			return List.of();
 		}
-
 		List<ConversationMessageEntity> result = new ArrayList<>(rows);
 		Collections.reverse(result);
 		return result;
@@ -276,33 +284,36 @@ public class ConversationManager {
 		redisManager.delete(memoryRedisKey(memoryConversationId));
 	}
 
-	private boolean messageExists(Long conversationId, String requestId, String role) {
-		if (StringUtils.isBlank(requestId)) {
-			return false;
-		}
-		Long existing = conversationMessageMapper.selectCount(
-				Wrappers.<ConversationMessageEntity>lambdaQuery()
-						.eq(ConversationMessageEntity::getConversationId, conversationId)
-						.eq(ConversationMessageEntity::getRequestId, requestId)
-						.eq(ConversationMessageEntity::getRole, role));
-		return existing != null && existing > 0;
-	}
-
-	private ConversationMessageEntity findMessage(Long conversationId, String requestId, String role) {
+	private ConversationMessageEntity findTurnByRequest(Long appId, Long conversationId, String requestId) {
 		if (StringUtils.isBlank(requestId)) {
 			return null;
 		}
 		List<ConversationMessageEntity> rows = conversationMessageMapper.selectList(
 				Wrappers.<ConversationMessageEntity>lambdaQuery()
+						.eq(ConversationMessageEntity::getAppId, appId)
 						.eq(ConversationMessageEntity::getConversationId, conversationId)
 						.eq(ConversationMessageEntity::getRequestId, requestId)
-						.eq(ConversationMessageEntity::getRole, role)
-						.orderByDesc(ConversationMessageEntity::getMessageId)
+						.orderByDesc(ConversationMessageEntity::getCreatedAt)
+						.orderByDesc(ConversationMessageEntity::getId)
 						.last("limit 1"));
 		return rows == null || rows.isEmpty() ? null : rows.get(0);
 	}
 
-	private ConversationRecordEntity lockOrCreateConversation(
+	private ConversationMessageEntity findPendingTurn(Long appId, Long conversationId) {
+		List<ConversationMessageEntity> rows = conversationMessageMapper.selectList(
+				Wrappers.<ConversationMessageEntity>lambdaQuery()
+						.eq(ConversationMessageEntity::getAppId, appId)
+						.eq(ConversationMessageEntity::getConversationId, conversationId)
+						.eq(ConversationMessageEntity::getStatus, "processing")
+						.isNull(ConversationMessageEntity::getAnswer)
+						.isNull(ConversationMessageEntity::getRequestId)
+						.orderByDesc(ConversationMessageEntity::getCreatedAt)
+						.orderByDesc(ConversationMessageEntity::getId)
+						.last("limit 1"));
+		return rows == null || rows.isEmpty() ? null : rows.get(0);
+	}
+
+		private ConversationRecordEntity lockOrCreateConversation(
 			Long appId, Long conversationId, String invokeSource, String userId) {
 
 		ConversationRecordEntity record = conversationRecordMapper.selectByIdForUpdate(conversationId);
@@ -325,26 +336,37 @@ public class ConversationManager {
 		return record;
 	}
 
-	private ConversationMessageEntity newMessage(
-			Long appId, Long conversationId, int sequence, String role,
-			String content, String traceId, String requestId, String userId) {
-
+	private ConversationMessageEntity newTurn(Long appId, Long conversationId, String question,
+			String traceId, String requestId, String userId) {
 		Date now = new Date();
 		ConversationMessageEntity entity = new ConversationMessageEntity();
 		entity.setMessageId(IdGenerator.id());
 		entity.setAppId(appId);
 		entity.setConversationId(conversationId);
-		entity.setSequence(sequence);
-		entity.setRole(role);
-		entity.setContent(content == null ? "" : content);
-		entity.setContentType(TEXT);
+		entity.setQuestion(question == null ? "" : question);
+		entity.setAnswer(null);
 		entity.setTraceId(traceId);
 		entity.setRequestId(requestId);
 		entity.setUserId(userId);
-		entity.setStatus(SUCCESS);
+		entity.setStatus("processing");
 		entity.setCreatedAt(now);
 		entity.setUpdatedAt(now);
 		return entity;
+	}
+
+	private void updateConversation(ConversationRecordEntity record, String invokeSource,
+			String userId, int newTurns) {
+		if (newTurns > 0) {
+			record.setMessageCount(safeCount(record) + newTurns);
+		}
+		record.setUpdatedAt(new Date());
+		if (StringUtils.isNotBlank(invokeSource)) {
+			record.setInvokeSource(invokeSource);
+		}
+		if (userId != null) {
+			record.setUserId(userId);
+		}
+		conversationRecordMapper.updateById(record);
 	}
 
 	private String resolveWorkflowInput(WorkflowContext context) {
@@ -468,6 +490,16 @@ public class ConversationManager {
 
 	private String memoryConversationId(Long appId, Long conversationId) {
 		return String.format(APPCODE_CONVERSATION_ID_TEMPLATE, appId, conversationId);
+	}
+
+	private void invalidateMemoryCache(Long appId, Long conversationId) {
+		try {
+			redisManager.delete(memoryRedisKey(memoryConversationId(appId, conversationId)));
+		}
+		catch (RuntimeException e) {
+			// PostgreSQL is authoritative; Redis failure must not roll back persisted question/answer.
+			log.warn("Conversation memory cache invalidation failed, conversationId={}", conversationId, e);
+		}
 	}
 
 	private String memoryRedisKey(String memoryConversationId) {

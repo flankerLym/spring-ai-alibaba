@@ -8,7 +8,7 @@ import lombok.Data;
 
 import java.util.Date;
 
-/** Conversation message record. */
+/** A single persisted question-and-answer turn (one row, ordered by created_at + id). */
 @Data
 @TableName("conversation_message_record")
 public class ConversationMessageEntity {
@@ -25,17 +25,9 @@ public class ConversationMessageEntity {
     @TableField("message_id")
     private Long messageId;
 
-    @TableField("parent_message_id")
-    private Long parentMessageId;
+    private String question;
 
-    private Integer sequence;
-
-    private String role;
-
-    private String content;
-
-    @TableField("content_type")
-    private String contentType;
+    private String answer;
 
     @TableField("trace_id")
     private String traceId;

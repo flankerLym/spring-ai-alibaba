@@ -10,6 +10,7 @@ import com.alibaba.cloud.ai.studio.runtime.domain.workflow.Node;
 import com.alibaba.cloud.ai.studio.runtime.domain.workflow.NodeStatusEnum;
 import com.alibaba.cloud.ai.studio.runtime.domain.workflow.NodeTypeEnum;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -19,6 +20,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 /** Conversation lifecycle integration. */
+@Slf4j
 @Aspect
 @Component
 @RequiredArgsConstructor
@@ -97,6 +99,32 @@ public class ConversationPersistenceAspect {
         }
         finally {
             ConversationPersistenceScope.exitWorkflowEnd();
+        }
+    }
+
+    /**
+     * WorkflowTraceManager.finishIfNecessary runs at the end of the async workflow task.
+     * Mark a still-pending user turn as failed if execution did not complete normally.
+     * PAUSE remains pending because it can still resume.
+     */
+    @org.aspectj.lang.annotation.After(
+            "execution(* com.alibaba.cloud.ai.studio.core.workflow.trace.service.WorkflowTraceManager.finishIfNecessary(..)) && args(context)")
+    public void afterWorkflowFinish(WorkflowContext context) {
+        if (context == null) {
+            return;
+        }
+        String status = context.getTaskStatus();
+        if (NodeStatusEnum.FAIL.getCode().equals(status)
+                || NodeStatusEnum.STOP.getCode().equals(status)
+                || NodeStatusEnum.EXECUTING.getCode().equals(status)) {
+            try {
+                conversationManager.finishWorkflowFailedMessage(context);
+            }
+            catch (Exception exception) {
+                // Keep trace completion intact while reporting the persistence failure.
+                log.error("Failed to finalize conversation QA turn, conversationId={}, taskId={}",
+                        context.getConversationId(), context.getTaskId(), exception);
+            }
         }
     }
 
