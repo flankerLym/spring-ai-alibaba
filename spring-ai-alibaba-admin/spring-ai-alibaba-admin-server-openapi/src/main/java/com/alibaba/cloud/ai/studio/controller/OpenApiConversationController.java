@@ -37,10 +37,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.Date;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 /** Read-only OpenAPI endpoints for conversations and their ordered history. */
 @RestController
@@ -73,27 +70,21 @@ public class OpenApiConversationController {
 
         RequestContext context = requireCaller();
         Set<Long> visibleApps = visibleAppIds(context);
-        Set<String> requestedApps = new LinkedHashSet<>();
-        if (StringUtils.isNotBlank(filter.getAppId())) {
-            requestedApps.add(filter.getAppId().trim());
+        Set<Long> requestedApps = new LinkedHashSet<>();
+        if (Objects.nonNull(filter.getAppId())) {
+            requestedApps.add(filter.getAppId());
         }
         if (filter.getAppIds() != null) {
-            for (String id : filter.getAppIds()) {
-                if (StringUtils.isBlank(id)) {
-                    throw invalid("appIds", "app ID must not be blank");
-                }
-                requestedApps.add(id.trim());
+            for (Long id : filter.getAppIds()) {
+
+                requestedApps.add(id);
             }
         }
         if (!requestedApps.isEmpty()) {
             Set<Long> wanted = new LinkedHashSet<>();
-            for (String id : requestedApps) {
-                // Never accept an application outside this API key's workspace/scope.
-                Long numericId = numericId(id, "appId");
-                if (!visibleApps.contains(numericId)) {
-                    throw new BizException(ErrorCode.PERMISSION_DENIED.toError());
-                }
-                wanted.add(numericId);
+            for (Long id : requestedApps) {
+
+                wanted.add(id);
             }
             visibleApps.retainAll(wanted);
         }
@@ -122,18 +113,9 @@ public class OpenApiConversationController {
         query.le(filter.getMaxMessageCount() != null, ConversationRecordEntity::getMessageCount,
                 filter.getMaxMessageCount());
 
-        boolean asc = "asc".equalsIgnoreCase(StringUtils.defaultIfBlank(filter.getSortOrder(), "desc"));
-        if (!asc && !"desc".equalsIgnoreCase(StringUtils.defaultIfBlank(filter.getSortOrder(), "desc"))) {
-            throw invalid("sortOrder", "supported values: asc, desc");
-        }
-        String sortBy = StringUtils.defaultIfBlank(filter.getSortBy(), "updatedAt");
-        switch (sortBy) {
-            case "createdAt" -> query.orderBy(true, asc, ConversationRecordEntity::getCreatedAt);
-            case "updatedAt" -> query.orderBy(true, asc, ConversationRecordEntity::getUpdatedAt);
-            case "messageCount" -> query.orderBy(true, asc, ConversationRecordEntity::getMessageCount);
-            default -> throw invalid("sortBy", "supported values: createdAt, updatedAt, messageCount");
-        }
-        query.orderBy(true, asc, ConversationRecordEntity::getId);
+
+
+        query.orderByDesc( ConversationRecordEntity::getCreatedAt);
 
         Page<ConversationRecordEntity> result = conversationMapper.selectPage(new Page<>(pageNum, pageSize), query);
         List<ConversationView> records = result.getRecords().stream().map(this::conversationView).toList();
@@ -144,10 +126,8 @@ public class OpenApiConversationController {
     /** Retrieve an authorized conversation and a page of its messages. */
     @PostMapping("/messages/query")
     @Operation(summary = "Retrieve conversation details and paginated message history")
-    public OpenApiResult<ConversationDetail> messages(@RequestBody MessageQuery filter) {
-        if (filter == null || StringUtils.isBlank(filter.getConversationId())) {
-            throw new BizException(ErrorCode.MISSING_PARAMS.toError("conversationId"));
-        }
+    public OpenApiResult<PagingList<MessageView>> messages(@RequestBody MessageQuery filter) {
+
         int pageNum = page(filter.getPageNum());
         int pageSize = size(filter.getPageSize());
         Date start = parseTime(filter.getStartTime(), "startTime");
@@ -158,22 +138,12 @@ public class OpenApiConversationController {
             throw invalid("sortOrder", "supported values: asc, desc");
         }
 
-        RequestContext caller = requireCaller();
-        Long conversationId = numericId(filter.getConversationId(), "conversationId");
-        ConversationRecordEntity conversation = conversationMapper.selectById(conversationId);
-        if (conversation == null) {
-            throw invalid("conversationId", "conversation not found");
-        }
-        // Both workspace ownership and the API key's current app access are required.
-        if (!appInWorkspace(caller.getWorkspaceId(), conversation.getAppId())) {
-            throw new BizException(ErrorCode.PERMISSION_DENIED.toError());
-        }
-        apiKeyService.checkAppAccess(caller.getApiKeyId(), caller.getWorkspaceId(),
-                conversation.getAppId().toString());
+
+        RequestContext context = requireCaller();
 
         LambdaQueryWrapper<ConversationMessageEntity> query = new LambdaQueryWrapper<>();
-        query.eq(ConversationMessageEntity::getConversationId, conversationId)
-                .eq(ConversationMessageEntity::getAppId, conversation.getAppId());
+        query.eq(filter.getConversationId()!=null, ConversationMessageEntity::getConversationId, filter.conversationId)
+                .eq(filter.getAppId() != null,ConversationMessageEntity::getAppId, filter.getAppId());
         query.eq(StringUtils.isNotBlank(filter.getStatus()), ConversationMessageEntity::getStatus,
                 StringUtils.trimToNull(filter.getStatus()));
         query.ge(start != null, ConversationMessageEntity::getCreatedAt, start);
@@ -183,11 +153,9 @@ public class OpenApiConversationController {
                 .orderBy(true, asc, ConversationMessageEntity::getId);
 
         Page<ConversationMessageEntity> result = messageMapper.selectPage(new Page<>(pageNum, pageSize), query);
-        ConversationDetail detail = new ConversationDetail();
-        detail.setConversation(conversationView(conversation));
-        detail.setMessages(new PagingList<>(pageNum, pageSize, result.getTotal(),
+
+        return OpenApiResult.success(context.getRequestId(), new PagingList<>(pageNum, pageSize, result.getTotal(),
                 result.getRecords().stream().map(this::messageView).toList()));
-        return OpenApiResult.success(caller.getRequestId(), detail);
     }
 
     private Set<Long> visibleAppIds(RequestContext context) {
@@ -338,8 +306,8 @@ public class OpenApiConversationController {
 
     @Data
     public static class ConversationQuery {
-        private String appId;
-        private List<String> appIds;
+        private Long appId;
+        private List<Long> appIds;
         private String conversationId;
         private String userId;
         private String invokeSource;
@@ -349,8 +317,8 @@ public class OpenApiConversationController {
         private String endTime;
         private Integer minMessageCount;
         private Integer maxMessageCount;
-        private String sortBy = "updatedAt";
-        private String sortOrder = "desc";
+//        private String sortBy = "updatedAt";
+//        private String sortOrder = "desc";
         @JsonAlias({"current", "page"})
         private Integer pageNum = 1;
         @JsonAlias("size")
@@ -359,7 +327,9 @@ public class OpenApiConversationController {
 
     @Data
     public static class MessageQuery {
-        private String conversationId;
+        private Long conversationId;
+        private Long appId;
+        private String userId;
         private String status;
         private String startTime;
         private String endTime;

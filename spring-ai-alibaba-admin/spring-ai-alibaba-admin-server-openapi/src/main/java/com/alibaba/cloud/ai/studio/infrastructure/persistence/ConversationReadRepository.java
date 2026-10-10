@@ -16,11 +16,11 @@ import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Repository;
 
-import java.util.List;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 
-/** MyBatis 持久化适配器：只负责读取，领域对象和接口 DTO 不负责构造 SQL。 */
+/** MyBatis 持久化适配器：只负责读取，不在领域对象和接口 DTO 中构造 SQL。 */
 @Repository
 @RequiredArgsConstructor
 public class ConversationReadRepository {
@@ -34,7 +34,9 @@ public class ConversationReadRepository {
                 .eq(AppEntity::getWorkspaceId, workspaceId)
                 .ne(AppEntity::getStatus, AppStatus.DELETED));
         Set<String> ids = new LinkedHashSet<>();
-        for (AppEntity app : apps) ids.add(app.getAppId());
+        for (AppEntity app : apps) {
+            ids.add(app.getAppId());
+        }
         return ids;
     }
 
@@ -45,7 +47,9 @@ public class ConversationReadRepository {
                 .ne(AppEntity::getStatus, AppStatus.DELETED)) > 0;
     }
 
-    public ConversationRecordEntity findById(Long id) { return conversationMapper.selectById(id); }
+    public ConversationRecordEntity findById(Long id) {
+        return conversationMapper.selectById(id);
+    }
 
     public PagingList<ConversationRecordEntity> findConversations(
             ConversationSearchCriteria criteria, int pageNum, int pageSize) {
@@ -63,21 +67,9 @@ public class ConversationReadRepository {
         query.ge(criteria.minMessageCount() != null, ConversationRecordEntity::getMessageCount, criteria.minMessageCount());
         query.le(criteria.maxMessageCount() != null, ConversationRecordEntity::getMessageCount, criteria.maxMessageCount());
 
-        // 排序能力暂不对外开放。以下保留原有动态排序实现，未来内部启用时可恢复：
-        // String sortOrder = StringUtils.defaultIfBlank(filter.getSortOrder(), "desc");
-        // boolean asc = "asc".equalsIgnoreCase(sortOrder);
-        // if (!asc && !"desc".equalsIgnoreCase(sortOrder)) {
-        //     throw invalid("sortOrder", "supported values: asc, desc");
-        // }
-        // String sortBy = StringUtils.defaultIfBlank(filter.getSortBy(), "updatedAt");
-        // switch (sortBy) {
-        //     case "createdAt" -> query.orderBy(true, asc, ConversationRecordEntity::getCreatedAt);
-        //     case "updatedAt" -> query.orderBy(true, asc, ConversationRecordEntity::getUpdatedAt);
-        //     case "messageCount" -> query.orderBy(true, asc, ConversationRecordEntity::getMessageCount);
-        //     default -> throw invalid("sortBy", "supported values: createdAt, updatedAt, messageCount");
-        // }
-        // query.orderBy(true, asc, ConversationRecordEntity::getId);
-        // 固定原默认顺序：最近更新的会话在前，同时间按 ID 倒序保证分页稳定。
+        // 排序能力暂不对外开放；保留旧的动态排序规则供未来内部扩展：
+        // sortBy 可为 createdAt、updatedAt、messageCount；sortOrder 可为 asc、desc。
+        // 当前沿用原默认值：按 updatedAt DESC、id DESC 排序。
         query.orderByDesc(ConversationRecordEntity::getUpdatedAt)
                 .orderByDesc(ConversationRecordEntity::getId);
 
@@ -90,22 +82,15 @@ public class ConversationReadRepository {
         LambdaQueryWrapper<ConversationMessageEntity> query = new LambdaQueryWrapper<>();
         query.eq(ConversationMessageEntity::getConversationId, criteria.conversationId())
                 .eq(ConversationMessageEntity::getAppId, criteria.appId());
-        query.eq(StringUtils.isNotBlank(criteria.role()), ConversationMessageEntity::getRole, criteria.role());
         query.eq(StringUtils.isNotBlank(criteria.status()), ConversationMessageEntity::getStatus, criteria.status());
         query.ge(criteria.startTime() != null, ConversationMessageEntity::getCreatedAt, criteria.startTime());
         query.le(criteria.endTime() != null, ConversationMessageEntity::getCreatedAt, criteria.endTime());
 
-        // 原排序逻辑保留（不开放 sortOrder 参数）：
-        // String sortOrder = StringUtils.defaultIfBlank(filter.getSortOrder(), "asc");
-        // if (!"asc".equalsIgnoreCase(sortOrder) && !"desc".equalsIgnoreCase(sortOrder)) {
-        //     throw invalid("sortOrder", "supported values: asc, desc");
-        // }
-        // boolean asc = "asc".equalsIgnoreCase(sortOrder);
-        // query.orderBy(true, asc, ConversationMessageEntity::getSequence)
-        //      .orderBy(true, asc, ConversationMessageEntity::getMessageId);
-        // 固定原默认升序，保证消息阅读顺序一致。
-        query.orderByAsc(ConversationMessageEntity::getSequence)
-                .orderByAsc(ConversationMessageEntity::getMessageId);
+        // 不再使用 sequence 或 role；消息是一问一答一行，按提问创建时间阅读。
+        // 原 sortOrder 升/降序逻辑保留设计但暂不对外开放，固定默认 ASC。
+        // 同一毫秒的记录以主键 id 保证稳定排序和分页。
+        query.orderByAsc(ConversationMessageEntity::getCreatedAt)
+                .orderByAsc(ConversationMessageEntity::getId);
 
         Page<ConversationMessageEntity> result = messageMapper.selectPage(new Page<>(pageNum, pageSize), query);
         return new PagingList<>(pageNum, pageSize, result.getTotal(), result.getRecords());

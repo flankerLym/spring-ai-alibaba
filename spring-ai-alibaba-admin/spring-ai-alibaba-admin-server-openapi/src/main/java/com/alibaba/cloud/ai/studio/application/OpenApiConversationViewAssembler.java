@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 /** 查询响应装配器：实体到对外字段的映射，不包含查询和权限判断。 */
 @Component
 public class OpenApiConversationViewAssembler {
+
     public ConversationView conversationView(ConversationRecordEntity entity) {
         ConversationView view = new ConversationView();
         view.setConversationId(entity.getId().toString());
@@ -26,11 +27,9 @@ public class OpenApiConversationViewAssembler {
     public MessageView messageView(ConversationMessageEntity entity) {
         MessageView view = new MessageView();
         view.setMessageId(entity.getMessageId() == null ? null : entity.getMessageId().toString());
-        view.setParentMessageId(entity.getParentMessageId() == null ? null : entity.getParentMessageId().toString());
-        view.setSequence(entity.getSequence());
-        view.setRole(entity.getRole());
-        view.setContent(entity.getContent());
-        view.setContentType(entity.getContentType());
+        // 一条数据库记录代表一次问答，不再存在 parentMessageId/sequence/role/content。
+        view.setQuestion(entity.getQuestion());
+        view.setAnswer(entity.getAnswer());
         view.setTraceId(entity.getTraceId());
         view.setRequestId(entity.getRequestId());
         view.setUserId(entity.getUserId());
