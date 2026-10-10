@@ -20,6 +20,7 @@ import com.alibaba.cloud.ai.studio.admin.trace.aspect.ModelCallTraceAspect;
 import com.alibaba.cloud.ai.studio.admin.trace.aspect.WorkflowSpanAspect;
 import com.alibaba.cloud.ai.studio.core.config.CommonConfig;
 import com.alibaba.cloud.ai.studio.core.conversation.ConversationManager;
+import com.alibaba.cloud.ai.studio.core.conversation.ConversationSessionVariablesService;
 import com.alibaba.cloud.ai.studio.core.workflow.WorkflowConfig;
 import com.alibaba.cloud.ai.studio.core.workflow.WorkflowContext;
 import com.alibaba.cloud.ai.studio.core.workflow.WorkflowInnerService;
@@ -67,6 +68,7 @@ class WorkflowSpanRegressionTest {
     private ConversationManager conversations;
     private WorkflowContext context;
     private WorkflowTraceContext trace;
+    private  ConversationSessionVariablesService sessionVariablesService;
 
     @BeforeEach
     void setup() {
@@ -205,7 +207,7 @@ class WorkflowSpanRegressionTest {
         if (proxied) {
             AspectJProxyFactory factory = new AspectJProxyFactory(processor);
             factory.setProxyTargetClass(true);
-            factory.addAspect(new ConversationPersistenceAspect(conversations));
+            factory.addAspect(new ConversationPersistenceAspect(conversations,sessionVariablesService));
             factory.addAspect(new WorkflowSpanAspect(traces));
             processor = factory.getProxy();
         }

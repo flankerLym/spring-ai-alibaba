@@ -3,6 +3,8 @@ import { defineConfig } from 'umi';
 
 export default defineConfig({
   title: 'SAA',
+  publicPath: '/si/',
+  base: '/si/',
   define: {
     'process.env.WEB_SERVER': process.env.WEB_SERVER,
     'process.env.BACK_END': process.env.BACK_END,

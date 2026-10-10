@@ -55,7 +55,7 @@ public class OpenApiConversationController {
     private final ApiKeyService apiKeyService;
 
     /** Query conversations with arbitrary combinations of filters (within authorized apps). */
-    @PostMapping("/query")
+    @PostMapping("")
     @Operation(summary = "Query conversations with pagination and filters")
     public OpenApiResult<PagingList<ConversationView>> query(@RequestBody ConversationQuery filter) {
         if (filter == null) {
@@ -124,7 +124,7 @@ public class OpenApiConversationController {
     }
 
     /** Retrieve an authorized conversation and a page of its messages. */
-    @PostMapping("/messages/query")
+    @PostMapping("/messages")
     @Operation(summary = "Retrieve conversation details and paginated message history")
     public OpenApiResult<PagingList<MessageView>> messages(@RequestBody MessageQuery filter) {
 
