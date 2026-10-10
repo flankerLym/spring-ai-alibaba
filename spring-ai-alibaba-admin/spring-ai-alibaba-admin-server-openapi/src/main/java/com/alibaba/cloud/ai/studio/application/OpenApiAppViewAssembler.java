@@ -1,7 +1,7 @@
 package com.alibaba.cloud.ai.studio.application;
 
-import com.alibaba.cloud.ai.studio.application.OpenApiAppQueryService.ApiInputParam;
-import com.alibaba.cloud.ai.studio.application.OpenApiAppQueryService.PublishedAppApiInfo;
+import com.alibaba.cloud.ai.studio.openapi.dto.app.ApiInputParam;
+import com.alibaba.cloud.ai.studio.openapi.dto.app.PublishedAppApiInfo;
 import com.alibaba.cloud.ai.studio.core.base.service.AppService;
 import com.alibaba.cloud.ai.studio.core.workflow.WorkflowConfig;
 import com.alibaba.cloud.ai.studio.runtime.domain.app.AgentConfig;

@@ -17,6 +17,8 @@
 package com.alibaba.cloud.ai.studio.application;
 
 import com.alibaba.cloud.ai.studio.core.base.service.AppService;
+import com.alibaba.cloud.ai.studio.domain.service.OpenApiAppFilterRules;
+import com.alibaba.cloud.ai.studio.openapi.dto.app.*;
 import com.alibaba.cloud.ai.studio.runtime.domain.PagingList;
 import com.alibaba.cloud.ai.studio.runtime.domain.app.AppQuery;
 import com.alibaba.cloud.ai.studio.runtime.domain.app.Application;
@@ -24,17 +26,13 @@ import com.alibaba.cloud.ai.studio.runtime.enums.AppStatus;
 import com.alibaba.cloud.ai.studio.runtime.enums.AppType;
 import com.alibaba.cloud.ai.studio.runtime.enums.ErrorCode;
 import com.alibaba.cloud.ai.studio.runtime.exception.BizException;
-import com.fasterxml.jackson.annotation.JsonAlias;
-import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * OpenAPI application query use case.
@@ -55,6 +53,8 @@ public class OpenApiAppQueryService {
 	private final AppService appService;
 
 	private final OpenApiAppViewAssembler assembler;
+
+	private final OpenApiAppFilterRules rules;
 
 	/**
 	 * Queries applications by filter conditions with pagination.
@@ -118,8 +118,8 @@ public class OpenApiAppQueryService {
 				.toError("pageSize", "pageSize must be between 1 and " + MAX_PAGE_SIZE));
 		}
 
-		normalizeType(filter.getType());
-		parseStatus(filter.getStatus());
+		rules.normalizeType(filter.getType());
+		rules.parseStatus(filter.getStatus());
 	}
 
 	private PagingList<Application> loadApps(AppDetailQuery filter) {
@@ -139,8 +139,8 @@ public class OpenApiAppQueryService {
 		query.setCurrent(filter.getPageNum());
 		query.setSize(filter.getPageSize());
 		query.setName(StringUtils.trimToNull(filter.getName()));
-		query.setType(normalizeType(filter.getType()));
-		query.setStatus(parseStatus(filter.getStatus()));
+		query.setType(rules.normalizeType(filter.getType()));
+		query.setStatus(rules.parseStatus(filter.getStatus()));
 
 		PagingList<Application> page = appService.listApps(query);
 		if (page == null) {
@@ -164,144 +164,15 @@ public class OpenApiAppQueryService {
 			return false;
 		}
 
-		String type = normalizeType(filter.getType());
+		String type = rules.normalizeType(filter.getType());
 		if (StringUtils.isNotBlank(type)
 				&& (app.getType() == null || !type.equals(app.getType().getValue()))) {
 			return false;
 		}
 
-		AppStatus status = parseStatus(filter.getStatus());
+		AppStatus status = rules.parseStatus(filter.getStatus());
 		return status == null || status == app.getStatus();
 	}
 
-	private String normalizeType(String type) {
-		if (StringUtils.isBlank(type)) {
-			return null;
-		}
-
-		String normalized = type.trim().toLowerCase();
-		for (AppType appType : AppType.values()) {
-			if (appType.getValue().equalsIgnoreCase(normalized)
-					|| appType.name().equalsIgnoreCase(normalized)) {
-				return appType.getValue();
-			}
-		}
-
-		throw new BizException(ErrorCode.INVALID_PARAMS
-			.toError("type", "supported values: basic, workflow"));
-	}
-
-	private AppStatus parseStatus(String status) {
-		if (StringUtils.isBlank(status)) {
-			return null;
-		}
-
-		String normalized = status.trim();
-		for (AppStatus appStatus : AppStatus.values()) {
-			if (appStatus.getValue().equalsIgnoreCase(normalized)
-					|| appStatus.name().equalsIgnoreCase(normalized)) {
-				if (appStatus == AppStatus.DELETED) {
-					throw new BizException(ErrorCode.INVALID_PARAMS
-						.toError("status", "deleted applications are not externally queryable"));
-				}
-				return appStatus;
-			}
-		}
-
-		throw new BizException(ErrorCode.INVALID_PARAMS
-			.toError("status", "supported values: draft, published, published_editing"));
-	}
-
-	@Data
-	public static class AppDetailQuery {
-
-		private String appId;
-
-		private String name;
-
-		private String type;
-
-		private String status;
-
-		@JsonAlias({ "current", "page" })
-		private Integer pageNum = DEFAULT_PAGE_NUM;
-
-		@JsonAlias("size")
-		private Integer pageSize = DEFAULT_PAGE_SIZE;
-
-	}
-
-	@Data
-	public static class AppPageResponse {
-
-		private Integer pageNum;
-
-		private Integer pageSize;
-
-		private Long total;
-
-		private List<PublishedAppApiInfo> records = new ArrayList<>();
-
-	}
-
-	@Data
-	public static class PublishedAppApiInfo {
-
-		private String appId;
-
-		private String name;
-
-		private String description;
-
-		private String type;
-
-		private String status;
-
-		private String icon;
-
-		private String source;
-
-		private java.util.Date gmtCreate;
-
-		private java.util.Date gmtModified;
-
-		private String publishedVersion;
-
-		private String prologueText;
-
-		private String method;
-
-		private String api;
-
-		private String asyncApi;
-
-		private String auth;
-
-		private String contentType;
-
-		private List<ApiInputParam> inputSchema = new ArrayList<>();
-
-		private Map<String, Object> requestJson = new LinkedHashMap<>();
-
-		private String schemaError;
-
-	}
-
-	@Data
-	public static class ApiInputParam {
-
-		private String key;
-
-		private String type;
-
-		private String desc;
-
-		private Boolean required;
-
-		private String source;
-
-		private Object defaultValue;
-
-	}
 
 }

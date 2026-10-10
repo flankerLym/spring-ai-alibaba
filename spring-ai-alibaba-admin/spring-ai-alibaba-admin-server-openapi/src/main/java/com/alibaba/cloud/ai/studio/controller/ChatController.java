@@ -1,7 +1,7 @@
 package com.alibaba.cloud.ai.studio.controller;
 
 import com.alibaba.cloud.ai.studio.application.OpenApiCompletionService;
-import com.alibaba.cloud.ai.studio.infrastructure.OpenApiSse;
+import com.alibaba.cloud.ai.studio.infrastructure.transport.OpenApiSseTransport;
 import com.alibaba.cloud.ai.studio.runtime.domain.Result;
 import com.alibaba.cloud.ai.studio.runtime.domain.agent.AgentRequest;
 import com.alibaba.cloud.ai.studio.runtime.domain.workflow.debug.*;
@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1/apps")
 public class ChatController {
     private final OpenApiCompletionService completionService;
-    private final OpenApiSse transport;
+    private final OpenApiSseTransport transport;
 
     @PostMapping("/chat/completions")
     public Object completion(@RequestBody AgentRequest request, HttpServletResponse response) {

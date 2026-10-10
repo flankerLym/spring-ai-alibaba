@@ -1,19 +1,13 @@
 package com.alibaba.cloud.ai.studio.controller;
 
 import com.alibaba.cloud.ai.studio.application.OpenApiConversationQueryService;
-import com.alibaba.cloud.ai.studio.application.OpenApiConversationQueryService.*;
+import com.alibaba.cloud.ai.studio.openapi.dto.conversation.*;
 import com.alibaba.cloud.ai.studio.core.context.RequestContextHolder;
 import com.alibaba.cloud.ai.studio.openapi.OpenApiResult;
-import com.alibaba.cloud.ai.studio.runtime.domain.Error;
 import com.alibaba.cloud.ai.studio.runtime.domain.PagingList;
-import com.alibaba.cloud.ai.studio.runtime.domain.RequestContext;
-import com.alibaba.cloud.ai.studio.runtime.enums.ErrorCode;
-import com.alibaba.cloud.ai.studio.runtime.exception.BizException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
-import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.*;
 
 /** API adapter: all data access and filtering live in the application query service. */
@@ -38,13 +32,4 @@ public class OpenApiConversationController {
         return OpenApiResult.success(RequestContextHolder.getRequestContext().getRequestId(), detail);
     }
 
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<OpenApiResult<Void>> handleException(Exception ex) {
-        RequestContext context = RequestContextHolder.getRequestContext();
-        Error error = ex instanceof BizException biz ? biz.getError()
-                : ex instanceof HttpMessageNotReadableException ? ErrorCode.INVALID_JSON.toError()
-                : ErrorCode.SYSTEM_ERROR.toError();
-        return ResponseEntity.status(error.getStatusCode())
-                .body(OpenApiResult.error(context == null ? "" : context.getRequestId(), error));
-    }
 }
