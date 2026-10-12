@@ -19,8 +19,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.function.BiConsumer;
 import java.util.stream.Stream;
 
 import com.alibaba.cloud.ai.studio.admin.builder.generator.model.Variable;
@@ -61,7 +59,8 @@ public class StartNodeDataConverter extends AbstractNodeDataConverter<StartNodeD
 
 			@Override
 			public StartNodeData parse(Map<String, Object> data) {
-				List<Map<String, Object>> inputMap = (List<Map<String, Object>>) data.get("variables");
+				List<Map<String, Object>> inputMap = data.get("variables") == null
+                        ? List.of() : (List<Map<String, Object>>) data.get("variables");
 				List<StartNodeData.StartInput> startInputs = new ArrayList<>();
 				List<Variable> outputs = new ArrayList<>();
 				List<VariableSelector> inputs = new ArrayList<>();
@@ -71,10 +70,11 @@ public class StartNodeDataConverter extends AbstractNodeDataConverter<StartNodeD
 				for (Map<String, Object> variable : inputMap) {
 					StartNodeData.StartInput startInput = objectMapper.convertValue(variable,
 							StartNodeData.StartInput.class);
-					String inputType = startInput.getType();
-					String varType = VariableType.fromDifyValue(inputType).orElse(VariableType.OBJECT).value();
-					outputs.add(new Variable(startInput.getVariable(),
-							VariableType.fromDifyValue(varType).orElse(VariableType.OBJECT)));
+                    VariableType varType = startType(startInput.getType());
+                    outputs.add(new Variable(startInput.getVariable(), varType)
+                            .setDescription(startInput.getLabel())
+                            .setValue(startInput.getDefaultValue())
+                            .setExtraProperties(inputProperties(startInput)));
 					startInputs.add(startInput);
 					inputs.add(new VariableSelector("", startInput.getVariable(), startInput.getLabel()));
 				}
@@ -108,11 +108,19 @@ public class StartNodeDataConverter extends AbstractNodeDataConverter<StartNodeD
 					.map(mp -> new Variable(MapReadUtil.getMapDeepValue(mp, String.class, "key"),
 							VariableType.fromStudioValue(MapReadUtil.getMapDeepValue(mp, String.class, "type"))
 								.orElse(VariableType.OBJECT))
-						.setDescription(MapReadUtil.getMapDeepValue(mp, String.class, "desc")))
+                        .setDescription(MapReadUtil.getMapDeepValue(mp, String.class, "desc"))
+                        .setValue(mp.containsKey("default_value") ? mp.get("default_value") : mp.get("defaultValue"))
+                        .setExtraProperties(new HashMap<>(mp)))
 					.toList();
 				StartNodeData nodeData = new StartNodeData();
-				nodeData.setOutputs(outputs);
-				return nodeData;
+                nodeData.setOutputs(outputs);
+                nodeData.setStartInputs(outputs.stream().map(output -> new StartNodeData.StartInput()
+                        .setVariable(output.getName())
+                        .setType(output.getValueType().difyValue())
+                        .setLabel(output.getDescription())
+                        .setRequired(Boolean.TRUE.equals(output.getExtraProperties().get("required")))
+                        .setDefaultValue(output.getValue())).toList());
+                return nodeData;
 			}
 
 			@Override
@@ -133,6 +141,26 @@ public class StartNodeDataConverter extends AbstractNodeDataConverter<StartNodeD
 
 	}
 
+    private static VariableType startType(String type) {
+        if (type == null) {
+            return VariableType.STRING;
+        }
+        return switch (type) {
+            case "text-input", "paragraph", "select" -> VariableType.STRING;
+            case "checkbox", "boolean" -> VariableType.BOOLEAN;
+            case "file-list" -> VariableType.ARRAY_FILE;
+            default -> VariableType.fromDifyValue(type)
+                    .or(() -> VariableType.fromStudioValue(type)).orElse(VariableType.OBJECT);
+        };
+    }
+
+    private static Map<String, Object> inputProperties(StartNodeData.StartInput input) {
+        Map<String, Object> properties = new HashMap<>();
+        properties.put("required", Boolean.TRUE.equals(input.getRequired()));
+        properties.put("default_value", input.getDefaultValue());
+        return properties;
+    }
+
 	@Override
 	public String generateVarName(int count) {
 		// 让输入变量名称为start_xxx，方便用户理解
@@ -140,25 +168,6 @@ public class StartNodeDataConverter extends AbstractNodeDataConverter<StartNodeD
 			return "start";
 		}
 		return "startNode" + count;
-	}
-
-	@Override
-	public BiConsumer<StartNodeData, Map<String, String>> postProcessConsumer(DSLDialectType dialectType) {
-		return switch (dialectType) {
-			case DIFY -> emptyProcessConsumer().andThen((data, map) -> {
-				if (data.getStartInputs() != null) {
-					List<Variable> vars = new ArrayList<>(data.getStartInputs()
-						.stream()
-						.map(input -> new Variable(input.getVariable(),
-								VariableType.fromDifyValue(input.getType()).orElse(VariableType.OBJECT)))
-						.peek(variable -> variable.setName(variable.getName()))
-						.toList());
-					data.setOutputs(
-							Stream.of(data.getOutputs(), vars).filter(Objects::nonNull).flatMap(List::stream).toList());
-				}
-			}).andThen(super.postProcessConsumer(dialectType));
-			default -> super.postProcessConsumer(dialectType);
-		};
 	}
 
 }

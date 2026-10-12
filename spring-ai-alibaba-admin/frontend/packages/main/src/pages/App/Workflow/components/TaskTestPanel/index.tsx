@@ -106,11 +106,13 @@ export default memo(function TaskTestPanel() {
     });
     createWorkFlowTask({
       app_id: appId,
-      inputs: inputParams,
+      inputs: inputParams.filter((item) => item.value !== undefined && item.value !== null),
     }).then((res) => {
       taskId.current = res.task_id;
       setShowResults(true);
       queryTaskStatus();
+    }).catch(() => {
+      setState({ loading: false, activeTab: 'input' });
     });
   };
 
@@ -156,7 +158,7 @@ export default memo(function TaskTestPanel() {
   const handleSubmitUserInput = (params: IUserInputSubmitParams) => {
     if (!taskId.current) return;
     setSelectedNode(null);
-    resumeWorkFlowTask({
+    return resumeWorkFlowTask({
       app_id: appId,
       task_id: taskId.current,
       ...params,

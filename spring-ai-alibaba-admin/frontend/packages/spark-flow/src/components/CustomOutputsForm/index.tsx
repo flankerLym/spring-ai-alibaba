@@ -6,7 +6,7 @@ import {
   IValueTypeOption,
 } from '@/types/work-flow';
 import { Button, Input } from '@spark-ai/design';
-import { Cascader } from 'antd';
+import { Cascader, Checkbox, InputNumber, Select } from 'antd';
 import classNames from 'classnames';
 import React, { memo, useMemo, useState } from 'react';
 import CustomIcon from '../CustomIcon';
@@ -87,6 +87,8 @@ export interface ICustomOutputsFormProps {
   onChange?: (params: INodeDataOutputParamItem[]) => void;
   readyOnly?: boolean;
   isRoot?: boolean;
+  /** Enable constraints only for Start/Input nodes. */
+  inputConstraints?: boolean;
 }
 
 export const CustomOutputsForm = memo(function ({
@@ -94,6 +96,7 @@ export const CustomOutputsForm = memo(function ({
   onChange,
   readyOnly,
   isRoot = false,
+  inputConstraints = false,
 }: ICustomOutputsFormProps) {
   const [expand, setExpand] = useState(true);
   const handleChange = (
@@ -117,6 +120,7 @@ export const CustomOutputsForm = memo(function ({
         key: '',
         type: 'String',
         desc: '',
+        ...(inputConstraints ? { required: false } : {}),
       }),
     );
   };
@@ -156,6 +160,7 @@ export const CustomOutputsForm = memo(function ({
                 handleChange={(type) => {
                   handleChange(index, {
                     type,
+                    ...(inputConstraints ? { default_value: undefined } : {}),
                     properties: type.includes('File') ? FILE_PROPERTIES : [],
                   });
                 }}
@@ -180,6 +185,54 @@ export const CustomOutputsForm = memo(function ({
                 />
               )}
             </div>
+            {inputConstraints && (
+              <div className="flex gap-[8px] items-center">
+                <Checkbox
+                  disabled={readyOnly}
+                  checked={item.required === true}
+                  onChange={(e) => handleChange(index, { required: e.target.checked })}
+                >必填</Checkbox>
+                <span className="text-[12px]">默认值</span>
+                {item.type === 'Number' ? (
+                  <InputNumber
+                    disabled={readyOnly || item.required === true}
+                    value={typeof item.default_value === 'number' ? item.default_value : null}
+                    placeholder="不设置"
+                    onChange={(value) => handleChange(index, { default_value: value ?? undefined })}
+                  />
+                ) : item.type === 'Boolean' ? (
+                  <Select
+                    disabled={readyOnly || item.required === true}
+                    allowClear
+                    style={{ flex: 1 }}
+                    value={typeof item.default_value === 'boolean' ? String(item.default_value) : undefined}
+                    placeholder="不设置"
+                    options={[{ label: 'true', value: 'true' }, { label: 'false', value: 'false' }]}
+                    onChange={(value) => handleChange(index, { default_value: value === undefined ? undefined : value === 'true' })}
+                  />
+                ) : (
+                  <Input
+                    disabled={readyOnly || item.required === true}
+                    style={{ flex: 1 }}
+                    value={item.default_value == null ? '' : typeof item.default_value === 'string'
+                      ? item.default_value : JSON.stringify(item.default_value)}
+                    placeholder={item.type === 'String' ? '可选参数未传时使用' : '请输入 JSON'}
+                    onChange={(e) => {
+                      let value: unknown = e.target.value;
+                      if (item.type !== 'String') {
+                        try { value = JSON.parse(e.target.value); } catch { /* Validate before execution. */ }
+                      }
+                      handleChange(index, { default_value: value });
+                    }}
+                  />
+                )}
+                {!readyOnly && item.default_value !== undefined && (
+                  <Button type="link" size="small" onClick={() => handleChange(index, { default_value: undefined })}>
+                    清除
+                  </Button>
+                )}
+              </div>
+            )}
             {hasProperties && (
               <>
                 <CustomIcon
@@ -231,7 +284,7 @@ export const CustomOutputsForm = memo(function ({
 export const CustomOutputsFormWrap = memo(function (
   props: ICustomOutputsFormProps,
 ) {
-  const { value, onChange, readyOnly } = props;
+  const { value, onChange, readyOnly, inputConstraints } = props;
 
   return (
     <div className="flex flex-col gap-[12px]">
@@ -260,6 +313,7 @@ export const CustomOutputsFormWrap = memo(function (
         onChange={onChange}
         readyOnly={readyOnly}
         isRoot
+        inputConstraints={inputConstraints}
       />
     </div>
   );

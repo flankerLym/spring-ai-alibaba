@@ -79,6 +79,7 @@ export interface INodeDataOutputParamItem {
   desc?: string;
   /* When defining input parameters for the start node, it is necessary to specify whether it is required */
   required?: boolean;
+  default_value?: unknown;
   value_from?: 'refer' | 'input' | 'clear';
   /* If the type is Object, sub-parameters need to be defined */
   properties?: INodeDataOutputParamItem[];

@@ -2,9 +2,10 @@ import $i18n from '@/i18n';
 import { INodeSchema } from '@spark-ai/flow';
 import { IInputNodeData } from '../../types';
 import { checkInputParams } from '../../utils';
+import { checkInputDefaults } from '../../utils/inputConstraints';
 
 const checkInputNodeValid = (data: IInputNodeData) => {
-  const errMsgs: { label: string; error: string }[] = [];
+  const errMsgs = checkInputDefaults(data.output_params);
   checkInputParams(data.output_params, errMsgs);
   return errMsgs;
 };

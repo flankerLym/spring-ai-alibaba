@@ -11,6 +11,7 @@ import com.alibaba.cloud.ai.studio.core.base.manager.RedisManager;
 import com.alibaba.cloud.ai.studio.core.config.CommonConfig;
 import com.alibaba.cloud.ai.studio.core.conversation.ConversationSessionVariablesService;
 import com.alibaba.cloud.ai.studio.core.workflow.WorkflowContext;
+import com.alibaba.cloud.ai.studio.core.workflow.WorkflowInputValidator;
 import com.alibaba.cloud.ai.studio.core.workflow.WorkflowInnerService;
 import com.alibaba.cloud.ai.studio.core.workflow.processor.AbstractExecuteProcessor;
 import com.alibaba.cloud.ai.studio.runtime.domain.workflow.CommonParam;
@@ -102,22 +103,12 @@ public class StartExecuteProcessor extends AbstractExecuteProcessor {
             context.getVariablesMap().put("session", conversation);
         }
 
-        // Original Start-node user variable behavior.
-        Map<String, Object> userObj = new HashMap<>();
-        if (node.getConfig() != null && !CollectionUtils.isEmpty(node.getConfig().getOutputParams())) {
-            node.getConfig().getOutputParams().forEach(param -> {
-                if (param.getDefaultValue() != null) {
-                    userObj.put(param.getKey(), param.getDefaultValue());
-                }
-            });
-        }
-        if (context.getUserMap() != null) {
-            userObj.putAll(context.getUserMap());
-        }
+        Map<String, Object> userObj = WorkflowInputValidator.resolve(
+                node.getConfig() == null ? null : node.getConfig().getOutputParams(), context.getUserMap());
         context.getVariablesMap().put(node.getId(), userObj);
 
         Map<String, Object> resultMap = Maps.newHashMap();
-        resultMap.put("user", context.getUserMap());
+        resultMap.put("user", userObj);
         resultMap.put("sys", context.getSysMap());
         resultMap.put("conversation", context.getVariablesMap().get(ParamSourceEnum.conversation.name()));
         nodeResult.setInput(JsonUtils.toJson(resultMap));

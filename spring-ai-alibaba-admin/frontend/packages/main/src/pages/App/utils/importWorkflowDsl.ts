@@ -437,7 +437,7 @@ export function importWorkflowDsl(document: unknown, filename: string, available
         case 'start':
           config.output_params = (data.variables || []).map((v: Obj) => ({
             key: outputKeys[node.id][v.variable], type: valueType(v.type), desc: v.label || '', required: !!v.required,
-            default_value: v.default,
+            default_value: Object.prototype.hasOwnProperty.call(v, 'default') ? v.default : v.default_value,
           }));
           break;
         case 'llm': {

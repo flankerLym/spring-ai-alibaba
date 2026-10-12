@@ -11,7 +11,7 @@ export interface IUserInputSubmitParams {
 }
 
 export interface IUserInputFormProps {
-  onSubmit: (params: IUserInputSubmitParams) => void;
+  onSubmit: (params: IUserInputSubmitParams) => void | Promise<unknown>;
   nodeData: IWorkFlowTaskResultItem;
 }
 
@@ -25,26 +25,32 @@ export default memo(function UserInputForm(props: IUserInputFormProps) {
   }, [props.nodeData.node_status, isSubmit]);
 
   useEffect(() => {
-    const valueMap: Record<string, string> = {};
+    const valueMap: Record<string, string | undefined> = {};
     (inputParams as IUserInputItem[]).forEach((item) => {
-      valueMap[item.key] = item.value || '';
+      valueMap[item.key] = item.value ?? undefined;
     });
     form.setFieldsValue(valueMap);
   }, [inputParams]);
 
   const submit = () => {
-    form.validateFields().then((values) => {
+    form.validateFields().then(async (values) => {
       setIsSubmit(true);
       const input_params = [] as Array<{ key: string; value: string }>;
       Object.keys(values).forEach((key) => {
-        input_params.push({ key, value: values[key] });
+        if (values[key] !== undefined && values[key] !== null) {
+          input_params.push({ key, value: values[key] });
+        }
       });
-      props.onSubmit({
-        input_params,
-        resume_node_id: props.nodeData.node_id,
-        resume_parent_id: props.nodeData.parent_node_id,
-      });
-    });
+      try {
+        await props.onSubmit({
+          input_params,
+          resume_node_id: props.nodeData.node_id,
+          resume_parent_id: props.nodeData.parent_node_id,
+        });
+      } catch {
+        setIsSubmit(false);
+      }
+    }).catch(() => { /* Form displays validation errors. */ });
   };
 
   return (
@@ -59,6 +65,7 @@ export default memo(function UserInputForm(props: IUserInputFormProps) {
             rules={[
               {
                 required: item.required,
+                whitespace: item.required === true,
                 message: $i18n.get({
                   id: 'main.pages.App.Workflow.components.UserInputForm.index.enter',
                   dm: '请输入',

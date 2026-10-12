@@ -1,6 +1,8 @@
 import $i18n from '@/i18n';
 import { INodeSchema } from '@spark-ai/flow';
 import { START_NODE_OUTPUT_PARAMS_DEFAULT } from '../../constant';
+import { checkInputParams } from '../../utils';
+import { checkInputDefaults } from '../../utils/inputConstraints';
 
 export const StartSchema: INodeSchema = {
   type: 'Start',
@@ -26,6 +28,10 @@ export const StartSchema: INodeSchema = {
     id: 'main.pages.App.Workflow.nodes.Start.schema.basis',
     dm: '基础',
   }),
-  checkValid: () => [],
+  checkValid: (data) => {
+    const errors = checkInputDefaults(data.output_params);
+    checkInputParams(data.output_params, errors, { disableCheckEmptyList: true });
+    return errors;
+  },
   bgColor: 'var(--ag-ant-color-purple-hover)',
 };

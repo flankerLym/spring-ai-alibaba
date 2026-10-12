@@ -17,6 +17,9 @@ package com.alibaba.cloud.ai.studio.admin.builder.generator.model.workflow.noded
 
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import com.alibaba.cloud.ai.studio.admin.builder.generator.model.Variable;
 import com.alibaba.cloud.ai.studio.admin.builder.generator.model.VariableSelector;
 import com.alibaba.cloud.ai.studio.admin.builder.generator.model.workflow.NodeData;
@@ -54,6 +57,19 @@ public class StartNodeData extends NodeData {
 		private List<String> options;
 
 		private Boolean required;
+
+        @JsonProperty("default")
+        @JsonAlias({"default_value", "defaultValue"})
+        private Object defaultValue;
+
+        public Object getDefaultValue() {
+            return defaultValue;
+        }
+
+        public StartInput setDefaultValue(Object defaultValue) {
+            this.defaultValue = defaultValue;
+            return this;
+        }
 
 		public String getLabel() {
 			return label;

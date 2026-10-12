@@ -41,7 +41,8 @@ export default memo(function InputPanel({
           })}
         </div>
         <CustomOutputsFormWrap
-          readyOnly={nodesReadOnly}
+          inputConstraints
+            readyOnly={nodesReadOnly}
           value={data.output_params}
           onChange={(output_params) => {
             handleNodeDataUpdate({

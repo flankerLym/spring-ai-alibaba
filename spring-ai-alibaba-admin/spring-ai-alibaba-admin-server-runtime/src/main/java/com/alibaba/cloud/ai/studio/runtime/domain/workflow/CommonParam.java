@@ -16,6 +16,7 @@
 package com.alibaba.cloud.ai.studio.runtime.domain.workflow;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -49,6 +50,7 @@ public class CommonParam implements Serializable {
 
 	// defaultValue is the default value of the param
 	@JsonProperty("default_value")
+	@JsonAlias("defaultValue")
 	private Object defaultValue;
 
 }

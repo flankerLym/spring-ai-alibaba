@@ -34,6 +34,7 @@ import com.alibaba.cloud.ai.studio.core.config.CommonConfig;
 import com.alibaba.cloud.ai.studio.core.context.RequestContextHolder;
 import com.alibaba.cloud.ai.studio.core.workflow.WorkflowConfig;
 import com.alibaba.cloud.ai.studio.core.workflow.WorkflowContext;
+import com.alibaba.cloud.ai.studio.core.workflow.WorkflowInputValidator;
 import com.alibaba.cloud.ai.studio.core.utils.common.IdGenerator;
 import com.alibaba.cloud.ai.studio.core.utils.LogUtils;
 import com.alibaba.cloud.ai.studio.core.utils.concurrent.RequestContextThreadPoolWrapper;
@@ -144,8 +145,12 @@ public class WorkflowExecuteManager {
 					"request or appId is null");
 			throw new BizException(ErrorCode.MISSING_PARAMS.toError("request or appId is null"));
 		}
-		// Initialize context
-		inputParams.forEach(input -> {
+		// Initialize context using the application definition for user inputs.
+        workflowContext.setWorkflowConfig(JsonUtils.fromJson(appVersion.getConfig(), WorkflowConfig.class));
+		(inputParams == null ? List.<TaskRunParam>of() : inputParams).forEach(input -> {
+            if (input == null || input.getKey() == null || input.getKey().isBlank()) {
+                throw new BizException(ErrorCode.MISSING_PARAMS.toError("input key"));
+            }
 			String key = input.getKey();
 			String source = input.getSource();
 			if ("sys".equals(source)) {
@@ -154,7 +159,8 @@ public class WorkflowExecuteManager {
 			}
 			else {
 				workflowContext.getUserMap()
-					.put(key, VariableUtils.convertValueByType(input.getKey(), input.getType(), input.getValue()));
+					.put(key, WorkflowInputValidator.readUserInput(workflowContext.getWorkflowConfig(),
+                                key, input.getType(), input.getValue()));
 			}
 		});
 
@@ -224,6 +230,7 @@ public class WorkflowExecuteManager {
 		if (context.getWorkflowConfig() == null) {
 			throw new BizException(ErrorCode.MISSING_PARAMS.toError("workflowConfig"));
 		}
+		WorkflowInputValidator.validateStart(context);
 		String taskId = IdGenerator.uuid();
 		context.setTaskId(taskId);
 

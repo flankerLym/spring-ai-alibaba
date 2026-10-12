@@ -57,7 +57,7 @@ function InputParamsForm(props: {
           <div key={item.key} className="flex flex-col gap-2">
             <div className={'flex flex-col gap-[4px]'}>
               <div className="flex gap-[4px] items-center">
-                <span className={styles['var-key']}>{item.key}</span>
+                <span className={styles['var-key']}>{item.required && <span style={{ color: 'red' }}>* </span>}{item.key}</span>
                 <span className={styles['var-key-type']}>
                   {`[${item.type}]`}
                 </span>

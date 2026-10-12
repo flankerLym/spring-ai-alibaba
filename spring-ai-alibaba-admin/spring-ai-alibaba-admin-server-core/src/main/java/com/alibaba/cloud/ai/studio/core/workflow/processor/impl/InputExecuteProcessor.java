@@ -26,6 +26,7 @@ import com.alibaba.cloud.ai.studio.runtime.utils.JsonUtils;
 import com.alibaba.cloud.ai.studio.core.config.CommonConfig;
 import com.alibaba.cloud.ai.studio.core.base.manager.RedisManager;
 import com.alibaba.cloud.ai.studio.core.workflow.WorkflowContext;
+import com.alibaba.cloud.ai.studio.core.workflow.WorkflowInputValidator;
 import com.alibaba.cloud.ai.studio.core.workflow.WorkflowInnerService;
 import com.alibaba.cloud.ai.studio.core.workflow.processor.AbstractExecuteProcessor;
 import lombok.extern.slf4j.Slf4j;
@@ -118,6 +119,12 @@ public class InputExecuteProcessor extends AbstractExecuteProcessor {
 			}
 		}
 
+        if (NodeStatusEnum.FAIL.getCode().equals(nodeResult.getNodeStatus())
+                || NodeStatusEnum.STOP.getCode().equals(nodeResult.getNodeStatus())) {
+            return nodeResult;
+        }
+        nodeResult.setOutput(JsonUtils.toJson(WorkflowInputValidator.resolve(outputParams,
+                nodeResult.getOutput() == null ? null : JsonUtils.fromJsonToMap(nodeResult.getOutput()))));
 		nodeResult.setNodeStatus(NodeStatusEnum.EXECUTING.getCode());
 		context.getNodeResultMap().put(node.getId(), nodeResult);
 		context.setTaskStatus(NodeStatusEnum.EXECUTING.getCode());

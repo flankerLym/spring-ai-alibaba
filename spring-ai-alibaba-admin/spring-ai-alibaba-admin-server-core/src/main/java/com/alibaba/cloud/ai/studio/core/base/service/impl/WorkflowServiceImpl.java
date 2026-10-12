@@ -42,6 +42,7 @@ import com.alibaba.cloud.ai.studio.core.context.RequestContextHolder;
 import com.alibaba.cloud.ai.studio.core.base.manager.RedisManager;
 import com.alibaba.cloud.ai.studio.core.workflow.WorkflowConfig;
 import com.alibaba.cloud.ai.studio.core.workflow.WorkflowContext;
+import com.alibaba.cloud.ai.studio.core.workflow.WorkflowInputValidator;
 import com.alibaba.cloud.ai.studio.core.utils.common.BeanCopierUtils;
 import com.alibaba.cloud.ai.studio.core.utils.common.IdGenerator;
 import com.alibaba.cloud.ai.studio.core.utils.LogUtils;
@@ -334,6 +335,7 @@ public class WorkflowServiceImpl implements WorkflowService {
 			}
 
 			workflowContext.setAppId(appId);
+            workflowContext.setWorkflowConfig(JsonUtils.fromJson(configStr, WorkflowConfig.class));
 
 			if (!CollectionUtils.isEmpty(request.getInputParams())) {
 				request.getInputParams().stream().forEach(input -> {
@@ -346,7 +348,7 @@ public class WorkflowServiceImpl implements WorkflowService {
 					}
 					else {
 						workflowContext.getUserMap()
-							.put(key, VariableUtils.convertValueByType(input.getKey(), input.getType(),
+							.put(key, WorkflowInputValidator.readUserInput(workflowContext.getWorkflowConfig(), key, input.getType(),
 									input.getValue()));
 					}
 				});
@@ -359,7 +361,7 @@ public class WorkflowServiceImpl implements WorkflowService {
 
 			String conversationId = StringUtils.isBlank(request.getConversationId())
 					? IdGenerator.idStr() : request.getConversationId();
-			workflowContext.setWorkflowConfig(JsonUtils.fromJson(configStr, WorkflowConfig.class));
+			WorkflowInputValidator.validateStart(workflowContext);
 			workflowContext.setTaskStatus(NodeStatusEnum.EXECUTING.getCode());
 			workflowContext.setRequestId(context.getRequestId());
 			workflowContext.setWorkspaceId(context.getWorkspaceId());

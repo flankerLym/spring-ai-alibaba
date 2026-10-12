@@ -403,7 +403,7 @@ export default memo(function ChatTestPanel() {
 
     if (type === 'resume') {
       if (!currentQA.current.answer) return;
-      resumeWorkFlowTask({
+      return resumeWorkFlowTask({
         app_id: appId,
         task_id: currentQA.current.answer.task_id,
         ...params,
@@ -413,8 +413,8 @@ export default memo(function ChatTestPanel() {
         })
         .catch((error) => {
           handleRequestError(error, '恢复工作流失败');
+          throw error;
         });
-      return;
     }
 
     if (!conversationId) {
@@ -443,7 +443,8 @@ export default memo(function ChatTestPanel() {
         content: query,
         role: 'user',
         msgStatus: 'finished',
-        inputs: inputParams.map((item) => {
+        inputs: inputParams.filter((item) => item.source === 'sys' && item.key === 'query'
+          || item.value !== undefined && item.value !== null).map((item) => {
           if (item.source === 'sys' && item.key === 'query')
             return {
               ...item,

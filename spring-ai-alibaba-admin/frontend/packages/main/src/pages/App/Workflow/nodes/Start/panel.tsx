@@ -29,6 +29,7 @@ export default memo((props: { id: string; data: IStartNodeData }) => {
             })}
           </div>
           <CustomOutputsFormWrap
+            inputConstraints
             readyOnly={nodesReadOnly}
             value={props.data.output_params}
             onChange={(output_params) => {

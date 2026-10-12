@@ -48,6 +48,7 @@ import com.alibaba.cloud.ai.studio.core.context.RequestContextHolder;
 import com.alibaba.cloud.ai.studio.core.base.manager.RedisManager;
 import com.alibaba.cloud.ai.studio.core.workflow.WorkflowConfig;
 import com.alibaba.cloud.ai.studio.core.workflow.WorkflowContext;
+import com.alibaba.cloud.ai.studio.core.workflow.WorkflowInputValidator;
 import com.alibaba.cloud.ai.studio.core.utils.common.BeanCopierUtils;
 import com.alibaba.cloud.ai.studio.core.utils.common.IdGenerator;
 import com.alibaba.cloud.ai.studio.core.utils.LogUtils;
@@ -230,7 +231,8 @@ public class WorkflowController {
 						initTaskRunParams.addAll(outputParams.stream().map(outputParam -> {
 							TaskRunParam taskRunParam = BeanCopierUtils.copy(outputParam, TaskRunParam.class);
 							taskRunParam.setSource(ParamSourceEnum.user.name());
-							taskRunParam.setRequired(false);
+							taskRunParam.setRequired(Boolean.TRUE.equals(outputParam.getRequired()));
+                            taskRunParam.setValue(null);
 							return taskRunParam;
 						}).collect(Collectors.toList()));
 					}
@@ -433,10 +435,13 @@ public class WorkflowController {
 					if (CollectionUtils.isNotEmpty(inputParams)) {
 						inputParams.stream().forEach(param -> inputMap.put(param.getKey(), param.getValue()));
 					}
-					Map<String, Object> outputMap = Maps.newHashMap();
-					outputParams.stream().forEach(outputParam -> {
-						outputMap.put(outputParam.getKey(), inputMap.get(outputParam.getKey()));
-					});
+                    Map<String, Object> resolved = WorkflowInputValidator.resolve(outputParams, inputMap);
+                    Map<String, Object> outputMap = Maps.newHashMap();
+                    outputParams.forEach(param -> {
+                        if (resolved.containsKey(param.getKey())) {
+                            outputMap.put(param.getKey(), resolved.get(param.getKey()));
+                        }
+                    });
 					nodeResult.setOutput(JsonUtils.toJson(outputMap));
 				}
 				else {
@@ -452,6 +457,9 @@ public class WorkflowController {
 			response.setRequestId(IdGenerator.uuid());
 			return Result.success(response);
 		}
+        catch (BizException e) {
+            return Result.error(IdGenerator.uuid(), e.getError());
+        }
 		catch (Exception e) {
 			log.error("WorkflowController resumeDebugTask error taskId:{}, costTime:{}", request.getTaskId(),
 					System.currentTimeMillis() - start, e);
