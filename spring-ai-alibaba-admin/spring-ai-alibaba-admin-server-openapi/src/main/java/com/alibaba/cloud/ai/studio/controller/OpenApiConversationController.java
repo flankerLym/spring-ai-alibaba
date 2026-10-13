@@ -133,10 +133,10 @@ public class OpenApiConversationController {
         Date start = parseTime(filter.getStartTime(), "startTime");
         Date end = parseTime(filter.getEndTime(), "endTime");
         checkTimeRange(start, end);
-        String order = StringUtils.defaultIfBlank(filter.getSortOrder(), "asc");
-        if (!"asc".equalsIgnoreCase(order) && !"desc".equalsIgnoreCase(order)) {
-            throw invalid("sortOrder", "supported values: asc, desc");
-        }
+//        String order = StringUtils.defaultIfBlank(filter.getSortOrder(), "asc");
+//        if (!"asc".equalsIgnoreCase(order) && !"desc".equalsIgnoreCase(order)) {
+//            throw invalid("sortOrder", "supported values: asc, desc");
+//        }
 
 
         RequestContext context = requireCaller();
@@ -148,9 +148,9 @@ public class OpenApiConversationController {
                 StringUtils.trimToNull(filter.getStatus()));
         query.ge(start != null, ConversationMessageEntity::getCreatedAt, start);
         query.le(end != null, ConversationMessageEntity::getCreatedAt, end);
-        boolean asc = "asc".equalsIgnoreCase(order);
-        query.orderBy(true, asc, ConversationMessageEntity::getCreatedAt)
-                .orderBy(true, asc, ConversationMessageEntity::getId);
+//        boolean asc = "asc".equalsIgnoreCase(order);
+//        query.orderBy(true, asc, ConversationMessageEntity::getCreatedAt)
+//                .orderBy(true, asc, ConversationMessageEntity::getId);
 
         Page<ConversationMessageEntity> result = messageMapper.selectPage(new Page<>(pageNum, pageSize), query);
 
@@ -333,7 +333,7 @@ public class OpenApiConversationController {
         private String status;
         private String startTime;
         private String endTime;
-        private String sortOrder = "asc";
+//        private String sortOrder = "asc";
         @JsonAlias({"current", "page"})
         private Integer pageNum = 1;
         @JsonAlias("size")
