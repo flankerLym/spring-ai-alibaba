@@ -50,8 +50,11 @@ public class ChatClientFactoryDelegate {
         this.observationRegistry = observationRegistry;
         this.customObservationConvention = customObservationConvention;
         register(openAiChatClientFactory);
-        register(dashScopeChatClientFactory);
-        register(deepSeekChatClientFactory);
+        // All four vendor types share the same OpenAiChatModel implementation.
+        for (String provider : com.alibaba.cloud.ai.studio.core.model.llm.ModelProviderConfig.PROVIDERS) {
+            chatClientFactories.put(provider, openAiChatClientFactory);
+        }
+        chatClientFactories.put("tongyi", openAiChatClientFactory);
     }
     
     public void register(ChatClientFactory factory) {
@@ -89,7 +92,8 @@ public class ChatClientFactoryDelegate {
             throw new RuntimeException("模型配置已禁用: " + modelConfigId);
         }
 
-        String provider = config.getProvider().toLowerCase();
+        String provider = config.getProvider() == null || config.getProvider().isBlank()
+                ? "openai" : config.getProvider().toLowerCase(java.util.Locale.ROOT);
         log.info("创建模型客户端，提供商: {}, 模型: {}", provider, config.getModelName());
         
         ChatClientFactory factory = chatClientFactories.get(provider);

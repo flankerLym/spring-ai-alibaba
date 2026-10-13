@@ -7,6 +7,7 @@ import { Button, Form, Input, Modal, Radio, message } from '@spark-ai/design';
 import { Space } from 'antd';
 import React, { useEffect, useState } from 'react';
 import styles from './index.module.less';
+import { PROVIDER_TYPES, providerType } from '../../providerTypes';
 
 interface ModelServiceProviderModalProps {
   open: boolean;
@@ -25,10 +26,11 @@ const ModelServiceProviderModal: React.FC<ModelServiceProviderModalProps> = ({
 
   useEffect(() => {
     getProviderProtocols().then((res) => {
-      setProtocols(res.data);
-      form.setFieldsValue({
-        protocol: res.data[0],
-      });
+      const values = res.data.map((value: string) => value.toLowerCase());
+      setProtocols(values);
+      if (!form.getFieldValue('protocol')) {
+        form.setFieldsValue({ protocol: 'openai', endpoint: providerType('openai').endpoint });
+      }
     });
   }, []);
 
@@ -99,6 +101,7 @@ const ModelServiceProviderModal: React.FC<ModelServiceProviderModalProps> = ({
       destroyOnClose
     >
       <Form
+        initialValues={{ protocol: 'openai', endpoint: providerType('openai').endpoint }}
         form={form}
         layout="vertical"
         requiredMark={false}
@@ -198,11 +201,19 @@ const ModelServiceProviderModal: React.FC<ModelServiceProviderModalProps> = ({
             },
           ]}
         >
-          <Radio.Group className={styles['protocol-type-radio']}>
-            <Space>
+          <Radio.Group className={styles['protocol-type-radio']}
+            onChange={(event) => {
+              const selected = event.target.value;
+              const current = form.getFieldValue('endpoint');
+              if (!current || PROVIDER_TYPES.some((item) => item.endpoint === current)) {
+                form.setFieldValue('endpoint', providerType(selected).endpoint);
+              }
+            }}>
+
+            <Space wrap>
               {protocols.map((protocol) => (
                 <Radio key={protocol} value={protocol}>
-                  {protocol}
+                  {providerType(protocol).label}
                 </Radio>
               ))}
             </Space>

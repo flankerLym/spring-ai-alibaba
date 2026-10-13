@@ -5,6 +5,8 @@ import { updateProvider } from '@/services/modelService';
 import type { IProviderConfigInfo } from '@/types/modelService';
 import { AlertDialog, Button, Form, Input, message } from '@spark-ai/design';
 import React, { useEffect } from 'react';
+import { Radio, Space } from 'antd';
+import { PROVIDER_TYPES, providerType } from '../../providerTypes';
 import { useNavigate } from 'react-router-dom';
 import { ProviderAvatar } from '../ProviderAvatar';
 import styles from './index.module.less';
@@ -84,6 +86,7 @@ const ProviderInfoForm: React.FC<ProviderInfoFormProps> = ({
     if (!provider) return;
     form.setFieldsValue({
       name: provider?.name,
+      protocol: providerType(provider?.protocol).value,
       apiKey: provider?.credential?.api_key || '',
       endpoint: provider?.credential?.endpoint || '',
     });
@@ -96,7 +99,9 @@ const ProviderInfoForm: React.FC<ProviderInfoFormProps> = ({
       updateProvider(providerId, {
         ...provider,
         name: values.name,
+        protocol: values.protocol,
         credential_config: {
+          ...provider.credential,
           api_key: values.apiKey,
           endpoint: values.endpoint,
         },
@@ -204,6 +209,20 @@ const ProviderInfoForm: React.FC<ProviderInfoFormProps> = ({
               />
             </Form.Item>
           </div>
+          <Form.Item name="protocol" label="服务商类型" rules={[{ required: true }]}>
+            <Radio.Group onChange={(event) => {
+              const current = form.getFieldValue('endpoint');
+              if (!current || PROVIDER_TYPES.some((item) => item.endpoint === current)) {
+                form.setFieldValue('endpoint', providerType(event.target.value).endpoint);
+              }
+            }}>
+              <Space wrap>
+                {PROVIDER_TYPES.map((item) => (
+                  <Radio key={item.value} value={item.value}>{item.label}</Radio>
+                ))}
+              </Space>
+            </Radio.Group>
+          </Form.Item>
           <Form.Item
             name="apiKey"
             label="API-KEY"

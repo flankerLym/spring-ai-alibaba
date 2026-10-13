@@ -1,6 +1,7 @@
 package com.alibaba.cloud.ai.studio.admin.service.impl;
 
 import com.alibaba.cloud.ai.studio.admin.entity.ModelConfigDO;
+import com.alibaba.cloud.ai.studio.core.model.llm.ModelProviderConfig;
 import com.alibaba.cloud.ai.studio.admin.service.ModelConfigBridgeService;
 import com.alibaba.cloud.ai.studio.core.base.entity.ModelEntity;
 import com.alibaba.cloud.ai.studio.core.base.manager.ModelManager;
@@ -35,6 +36,7 @@ public class ModelConfigBridgeServiceImpl implements ModelConfigBridgeService {
 
     private final ModelManager modelManager;
     private final ProviderManager providerManager;
+    private final ModelProviderConfig providerConfig;
 
     @Override
     public ModelConfigDO findById(Long id) {
@@ -234,17 +236,15 @@ public class ModelConfigBridgeServiceImpl implements ModelConfigBridgeService {
                 }
             }
 
-            // 获取baseUrl，从credential的endpoint获取
-            String baseUrl = credential.getEndpoint();
-            if (StringUtils.isNotBlank(baseUrl)) {
-                // 移除/v1后缀（如果存在），因为Spring AI会自动添加
-                if (baseUrl.endsWith("/v1") || baseUrl.endsWith("/v1/")) {
-                    baseUrl = baseUrl.replaceAll("/v1/?$", "");
-                }
-            } else {
-                // 如果没有endpoint，使用默认值（根据provider类型）
-                baseUrl = getDefaultBaseUrl(modelEntity.getProvider());
-            }
+            ModelCredential saved = new ModelCredential();
+            saved.setApiKey(apiKey);
+            saved.setEndpoint(credential.getEndpoint());
+            saved.setCompletionsPath(credential.getCompletionsPath());
+            String type = StringUtils.isBlank(providerDetail.getProtocol())
+                    ? modelEntity.getProvider() : providerDetail.getProtocol();
+            ModelCredential resolved = providerConfig.resolve(type, saved);
+            String baseUrl = resolved.getEndpoint();
+            apiKey = resolved.getApiKey();
 
             // 转换时间
             LocalDateTime createTime = convertToLocalDateTime(modelEntity.getGmtCreate());
@@ -257,6 +257,7 @@ public class ModelConfigBridgeServiceImpl implements ModelConfigBridgeService {
                     .provider(modelEntity.getProvider().toLowerCase())
                     .modelName(modelEntity.getModelId()) // ModelEntity的modelId对应ModelConfigDO的modelName
                     .baseUrl(baseUrl)
+                    .completionsPath(resolved.getCompletionsPath())
                     .apiKey(apiKey)
                     .status(modelEntity.getEnable() != null && modelEntity.getEnable() ? 1 : 0)
                     .defaultParameters(null) // 暂时不支持，后续可以扩展
@@ -348,14 +349,15 @@ public class ModelConfigBridgeServiceImpl implements ModelConfigBridgeService {
                 }
             }
 
-            String baseUrl = credential.getEndpoint();
-            if (StringUtils.isNotBlank(baseUrl)) {
-                if (baseUrl.endsWith("/v1") || baseUrl.endsWith("/v1/")) {
-                    baseUrl = baseUrl.replaceAll("/v1/?$", "");
-                }
-            } else {
-                baseUrl = getDefaultBaseUrl(modelConfigInfo.getProvider());
-            }
+            ModelCredential saved = new ModelCredential();
+            saved.setApiKey(apiKey);
+            saved.setEndpoint(credential.getEndpoint());
+            saved.setCompletionsPath(credential.getCompletionsPath());
+            String type = StringUtils.isBlank(providerDetail.getProtocol())
+                    ? modelConfigInfo.getProvider() : providerDetail.getProtocol();
+            ModelCredential resolved = providerConfig.resolve(type, saved);
+            String baseUrl = resolved.getEndpoint();
+            apiKey = resolved.getApiKey();
 
             return ModelConfigDO.builder()
                     .id(id)
@@ -363,6 +365,7 @@ public class ModelConfigBridgeServiceImpl implements ModelConfigBridgeService {
                     .provider(modelConfigInfo.getProvider().toLowerCase())
                     .modelName(modelConfigInfo.getModelId())
                     .baseUrl(baseUrl)
+                    .completionsPath(resolved.getCompletionsPath())
                     .apiKey(apiKey)
                     .status(modelConfigInfo.getEnable() != null && modelConfigInfo.getEnable() ? 1 : 0)
                     .defaultParameters(null)
@@ -373,28 +376,6 @@ public class ModelConfigBridgeServiceImpl implements ModelConfigBridgeService {
         } catch (Exception e) {
             log.error("从ModelConfigInfo构建ModelConfigDO失败", e);
             return null;
-        }
-    }
-
-    /**
-     * 根据provider获取默认的baseUrl
-     */
-    private String getDefaultBaseUrl(String provider) {
-        if (provider == null) {
-            return "https://api.openai.com";
-        }
-
-        String lowerProvider = provider.toLowerCase();
-        switch (lowerProvider) {
-            case "openai":
-                return "https://api.openai.com";
-            case "dashscope":
-            case "tongyi":
-                return "https://dashscope.aliyuncs.com";
-            case "deepseek":
-                return "https://api.deepseek.com";
-            default:
-                return "https://api.openai.com";
         }
     }
 

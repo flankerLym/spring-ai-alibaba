@@ -1,6 +1,9 @@
 package com.alibaba.cloud.ai.studio.admin.service.client;
 
 import com.alibaba.cloud.ai.studio.admin.entity.ModelConfigDO;
+import com.alibaba.cloud.ai.studio.core.model.llm.ModelProviderConfig;
+import com.alibaba.cloud.ai.studio.core.model.llm.domain.ModelCredential;
+import org.springframework.beans.factory.annotation.Autowired;
 import io.micrometer.observation.ObservationRegistry;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.observation.ChatModelObservationConvention;
@@ -22,6 +25,9 @@ import java.util.Map;
 public class OpenAiChatClientFactory implements ChatClientFactory {
     
     public static final String OPEN_AI_PROVIDER = "openai";
+
+    @Autowired
+    private ModelProviderConfig providerConfig;
     
     private final ObservationRegistry observationRegistry;
     
@@ -44,7 +50,13 @@ public class OpenAiChatClientFactory implements ChatClientFactory {
     
     @Override
     public ChatModel buildChatModel(ModelConfigDO modelConfig) {
-        OpenAiApi api = OpenAiApi.builder().apiKey(modelConfig.getApiKey()).baseUrl(modelConfig.getBaseUrl()).build();
+        ModelCredential saved = new ModelCredential();
+        saved.setApiKey(modelConfig.getApiKey());
+        saved.setEndpoint(modelConfig.getBaseUrl());
+        saved.setCompletionsPath(modelConfig.getCompletionsPath());
+        ModelCredential credential = providerConfig.resolve(modelConfig.getProvider(), saved);
+        OpenAiApi api = OpenAiApi.builder().apiKey(credential.getApiKey()).baseUrl(credential.getEndpoint())
+                .completionsPath(credential.getCompletionsPath()).build();
         // 创建ChatModel
         OpenAiChatModel model =  OpenAiChatModel.builder().openAiApi(api)
                 .toolCallingManager(toolCallingManager)

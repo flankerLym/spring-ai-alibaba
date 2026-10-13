@@ -46,6 +46,10 @@ public class ModelConfigDO {
     @Column(name = "base_url", nullable = false, length = 500)
     private String baseUrl;
 
+    /** Runtime transport path; does not add a database column. */
+    @Transient
+    private String completionsPath;
+
     /**
      * API密钥
      */

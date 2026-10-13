@@ -69,6 +69,9 @@ public class ModelFactory {
 	private ProviderManager providerManager;
 
 	@Resource
+	private ModelProviderConfig modelProviderConfig;
+
+	@Resource
 	private ObservationRegistry observationRegistry;
 
 	@Resource
@@ -80,9 +83,24 @@ public class ModelFactory {
 	 * @return ChatModel instance
 	 */
 	public ChatModel getChatModel(String provider) {
-		ModelCredential credential = getModelCredential(provider, null);
-		// TODO will adapt other provider in future, now it's only for OpenAI compatible
-		// API
+        String providerCode = StringUtils.defaultIfBlank(provider, "OpenAI");
+        ModelCredential credential;
+        try {
+            ProviderConfigInfo detail = providerManager.getProviderDetail(providerCode, false);
+            String type = StringUtils.isBlank(detail.getProtocol()) ? providerCode : detail.getProtocol();
+            credential = modelProviderConfig.resolve(type, detail.getCredential());
+        }
+        catch (BizException error) {
+            // Only canonical vendor codes may fall back to server-side YAML; never arbitrary record IDs.
+            if (!ModelProviderConfig.PROVIDERS.contains(providerCode.toLowerCase(java.util.Locale.ROOT))
+                    || !ErrorCode.INVALID_PARAMS.getCode().equals(error.getError().getCode())) {
+                throw error;
+            }
+            credential = modelProviderConfig.resolve(providerCode, null);
+        }
+        if (StringUtils.isBlank(credential.getApiKey())) {
+            throw new BizException(ErrorCode.INVALID_PARAMS.toError("apikey", "api key is invalid."));
+        }
 
 		OpenAiApi openAiApi = buildOpenAiApi(credential);
 		OpenAiChatModel openAiChatModel = OpenAiChatModel.builder()
@@ -166,25 +184,12 @@ public class ModelFactory {
 				.responseErrorHandler(ErrorHandlerUtils.OPENAI_RESPONSE_ERROR_HANDLER)
 				.headers(ApiUtils.getBaseHeaders());
 
-		if (StringUtils.isNotBlank(credential.getEndpoint())) {
-			String endpoint = credential.getEndpoint();
-
-			// 火山方舟兼容
-			if (endpoint.contains("ark.cn-beijing.volces.com")) {
-				endpoint = endpoint.replaceAll("/+$", "");
-				openAiApiBuilder
-						.baseUrl(endpoint)
-						.completionsPath("/chat/completions");
-			}
-			else {
-				// Spring AI 默认会自动拼 /v1/chat/completions
-				if (endpoint.endsWith("/v1") || endpoint.endsWith("/v1/")) {
-					endpoint = endpoint.replaceAll("/v1/?$", "");
-				}
-
-				openAiApiBuilder.baseUrl(endpoint);
-			}
-		}
+        if (StringUtils.isNotBlank(credential.getEndpoint())) {
+            ModelCredential routed = ModelProviderConfig.route(credential);
+            openAiApiBuilder.baseUrl(routed.getEndpoint())
+                    .completionsPath(routed.getCompletionsPath())
+                    .embeddingsPath(routed.getEmbeddingsPath());
+        }
 
 		return openAiApiBuilder.build();
 	}

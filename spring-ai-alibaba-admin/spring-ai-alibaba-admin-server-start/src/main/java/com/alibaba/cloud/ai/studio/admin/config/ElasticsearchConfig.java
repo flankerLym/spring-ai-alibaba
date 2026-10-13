@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Configuration;
 
 import java.net.URL;
 
-@Configuration
+//@Configuration
 @EnableConfigurationProperties(ElasticsearchProperties.class)
 public class ElasticsearchConfig {
 

@@ -1,0 +1,13 @@
+# OpenAI Compatible，填写火山方舟 API Key 和已开通的模型 ID / 推理接入点 ID。
+# 此文件是 provider=doubao 的连接默认值；页面保存的 API URL / Key 优先。
+models:
+  - id: 4
+    name: doubao
+    provider: doubao
+    modelName: "REPLACE_WITH_ARK_MODEL_OR_ENDPOINT_ID"
+    baseUrl: https://ark.cn-beijing.volces.com/api/v3
+    apiKey: ""
+    status: 1
+    defaultParameters:
+      temperature: 0.7
+      maxTokens: 4096

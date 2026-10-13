@@ -18,12 +18,10 @@ package com.alibaba.cloud.ai.studio.admin.builder.controller;
 
 import com.alibaba.cloud.ai.studio.runtime.domain.model.AddModelRequest;
 import com.alibaba.cloud.ai.studio.runtime.domain.model.AddProviderRequest;
-import com.alibaba.cloud.ai.studio.runtime.domain.model.CredentialSpec;
 import com.alibaba.cloud.ai.studio.runtime.domain.model.QueryProviderRequest;
 import com.alibaba.cloud.ai.studio.runtime.domain.model.UpdateModelRequest;
 import com.alibaba.cloud.ai.studio.runtime.domain.model.UpdateProviderRequest;
 import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 import com.alibaba.cloud.ai.studio.runtime.domain.RequestContext;
 import com.alibaba.cloud.ai.studio.runtime.domain.Result;
 import com.alibaba.cloud.ai.studio.runtime.enums.DataSourceEnum;
@@ -34,12 +32,14 @@ import com.alibaba.cloud.ai.studio.core.base.manager.ProviderManager;
 import com.alibaba.cloud.ai.studio.core.base.manager.RedisManager;
 import com.alibaba.cloud.ai.studio.core.context.RequestContextHolder;
 import com.alibaba.cloud.ai.studio.core.model.llm.ModelProvider;
+import com.alibaba.cloud.ai.studio.core.model.llm.ModelProviderConfig;
 import com.alibaba.cloud.ai.studio.core.model.llm.domain.ModelConfigInfo;
 import com.alibaba.cloud.ai.studio.core.model.llm.domain.ModelCredential;
 import com.alibaba.cloud.ai.studio.core.model.llm.domain.ParameterRule;
 import com.alibaba.cloud.ai.studio.core.model.llm.domain.ProviderConfigInfo;
 import com.alibaba.cloud.ai.studio.core.utils.common.IdGenerator;
 import com.alibaba.cloud.ai.studio.core.utils.security.RSACryptUtils;
+import com.alibaba.cloud.ai.studio.core.utils.security.CryptoUtils;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
@@ -135,23 +135,12 @@ public class ProviderController {
 		providerConfigInfo.setSupportedModelTypes(supportedModelTypes);
 
 		// Set protocol
-		if (StringUtils.isNotBlank(request.getProtocol())) {
-			providerConfigInfo.setProtocol(request.getProtocol());
-		}
+        providerConfigInfo.setProtocol(normalizeProtocol(request.getProtocol()));
 
-		// Handle credential information
-		if (request.getCredentialConfig() != null) {
-			Map<String, Object> credentialConfig = request.getCredentialConfig();
-			ModelCredential credential = new ModelCredential();
-			// For OpenAI protocol, handle API key encryption
-			if (StringUtils.isBlank(request.getProtocol()) || "openai".equals(request.getProtocol().toLowerCase())) {
-				String endpoint = MapUtils.getString(credentialConfig, "endpoint");
-				String apikey = MapUtils.getString(credentialConfig, "api_key");
-				credential.setEndpoint(endpoint);
-				credential.setApiKey(RSACryptUtils.encrypt(apikey));
-			}
-			providerConfigInfo.setCredential(credential);
-		}
+        if (request.getCredentialConfig() != null) {
+            providerConfigInfo.setCredential(buildOpenaiCredentialConfig(request.getCredentialConfig()));
+        }
+
 		boolean b = providerManager.addProvider(providerConfigInfo);
 		RequestContext requestContext = RequestContextHolder.getRequestContext();
 		redisManager.delete(CACHE_PROVIDER_LIST_CACHE_PREFIX + requestContext.getWorkspaceId());
@@ -191,56 +180,47 @@ public class ProviderController {
 		}
 		providerConfigInfo.setSupportedModelTypes(supportedModelTypes);
 
-		// Set protocol
-		if (StringUtils.isNotBlank(request.getProtocol())) {
-			providerConfigInfo.setProtocol(request.getProtocol());
-		}
+        if (StringUtils.isNotBlank(request.getProtocol())) {
+            providerConfigInfo.setProtocol(normalizeProtocol(request.getProtocol()));
+        }
+        if (request.getCredentialConfig() != null) {
+            ModelCredential credential = buildOpenaiCredentialConfig(request.getCredentialConfig());
+            String suppliedKey = MapUtils.getString(request.getCredentialConfig(), "api_key");
+            ModelCredential current = providerManager.getProviderDetail(provider, false).getCredential();
+            if (current != null && (StringUtils.isBlank(suppliedKey)
+                    || suppliedKey.equals(CryptoUtils.mask(current.getApiKey())))) {
+                credential.setApiKey(StringUtils.isBlank(current.getApiKey()) ? null
+                        : RSACryptUtils.encrypt(current.getApiKey()));
+            }
+            providerConfigInfo.setCredential(credential);
+        }
 
-		// Handle credential information
-		if (request.getCredentialConfig() != null) {
-			Map<String, Object> credentialConfig = request.getCredentialConfig();
-			// For OpenAI protocol, handle API key encryption
-			ModelCredential credential = null;
-			if (StringUtils.isBlank(request.getProtocol()) || "openai".equals(request.getProtocol().toLowerCase())) {
-				credential = buildOpenaiCredentialConfig(credentialConfig);
-			}
-			else {
-				List<CredentialSpec> credentialSpecs = providerMap.get(provider + "Provider").getCredentialSpecs();
-				if (CollectionUtils.isEmpty(credentialSpecs)) {
-					credential = buildOpenaiCredentialConfig(credentialConfig);
-				}
-				else {
-					Map<String, Object> tmpCredentialConfig = Maps.newHashMap();
-					credentialSpecs.stream().forEach(credentialSpec -> {
-						if (credentialSpec.isSensitive()) {
-							tmpCredentialConfig.put(credentialSpec.getCode(), RSACryptUtils
-								.encrypt(MapUtils.getString(credentialConfig, credentialSpec.getCode())));
-						}
-						else {
-							tmpCredentialConfig.put(credentialSpec.getCode(),
-									MapUtils.getString(credentialConfig, credentialSpec.getCode()));
-						}
-					});
-				}
-			}
-			providerConfigInfo.setCredential(credential);
-		}
 		boolean b = providerManager.updateProvider(providerConfigInfo);
 		RequestContext requestContext = RequestContextHolder.getRequestContext();
 		redisManager.delete(CACHE_PROVIDER_LIST_CACHE_PREFIX + requestContext.getWorkspaceId());
 		return Result.success(b);
 	}
 
-	private ModelCredential buildOpenaiCredentialConfig(Map<String, Object> credentialConfig) {
-		String endpoint = MapUtils.getString(credentialConfig, "endpoint");
-		String apikey = MapUtils.getString(credentialConfig, "api_key");
+    private String normalizeProtocol(String protocol) {
+        String value = StringUtils.defaultIfBlank(protocol, "openai").trim().toLowerCase(java.util.Locale.ROOT);
+        if (!ModelProviderConfig.PROVIDERS.contains(value)) {
+            throw new BizException(ErrorCode.INVALID_PARAMS.toError("protocol", "unsupported provider type"));
+        }
+        return value;
+    }
 
-		ModelCredential credential = new ModelCredential();
-		credential.setEndpoint(endpoint);
-		credential.setApiKey(RSACryptUtils.encrypt(apikey));
-
-		return credential;
-	}
+    private ModelCredential buildOpenaiCredentialConfig(Map<String, Object> credentialConfig) {
+        String endpoint = MapUtils.getString(credentialConfig, "endpoint");
+        String apikey = MapUtils.getString(credentialConfig, "api_key");
+        ModelCredential credential = new ModelCredential();
+        credential.setEndpoint(endpoint);
+        if (StringUtils.isNotBlank(apikey)) {
+            credential.setApiKey(RSACryptUtils.encrypt(apikey));
+        }
+        credential.setCompletionsPath(MapUtils.getString(credentialConfig, "completions_path"));
+        credential.setEmbeddingsPath(MapUtils.getString(credentialConfig, "embeddings_path"));
+        return credential;
+    }
 
 	/**
 	 * Deletes a model provider from the system.
@@ -495,7 +475,7 @@ public class ProviderController {
 	public Result<List<String>> getProviderProtocols() {
 		// Return supported protocol types based on actual implementation
 		// For example: OpenAI, Azure, Anthropic, etc.
-		List<String> protocols = Lists.newArrayList("OpenAI");
+		List<String> protocols = Lists.newArrayList(ModelProviderConfig.PROVIDERS);
 		return Result.success(protocols);
 	}
 

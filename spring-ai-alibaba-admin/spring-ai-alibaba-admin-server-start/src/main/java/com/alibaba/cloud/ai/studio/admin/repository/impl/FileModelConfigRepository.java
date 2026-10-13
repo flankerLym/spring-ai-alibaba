@@ -1,6 +1,8 @@
 package com.alibaba.cloud.ai.studio.admin.repository.impl;
 
 import com.alibaba.cloud.ai.studio.admin.entity.ModelConfigDO;
+import com.alibaba.cloud.ai.studio.core.model.llm.ModelProviderConfig;
+import com.alibaba.cloud.ai.studio.core.model.llm.domain.ModelCredential;
 import com.alibaba.cloud.ai.studio.admin.repository.ModelConfigRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
@@ -47,6 +49,8 @@ public class FileModelConfigRepository implements ModelConfigRepository, Initial
     private static final String DEFAULT_FILE = "model-config.yml";
     
     private final Environment environment;
+
+    private final ModelProviderConfig providerConfig;
     
     private final ObjectMapper yamlMapper = new ObjectMapper(new YAMLFactory());
     
@@ -56,6 +60,7 @@ public class FileModelConfigRepository implements ModelConfigRepository, Initial
     
     public FileModelConfigRepository(Environment environment) {
         this.environment = environment;
+        this.providerConfig = new ModelProviderConfig(environment);
     }
     
     @Override
@@ -104,6 +109,20 @@ public class FileModelConfigRepository implements ModelConfigRepository, Initial
         Set<Long> ids = new HashSet<>();
         Set<String> names = new HashSet<>();
         for (YamlModel m : root.models) {
+            if (m.provider == null || m.provider.isBlank()) {
+                m.provider = "openai";
+            }
+            ModelCredential saved = new ModelCredential();
+            saved.setApiKey(m.apiKey);
+            saved.setEndpoint(m.baseUrl);
+            saved.setCompletionsPath(m.completionsPath);
+            ModelCredential resolved = providerConfig.resolve(m.provider, saved);
+            m.apiKey = resolved.getApiKey();
+            m.baseUrl = resolved.getEndpoint();
+            m.completionsPath = resolved.getCompletionsPath();
+            if (m.modelName == null || m.modelName.isBlank()) {
+                m.modelName = providerConfig.defaultModelName(m.provider);
+            }
             validateYamlModel(m, ids, names);
             ModelConfigDO entity = toEntity(m);
             map.put(entity.getId(), entity);
@@ -119,7 +138,7 @@ public class FileModelConfigRepository implements ModelConfigRepository, Initial
             throw new IllegalArgumentException("模型缺少 name");
         }
         if (m.provider == null || m.provider.isBlank()) {
-            throw new IllegalArgumentException("模型缺少 provider");
+            m.provider = "openai";
         }
         if (m.modelName == null || m.modelName.isBlank()) {
             throw new IllegalArgumentException("模型缺少 modelName");
@@ -141,7 +160,8 @@ public class FileModelConfigRepository implements ModelConfigRepository, Initial
     
     private ModelConfigDO toEntity(YamlModel m) {
         ModelConfigDO.ModelConfigDOBuilder b = ModelConfigDO.builder().id(m.id).name(m.name)
-                .provider(m.provider.toLowerCase()).modelName(m.modelName).baseUrl(m.baseUrl)
+                .provider(m.provider.toLowerCase(java.util.Locale.ROOT)).modelName(m.modelName).baseUrl(m.baseUrl)
+                .completionsPath(m.completionsPath)
                 .apiKey(environment != null ? environment.resolvePlaceholders(m.apiKey) : m.apiKey).status(m.status)
                 .createTime(LocalDateTime.now()).updateTime(LocalDateTime.now());
         
@@ -178,7 +198,8 @@ public class FileModelConfigRepository implements ModelConfigRepository, Initial
                     try {
                         for (WatchEvent<?> event : key.pollEvents()) {
                             Path changed = (Path) event.context();
-                            if (changed != null && configPath.getFileName().equals(changed.getFileName())) {
+                            if (changed != null && (configPath.getFileName().equals(changed.getFileName())
+                                    || changed.toString().matches("model-config-.*\\.ya?ml"))) {
                                 try {
                                     Map<Long, ModelConfigDO> data = loadFromFile(configPath);
                                     snapshot.set(Collections.unmodifiableMap(data));
@@ -250,6 +271,8 @@ public class FileModelConfigRepository implements ModelConfigRepository, Initial
         public String modelName;
         
         public String baseUrl;
+
+        public String completionsPath;
         
         public String apiKey;
         
