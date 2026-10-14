@@ -138,7 +138,7 @@ public class ProviderController {
         providerConfigInfo.setProtocol(normalizeProtocol(request.getProtocol()));
 
         if (request.getCredentialConfig() != null) {
-            providerConfigInfo.setCredential(buildOpenaiCredentialConfig(request.getCredentialConfig()));
+            providerConfigInfo.setCredential(buildCredentialConfig(request.getCredentialConfig()));
         }
 
 		boolean b = providerManager.addProvider(providerConfigInfo);
@@ -184,7 +184,7 @@ public class ProviderController {
             providerConfigInfo.setProtocol(normalizeProtocol(request.getProtocol()));
         }
         if (request.getCredentialConfig() != null) {
-            ModelCredential credential = buildOpenaiCredentialConfig(request.getCredentialConfig());
+            ModelCredential credential = buildCredentialConfig(request.getCredentialConfig());
             String suppliedKey = MapUtils.getString(request.getCredentialConfig(), "api_key");
             ModelCredential current = providerManager.getProviderDetail(provider, false).getCredential();
             if (current != null && (StringUtils.isBlank(suppliedKey)
@@ -209,7 +209,7 @@ public class ProviderController {
         return value;
     }
 
-    private ModelCredential buildOpenaiCredentialConfig(Map<String, Object> credentialConfig) {
+    private ModelCredential buildCredentialConfig(Map<String, Object> credentialConfig) {
         String endpoint = MapUtils.getString(credentialConfig, "endpoint");
         String apikey = MapUtils.getString(credentialConfig, "api_key");
         ModelCredential credential = new ModelCredential();

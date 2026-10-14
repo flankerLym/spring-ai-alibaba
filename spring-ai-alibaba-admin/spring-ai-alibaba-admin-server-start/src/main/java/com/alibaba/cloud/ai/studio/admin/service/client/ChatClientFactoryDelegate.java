@@ -42,7 +42,8 @@ public class ChatClientFactoryDelegate {
             ChatClientObservationConvention customObservationConvention,
             OpenAiChatClientFactory openAiChatClientFactory,
             DashScopeChatClientFactory dashScopeChatClientFactory,
-            DeepSeekChatClientFactory deepSeekChatClientFactory) {
+            DeepSeekChatClientFactory deepSeekChatClientFactory,
+            DoubaoChatClientFactory doubaoChatClientFactory) {
         this.modelConfigRepository = modelConfigRepository;
         this.modelConfigBridgeService = modelConfigBridgeService;
         this.objectMapper = objectMapper;
@@ -50,11 +51,12 @@ public class ChatClientFactoryDelegate {
         this.observationRegistry = observationRegistry;
         this.customObservationConvention = customObservationConvention;
         register(openAiChatClientFactory);
-        // All four vendor types share the same OpenAiChatModel implementation.
-        for (String provider : com.alibaba.cloud.ai.studio.core.model.llm.ModelProviderConfig.PROVIDERS) {
-            chatClientFactories.put(provider, openAiChatClientFactory);
-        }
-        chatClientFactories.put("tongyi", openAiChatClientFactory);
+        register(dashScopeChatClientFactory);
+        register(deepSeekChatClientFactory);
+        register(doubaoChatClientFactory);
+        chatClientFactories.put("tongyi", dashScopeChatClientFactory);
+        chatClientFactories.put("qwen", dashScopeChatClientFactory);
+        chatClientFactories.put("bytedance", doubaoChatClientFactory);
     }
     
     public void register(ChatClientFactory factory) {

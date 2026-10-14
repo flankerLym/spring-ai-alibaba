@@ -212,7 +212,7 @@ const ProviderInfoForm: React.FC<ProviderInfoFormProps> = ({
           <Form.Item name="protocol" label="服务商类型" rules={[{ required: true }]}>
             <Radio.Group onChange={(event) => {
               const current = form.getFieldValue('endpoint');
-              if (!current || PROVIDER_TYPES.some((item) => item.endpoint === current)) {
+              if (!current || current === 'https://dashscope.aliyuncs.com/compatible-mode' || PROVIDER_TYPES.some((item) => item.endpoint === current)) {
                 form.setFieldValue('endpoint', providerType(event.target.value).endpoint);
               }
             }}>

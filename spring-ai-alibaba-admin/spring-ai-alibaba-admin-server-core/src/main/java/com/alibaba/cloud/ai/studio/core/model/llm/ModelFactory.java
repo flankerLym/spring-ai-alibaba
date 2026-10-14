@@ -16,6 +16,11 @@
 package com.alibaba.cloud.ai.studio.core.model.llm;
 
 import com.alibaba.cloud.ai.dashscope.api.DashScopeApi;
+import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatModel;
+import org.springframework.ai.deepseek.DeepSeekChatModel;
+import org.springframework.ai.deepseek.api.DeepSeekApi;
+import com.volcengine.ark.runtime.service.ArkService;
+import java.time.Duration;
 import com.alibaba.cloud.ai.studio.runtime.domain.app.FileSearchOptions;
 import com.alibaba.cloud.ai.studio.runtime.domain.knowledgebase.IndexConfig;
 import com.alibaba.cloud.ai.studio.runtime.enums.ErrorCode;
@@ -72,6 +77,9 @@ public class ModelFactory {
 	private ModelProviderConfig modelProviderConfig;
 
 	@Resource
+	private ToolCallingManager toolCallingManager;
+
+	@Resource
 	private ObservationRegistry observationRegistry;
 
 	@Resource
@@ -85,9 +93,10 @@ public class ModelFactory {
 	public ChatModel getChatModel(String provider) {
         String providerCode = StringUtils.defaultIfBlank(provider, "OpenAI");
         ModelCredential credential;
+        String type;
         try {
             ProviderConfigInfo detail = providerManager.getProviderDetail(providerCode, false);
-            String type = StringUtils.isBlank(detail.getProtocol()) ? providerCode : detail.getProtocol();
+            type = ModelProviderConfig.normalize(detail.getProtocol());
             credential = modelProviderConfig.resolve(type, detail.getCredential());
         }
         catch (BizException error) {
@@ -96,13 +105,17 @@ public class ModelFactory {
                     || !ErrorCode.INVALID_PARAMS.getCode().equals(error.getError().getCode())) {
                 throw error;
             }
-            credential = modelProviderConfig.resolve(providerCode, null);
+            type = ModelProviderConfig.normalize(providerCode);
+            credential = modelProviderConfig.resolve(type, null);
         }
         if (StringUtils.isBlank(credential.getApiKey())) {
             throw new BizException(ErrorCode.INVALID_PARAMS.toError("apikey", "api key is invalid."));
         }
 
-		OpenAiApi openAiApi = buildOpenAiApi(credential);
+        if (!"openai".equals(type)) {
+            return createNativeChatModel(type, credential);
+        }
+        OpenAiApi openAiApi = buildOpenAiApi(credential);
 		OpenAiChatModel openAiChatModel = OpenAiChatModel.builder()
 				.openAiApi(openAiApi)
 				.observationRegistry(observationRegistry)
@@ -194,4 +207,39 @@ public class ModelFactory {
 		return openAiApiBuilder.build();
 	}
 
+
+    public ChatModel createNativeChatModel(String provider, ModelCredential credential) {
+        String type = ModelProviderConfig.normalize(provider);
+        ChatModel model;
+        switch (type) {
+            case "dashscope" -> {
+                DashScopeChatModel nativeModel = DashScopeChatModel.builder()
+                        .dashScopeApi(DashScopeApi.builder().apiKey(credential.getApiKey())
+                                .baseUrl(dashScopeBaseUrl(credential.getEndpoint())).build())
+                        .toolCallingManager(toolCallingManager).observationRegistry(observationRegistry).build();
+                nativeModel.setObservationConvention(customChatModelObservationConvention);
+                model = nativeModel;
+            }
+            case "deepseek" -> {
+                DeepSeekChatModel nativeModel = DeepSeekChatModel.builder()
+                        .deepSeekApi(DeepSeekApi.builder().apiKey(credential.getApiKey())
+                                .baseUrl(credential.getEndpoint())
+                                .completionsPath(credential.getCompletionsPath()).build())
+                        .toolCallingManager(toolCallingManager).observationRegistry(observationRegistry).build();
+                nativeModel.setObservationConvention(customChatModelObservationConvention);
+                model = nativeModel;
+            }
+            case "doubao" -> model = new ArkChatModel(() -> ArkService.builder()
+                    .apiKey(credential.getApiKey()).baseUrl(credential.getEndpoint())
+                    .timeout(Duration.ofMinutes(5)).build(), toolCallingManager, observationRegistry, customChatModelObservationConvention);
+            default -> throw new IllegalArgumentException("Not a native vendor: " + provider);
+        }
+        return new NativeOptionsChatModel(type, model);
+    }
+
+    /** Migrate the previously saved compatible-mode URL to the native DashScope root. */
+    public static String dashScopeBaseUrl(String endpoint) {
+        String value = endpoint.replaceAll("/+$", "");
+        return value.replaceFirst("/compatible-mode(?:/v1)?$", "");
+    }
 }

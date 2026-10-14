@@ -1,7 +1,7 @@
 export const PROVIDER_TYPES = [
   { value: 'openai', label: 'OpenAI', endpoint: 'https://api.openai.com' },
   { value: 'deepseek', label: 'DeepSeek', endpoint: 'https://api.deepseek.com' },
-  { value: 'dashscope', label: 'DashScope（通义千问）', endpoint: 'https://dashscope.aliyuncs.com/compatible-mode' },
+  { value: 'dashscope', label: 'DashScope（通义千问）', endpoint: 'https://dashscope.aliyuncs.com' },
   { value: 'doubao', label: '豆包（ByteDance）', endpoint: 'https://ark.cn-beijing.volces.com/api/v3' },
 ];
 

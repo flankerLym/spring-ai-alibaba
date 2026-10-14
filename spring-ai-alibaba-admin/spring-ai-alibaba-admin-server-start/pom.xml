@@ -60,6 +60,12 @@
     <description>Backend implementation of the visualized studio for building applications.</description>
 
     <dependencies>
+        <!-- Keep the Ark SDK on the executable application's runtime classpath. -->
+        <dependency>
+            <groupId>com.volcengine</groupId>
+            <artifactId>volcengine-java-sdk-ark-runtime</artifactId>
+            <version>2.0.29</version>
+        </dependency>
         <dependency>
             <groupId>com.alibaba.cloud.ai</groupId>
             <artifactId>spring-ai-alibaba-admin-server-core</artifactId>

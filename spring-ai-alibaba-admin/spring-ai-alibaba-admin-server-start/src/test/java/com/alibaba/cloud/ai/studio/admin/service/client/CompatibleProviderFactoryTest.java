@@ -40,24 +40,33 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class CompatibleProviderFactoryTest {
 
     @Test
-    void allVendorsShareExistingOpenAiFactory() {
-        OpenAiChatClientFactory factory = mock(OpenAiChatClientFactory.class);
+    void existingRegistryRoutesToExistingNativeFactories() {
+        OpenAiChatClientFactory openai = mock(OpenAiChatClientFactory.class);
+        DashScopeChatClientFactory dashscope = mock(DashScopeChatClientFactory.class);
+        DeepSeekChatClientFactory deepseek = mock(DeepSeekChatClientFactory.class);
+        DoubaoChatClientFactory doubao = mock(DoubaoChatClientFactory.class);
+        when(openai.getSupportProvider()).thenReturn("openai");
+        when(dashscope.getSupportProvider()).thenReturn("dashscope");
+        when(deepseek.getSupportProvider()).thenReturn("deepseek");
+        when(doubao.getSupportProvider()).thenReturn("doubao");
         ChatClientFactoryDelegate delegate = new ChatClientFactoryDelegate(mock(ModelConfigRepository.class),
                 mock(ModelConfigBridgeService.class), new ObjectMapper(), ObservationRegistry.NOOP,
-                mock(ChatClientObservationConvention.class), factory, mock(DashScopeChatClientFactory.class),
-                mock(DeepSeekChatClientFactory.class));
+                mock(ChatClientObservationConvention.class), openai, dashscope, deepseek, doubao);
         Map<?, ?> factories = (Map<?, ?>) ReflectionTestUtils.getField(delegate, "chatClientFactories");
-        for (String provider : ModelProviderConfig.PROVIDERS) {
-            assertSame(factory, factories.get(provider));
-        }
+        assertSame(openai, factories.get("openai"));
+        assertSame(dashscope, factories.get("dashscope"));
+        assertSame(deepseek, factories.get("deepseek"));
+        assertSame(doubao, factories.get("doubao"));
+        assertSame(dashscope, factories.get("tongyi"));
     }
 
     @Test
-    void compatibleFactorySendsModelAndSupportsStreamingAtEachVendorPath() throws Exception {
+    void openAiRetainsHttpAndStreaming() throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         List<String> requests = new CopyOnWriteArrayList<>();
         server.createContext("/", exchange -> {
@@ -79,7 +88,7 @@ class CompatibleProviderFactoryTest {
             OpenAiChatClientFactory factory = new OpenAiChatClientFactory(ObservationRegistry.NOOP,
                     mock(ToolCallingManager.class), mock(ChatModelObservationConvention.class));
             ReflectionTestUtils.setField(factory, "providerConfig", new ModelProviderConfig(new MockEnvironment()));
-            for (String provider : ModelProviderConfig.PROVIDERS) {
+            for (String provider : List.of("openai")) {
                 String path = provider.equals("doubao") ? "/api/v3" : provider.equals("dashscope") ? "/compatible-mode/v1" : "/v1";
                 ModelConfigDO config = ModelConfigDO.builder().provider(provider).modelName("test-model")
                         .apiKey("test-key").baseUrl("http://127.0.0.1:" + server.getAddress().getPort() + path).build();
@@ -96,7 +105,7 @@ class CompatibleProviderFactoryTest {
                 assertTrue(new ObjectMapper().readTree(request.substring(request.indexOf("|{") + 1))
                         .path("model").asText().equals("test-model"));
             }
-            assertEquals(8, requests.size());
+            assertEquals(2, requests.size());
         }
         finally {
             server.stop(0);

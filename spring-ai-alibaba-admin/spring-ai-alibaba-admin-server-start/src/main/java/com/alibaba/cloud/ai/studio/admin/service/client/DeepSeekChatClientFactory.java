@@ -1,6 +1,10 @@
 package com.alibaba.cloud.ai.studio.admin.service.client;
 
 import com.alibaba.cloud.ai.studio.admin.entity.ModelConfigDO;
+import com.alibaba.cloud.ai.studio.core.model.llm.ModelFactory;
+import com.alibaba.cloud.ai.studio.core.model.llm.ModelProviderConfig;
+import com.alibaba.cloud.ai.studio.core.model.llm.domain.ModelCredential;
+import org.springframework.beans.factory.annotation.Autowired;
 import io.micrometer.observation.ObservationRegistry;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.observation.ChatModelObservationConvention;
@@ -36,6 +40,12 @@ public class DeepSeekChatClientFactory implements ChatClientFactory{
         this.customChatModelObservationConvention = customChatModelObservationConvention;
     }
     
+    @Autowired
+    private ModelFactory modelFactory;
+
+    @Autowired
+    private ModelProviderConfig providerConfig;
+
     @Override
     public String getSupportProvider() {
         return DEEPSEEK_PROVIDER;
@@ -43,15 +53,11 @@ public class DeepSeekChatClientFactory implements ChatClientFactory{
     
     @Override
     public ChatModel buildChatModel(ModelConfigDO modelConfig) {
-        DeepSeekApi api = DeepSeekApi.builder()
-                .apiKey(modelConfig.getApiKey())
-                .build();
-        
-        return DeepSeekChatModel.builder()
-                .deepSeekApi(api)
-                .toolCallingManager(toolCallingManager)
-                .observationRegistry(observationRegistry)
-                .build();
+        ModelCredential saved = new ModelCredential();
+        saved.setApiKey(modelConfig.getApiKey());
+        saved.setEndpoint(modelConfig.getBaseUrl());
+        saved.setCompletionsPath(modelConfig.getCompletionsPath());
+        return modelFactory.createNativeChatModel("deepseek", providerConfig.resolve("deepseek", saved));
     }
     
     @Override

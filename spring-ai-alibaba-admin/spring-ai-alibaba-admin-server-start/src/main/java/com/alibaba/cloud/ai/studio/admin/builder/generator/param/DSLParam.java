@@ -22,7 +22,7 @@ public class DSLParam {
 	@Schema(description = "dsl raw content")
 	private String content;
 
-	@Schema(description = "dsl dialect", examples = { "dify", "flowise", "custom" })
+	@Schema(description = "dsl dialect")
 	private String dialect;
 
 	public String getContent() {

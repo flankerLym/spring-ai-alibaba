@@ -4,6 +4,10 @@ import com.alibaba.cloud.ai.dashscope.api.DashScopeApi;
 import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatModel;
 import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatOptions;
 import com.alibaba.cloud.ai.studio.admin.entity.ModelConfigDO;
+import com.alibaba.cloud.ai.studio.core.model.llm.ModelFactory;
+import com.alibaba.cloud.ai.studio.core.model.llm.ModelProviderConfig;
+import com.alibaba.cloud.ai.studio.core.model.llm.domain.ModelCredential;
+import org.springframework.beans.factory.annotation.Autowired;
 import io.micrometer.observation.ObservationRegistry;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.observation.ChatModelObservationConvention;
@@ -35,6 +39,12 @@ public class DashScopeChatClientFactory implements ChatClientFactory{
         this.customChatModelObservationConvention = customChatModelObservationConvention;
     }
     
+    @Autowired
+    private ModelFactory modelFactory;
+
+    @Autowired
+    private ModelProviderConfig providerConfig;
+
     @Override
     public String getSupportProvider() {
         return DASHSCOPE_PROVIDER;
@@ -42,16 +52,11 @@ public class DashScopeChatClientFactory implements ChatClientFactory{
     
     @Override
     public ChatModel buildChatModel(ModelConfigDO modelConfig) {
-        DashScopeApi api = DashScopeApi.builder()
-                .apiKey(modelConfig.getApiKey())
-                .build();
-        DashScopeChatModel chatModel = DashScopeChatModel.builder()
-                .dashScopeApi(api)
-                .toolCallingManager(toolCallingManager)
-                .observationRegistry(observationRegistry)
-                .build();
-        chatModel.setObservationConvention(customChatModelObservationConvention);
-        return chatModel;
+        ModelCredential saved = new ModelCredential();
+        saved.setApiKey(modelConfig.getApiKey());
+        saved.setEndpoint(modelConfig.getBaseUrl());
+        saved.setCompletionsPath(modelConfig.getCompletionsPath());
+        return modelFactory.createNativeChatModel("dashscope", providerConfig.resolve("dashscope", saved));
     }
     
     @Override
@@ -60,6 +65,7 @@ public class DashScopeChatClientFactory implements ChatClientFactory{
         DashScopeChatOptions.DashscopeChatOptionsBuilder builder = DashScopeChatOptions.builder();
         builder.withModel(modelConfig.getModelName());
         builder.withStream(true);
+        builder.withIncrementalOutput(true);
         for (Map.Entry<String, Object> entry : userParameters.entrySet()) {
             String key = entry.getKey();
             Object value = entry.getValue();
