@@ -348,6 +348,22 @@ public class ProviderController {
 		return Result.success(providerDetail);
 	}
 
+	/** Returns model IDs available from the configured provider account. */
+	@GetMapping("/{provider}/available-models")
+	public Result<List<Map<String, Object>>> listAvailableModels(
+			@PathVariable("provider") String provider) {
+		ProviderConfigInfo detail = providerManager.getProviderDetail(provider, false);
+		String protocol = ModelProviderConfig.normalize(detail.getProtocol());
+		ModelCredential credential = detail.getCredential();
+		if (credential == null) {
+			throw new BizException(ErrorCode.INVALID_PARAMS.toError("credential_config", "请先配置供应商 API-KEY"));
+		}
+		if (StringUtils.isBlank(credential.getApiKey())) {
+			throw new BizException(ErrorCode.INVALID_PARAMS.toError("apikey", "请先配置有效的 API-KEY"));
+		}
+		return Result.success(modelFactory.listProviderModels(protocol, credential));
+	}
+
 	/**
 	 * Adds a new model to a provider.
 	 *

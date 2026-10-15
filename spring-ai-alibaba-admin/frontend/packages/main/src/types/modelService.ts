@@ -56,6 +56,11 @@ export interface IModel {
   source?: 'preset' | 'custom';
 }
 
+export interface IAvailableModel {
+  model_id: string;
+  tags: string[];
+}
+
 // Model configuration information
 export interface IModelConfigInfo {
   model_id: string;

@@ -164,10 +164,24 @@ public class GlobalExceptionHandler {
 
 			String requestId = context == null ? "" : context.getRequestId();
 			String json = JsonUtils.toJson(Result.error(requestId, error));
-
-			Map<String, String> headers = HttpStreamUtils.getHeadersFromRequest(request);
-			String body = HttpStreamUtils.getBodyFromRequest(request);
-			LogUtils.monitor(context, "ExceptionHandler", "handleError", start, FAIL, body, json, headers, ex);
+			if (request.getRequestURI().endsWith("/console/v1/providers/test")
+					|| request.getRequestURI().endsWith("/available-models")) {
+				// Credential validation is a user action; never log its body, headers, or
+				// expected validation exception (the request contains API keys).
+				if (ex instanceof BizException) {
+					LogUtils.monitor(context, "ExceptionHandler", "handleError", start, FAIL,
+							"provider credential validation (redacted)", json);
+				}
+				else {
+					LogUtils.monitor(context, "ExceptionHandler", "handleError", start, FAIL,
+							"provider credential validation (redacted)", json, ex);
+				}
+			}
+			else {
+				Map<String, String> headers = HttpStreamUtils.getHeadersFromRequest(request);
+				String body = HttpStreamUtils.getBodyFromRequest(request);
+				LogUtils.monitor(context, "ExceptionHandler", "handleError", start, FAIL, body, json, headers, ex);
+			}
 
 			response.setStatus(error.getStatusCode());
 			response.getWriter().write(json);

@@ -52,11 +52,14 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
 
 import static com.alibaba.cloud.ai.studio.core.rag.RagConstants.DEFAULT_DIMENSION;
 
@@ -246,21 +249,148 @@ public class ModelFactory {
     /** Checks the provider's authenticated model-catalog endpoint without invoking a model. */
     public void testProviderConnection(String provider, ModelCredential credential) {
         String type = ModelProviderConfig.normalize(provider);
+        try {
+            String endpoint = StringUtils.removeEnd(credential.getEndpoint().trim(), "/");
+            endpoint = endpoint.replaceFirst("/chat/completions$", "");
+            if ("doubao".equals(type)) {
+                testArkConnection(endpoint, credential.getApiKey());
+                return;
+            }
+            if ("dashscope".equals(type)) {
+                endpoint = endpoint.replaceFirst("/compatible-mode(?:/v1)?$", "");
+            }
+            String path = switch (type) {
+                case "deepseek" -> "/models";
+                case "dashscope" -> (endpoint.endsWith("/api/v1") ? "" : "/api/v1") + "/models";
+                default -> (endpoint.endsWith("/v1") ? "" : "/v1") + "/models";
+            };
+            checkApi(endpoint + path, credential.getApiKey());
+        }
+        catch (RestClientResponseException e) {
+            String reason = switch (e.getStatusCode().value()) {
+                case 401 -> "API-KEY 无效，请核对后重新输入";
+                case 403 -> "API-KEY 无权访问该服务，请检查账号权限";
+                case 404 -> "API URL 不正确，请检查服务商地址";
+                default -> "API-KEY 或 API URL 验证失败，请检查后重试";
+            };
+            throw providerCredentialError(reason);
+        }
+        catch (RestClientException | IllegalArgumentException e) {
+            throw providerCredentialError("连接供应商失败，请检查 API URL 和网络后重试");
+        }
+    }
+
+    /** Loads model IDs from the provider's authenticated model catalog. */
+    public List<Map<String, Object>> listProviderModels(String provider, ModelCredential credential) {
+        String type = ModelProviderConfig.normalize(provider);
+        if ("doubao".equals(type)) {
+            throw providerCredentialError("火山方舟查询账号接入点需要 AccessKey/SecretKey；当前配置只有 API-KEY，请在方舟控制台查看接入点 ID");
+        }
         String endpoint = StringUtils.removeEnd(credential.getEndpoint().trim(), "/");
         endpoint = endpoint.replaceFirst("/chat/completions$", "");
-        if ("doubao".equals(type)) {
-            testArkConnection(endpoint, credential.getApiKey());
-            return;
+        String path;
+        if ("deepseek".equals(type)) {
+            endpoint = endpoint.replaceFirst("/v1$", "");
+            path = "/models";
         }
-        if ("dashscope".equals(type)) {
+        else if ("dashscope".equals(type)) {
             endpoint = endpoint.replaceFirst("/compatible-mode(?:/v1)?$", "");
+            path = (endpoint.endsWith("/api/v1") ? "" : "/api/v1") + "/models";
         }
-        String path = switch (type) {
-            case "deepseek" -> "/models";
-            case "dashscope" -> (endpoint.endsWith("/api/v1") ? "" : "/api/v1") + "/models";
-            default -> (endpoint.endsWith("/v1") ? "" : "/v1") + "/models";
-        };
-        checkApi(endpoint + path, credential.getApiKey());
+        else {
+            path = (endpoint.endsWith("/v1") ? "" : "/v1") + "/models";
+        }
+        try {
+            SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+            requestFactory.setConnectTimeout(Duration.ofSeconds(5));
+            requestFactory.setReadTimeout(Duration.ofSeconds(10));
+            RestClient client = RestClient.builder().requestFactory(requestFactory).build();
+            List<Map<String, Object>> models = new ArrayList<>();
+            if ("dashscope".equals(type)) {
+                for (int page = 1; page <= 20; page++) {
+                    Map<?, ?> response = client.get().uri(URI.create(endpoint + path + "?page_no=" + page + "&page_size=100"))
+                            .header("Authorization", "Bearer " + credential.getApiKey()).retrieve().body(Map.class);
+                    List<Map<String, Object>> currentPage = extractProviderModels(response);
+                    models.addAll(currentPage);
+                    if (currentPage.size() < 100) break;
+                }
+            }
+            else {
+                Map<?, ?> response = client.get().uri(URI.create(endpoint + path))
+                        .header("Authorization", "Bearer " + credential.getApiKey()).retrieve().body(Map.class);
+                models.addAll(extractProviderModels(response));
+            }
+            if (models.isEmpty()) throw providerCredentialError("供应商没有返回可用模型列表");
+            return models.stream().collect(java.util.stream.Collectors.toMap(entry -> entry.get("model_id"), entry -> entry,
+                    (first, ignored) -> first, java.util.LinkedHashMap::new)).values().stream().toList();
+        }
+        catch (RestClientResponseException e) {
+            throw providerCredentialError(e.getStatusCode().value() == 401
+                    ? "API-KEY 无效，请核对后重新输入" : "获取模型列表失败，请检查 API URL 和账号权限");
+        }
+        catch (RestClientException | IllegalArgumentException e) {
+            throw providerCredentialError("获取模型列表失败，请检查 API URL 和网络后重试");
+        }
+    }
+
+    private List<Map<String, Object>> extractProviderModels(Object value) {
+        if (!(value instanceof Map<?, ?> map)) return List.of();
+        for (String key : List.of("data", "models")) {
+            Object items = map.get(key);
+            if (items instanceof List<?> list) {
+                List<Map<String, Object>> models = new ArrayList<>();
+                for (Object item : list) {
+                    String id = item instanceof String valueId ? valueId : modelId(item);
+                    if (StringUtils.isBlank(id)) continue;
+                    Map<String, Object> entry = new java.util.LinkedHashMap<>();
+                    entry.put("model_id", id);
+                    entry.put("tags", inferModelTags(id, item));
+                    models.add(entry);
+                }
+                if (!models.isEmpty()) return models.stream()
+                        .collect(java.util.stream.Collectors.toMap(entry -> entry.get("model_id"), entry -> entry,
+                                (first, ignored) -> first, java.util.LinkedHashMap::new))
+                        .values().stream().toList();
+            }
+            if (items instanceof Map<?, ?> nested) {
+                List<Map<String, Object>> models = extractProviderModels(nested);
+                if (!models.isEmpty()) return models;
+            }
+        }
+        Object output = map.get("output");
+        return output instanceof Map<?, ?> nested ? extractProviderModels(nested) : List.of();
+    }
+
+    private String modelId(Object value) {
+        if (!(value instanceof Map<?, ?> model)) return null;
+        for (String key : List.of("id", "model", "model_name")) {
+            Object id = model.get(key);
+            if (id != null && !id.toString().isBlank()) return id.toString();
+        }
+        return null;
+    }
+
+    private List<String> inferModelTags(String id, Object value) {
+        String name = id.toLowerCase(java.util.Locale.ROOT);
+        List<String> tags = new ArrayList<>();
+        Map<?, ?> model = value instanceof Map<?, ?> item ? item : Map.of();
+        String capabilities = String.valueOf(model.get("capabilities")).toLowerCase(java.util.Locale.ROOT);
+        String features = String.valueOf(model.get("features")).toLowerCase(java.util.Locale.ROOT);
+        String apiCapabilities = String.valueOf(model.get("api_capabilities")).toLowerCase(java.util.Locale.ROOT);
+        String modalities = String.valueOf(model.get("input_modalities")).toLowerCase(java.util.Locale.ROOT)
+                + String.valueOf(model.get("inference_metadata")).toLowerCase(java.util.Locale.ROOT);
+        if (capabilities.contains("vu") || modalities.contains("image") || name.matches(".*(vision|[-_]vl([-_].*)?|gpt-4o|gemini).*$")) tags.add("vision");
+        if (features.contains("web-search") || name.contains("search")) tags.add("web_search");
+        if (capabilities.contains("tr") || capabilities.contains("me") || name.contains("embed")) tags.add("embedding");
+        if (capabilities.contains("reasoning") || model.containsKey("effort")
+                || name.matches(".*(reason|[-_]r1([-_].*)?|qwq|thinking|[-_]o[1-9]([-_].*)?).*")) tags.add("reasoning");
+        if (features.contains("function-calling") || apiCapabilities.contains("function")
+                || (!tags.contains("embedding") && !name.matches(".*(image|tts|whisper|rerank).*$"))) tags.add("function_call");
+        return tags;
+    }
+
+    private BizException providerCredentialError(String reason) {
+        return new BizException(ErrorCode.INVALID_PARAMS.toError("credential_config", reason));
     }
 
     private void checkApi(String url, String apiKey) {
@@ -289,7 +419,10 @@ public class ModelFactory {
                     boolean missingModel = status == 400 && body.contains("model")
                             && (body.contains("required") || body.contains("missing") || body.contains("empty"));
                     if ((status >= 200 && status < 300) || missingModel) return null;
-                    throw new IllegalStateException("豆包 API Key 或 API URL 校验失败（HTTP " + status + "）");
+                    String reason = status == 401 ? "API-KEY 无效，请核对后重新输入"
+                            : status == 404 ? "API URL 不正确，请检查服务商地址"
+                            : "API-KEY 或 API URL 验证失败，请检查后重试";
+                    throw providerCredentialError(reason);
                 });
     }
 

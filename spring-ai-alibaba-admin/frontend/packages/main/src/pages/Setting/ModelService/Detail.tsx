@@ -264,7 +264,7 @@ const ModelServiceDetail: React.FC = () => {
     }
   };
 
-  const createModelInfo = async (modelInfo: ICreateModelParams) => {
+  const createModelInfo = async (modelInfos: ICreateModelParams[]) => {
     if (!id) {
       message.error(
         $i18n.get({
@@ -275,25 +275,35 @@ const ModelServiceDetail: React.FC = () => {
       return;
     }
 
-    const createParams: ICreateModelParams = {
-      ...modelInfo,
-      name: modelInfo.name,
-    };
-
-    const response = await createModel(id, createParams);
-    if (response) {
+    const results = await Promise.allSettled(
+      modelInfos.map((modelInfo) => createModel(id, {
+        ...modelInfo,
+        name: modelInfo.name,
+      })),
+    );
+    const successCount = results.filter(
+      (result) => result.status === 'fulfilled' && !!result.value,
+    ).length;
+    if (successCount === modelInfos.length) {
       message.success(
         $i18n.get({
           id: 'main.pages.Setting.ModelService.Detail.addModelSuccess',
-          dm: '添加模型成功',
+          dm: `成功添加 ${successCount} 个模型`,
         }),
       );
+    } else if (successCount > 0) {
+      message.warning(`成功添加 ${successCount} 个模型，${modelInfos.length - successCount} 个失败`);
+    } else {
+      message.error('模型添加失败，请检查供应商配置后重试');
+      return;
+    }
+    if (successCount > 0) {
       setIsModelConfigModalVisible(false);
       fetchModels();
     }
   };
 
-  const handleModelConfigSubmit = async (modelInfo: ICreateModelParams) => {
+  const handleModelConfigSubmit = async (modelInfos: ICreateModelParams[]) => {
     if (!id) {
       message.error(
         $i18n.get({
@@ -305,9 +315,9 @@ const ModelServiceDetail: React.FC = () => {
     }
 
     if (currentModel) {
-      await updateModelInfo({ ...currentModel, ...modelInfo });
+      await updateModelInfo({ ...currentModel, ...modelInfos[0] });
     } else {
-      await createModelInfo(modelInfo);
+      await createModelInfo(modelInfos);
     }
   };
 
@@ -437,6 +447,8 @@ const ModelServiceDetail: React.FC = () => {
 
       <ModelConfigModal
         open={isModelConfigModalVisible}
+        providerId={id || ''}
+        existingModelIds={models.map((item) => item.model_id)}
         onCancel={() => setIsModelConfigModalVisible(false)}
         onOk={handleModelConfigSubmit}
         model={currentModel}

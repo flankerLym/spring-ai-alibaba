@@ -20,6 +20,7 @@ import com.alibaba.cloud.ai.studio.runtime.domain.RequestContext;
 import com.alibaba.cloud.ai.studio.core.context.RequestContextHolder;
 import com.alibaba.cloud.ai.studio.core.utils.common.IdGenerator;
 import com.alibaba.cloud.ai.studio.core.utils.LogUtils;
+import com.alibaba.cloud.ai.studio.runtime.exception.BizException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -69,11 +70,14 @@ public class AuthLoggingAspect {
 
 		String className = joinPoint.getTarget().getClass().getName();
 		String methodName = joinPoint.getSignature().getName();
+		boolean providerValidation = (methodName.equals("testProvider") || methodName.equals("listAvailableModels"))
+				&& className.contains("ProviderController");
 		Object[] filteredArgs = null;
 
 		try {
 			// TODO: Implement account login and workspace permission checks
-			filteredArgs = filterNonSerializableObjects(joinPoint.getArgs());
+			filteredArgs = providerValidation ? new Object[] { "provider credential validation (redacted)" }
+					: filterNonSerializableObjects(joinPoint.getArgs());
 			LogUtils.trace(context, methodName, SUCCESS, start, filteredArgs, null);
 			Object result = joinPoint.proceed(joinPoint.getArgs());
 
@@ -82,7 +86,12 @@ public class AuthLoggingAspect {
 		}
 		catch (Throwable e) {
 			try {
-				LogUtils.monitor(context, className, methodName, start, "exception", filteredArgs, null, e);
+				if (providerValidation && e instanceof BizException) {
+					LogUtils.monitor(context, className, methodName, start, "validation_failed", filteredArgs, null);
+				}
+				else {
+					LogUtils.monitor(context, className, methodName, start, "exception", filteredArgs, null, e);
+				}
 			}
 			catch (Exception ex) {
 				LogUtils.error(ex);

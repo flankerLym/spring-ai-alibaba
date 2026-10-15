@@ -3,6 +3,7 @@ import { IApiResponse } from '@/types/common';
 import type {
   ICreateModelParams,
   ICreateProviderParams,
+  IAvailableModel,
   IListProvidersParams,
   IModel,
   IModelParameterRule,
@@ -199,6 +200,17 @@ export async function listModels(
   const response = await request({
     url: `/console/v1/providers/${provider}/models`,
     method: 'GET',
+  });
+  return response.data;
+}
+
+export async function listAvailableModels(
+  provider: string,
+): Promise<IApiResponse<IAvailableModel[]>> {
+  const response = await request({
+    url: `/console/v1/providers/${provider}/available-models`,
+    method: 'GET',
+    autoMsg: false,
   });
   return response.data;
 }
