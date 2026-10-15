@@ -55,6 +55,7 @@ import java.util.concurrent.locks.ReentrantLock;
 @Slf4j
 @Data
 public class WorkflowContext extends RequestContext {
+	public static final String NODE_TIMEOUT_ERROR_CODE = "NODE_TIMEOUT";
 
 	/**
 	 * Workflow Trace ID
@@ -151,6 +152,19 @@ public class WorkflowContext extends RequestContext {
 
 	@JsonIgnore
 	private transient ConcurrentHashMap<String, AtomicLong> nodeUpdateVersions = new ConcurrentHashMap<>();
+
+	@JsonIgnore
+	private transient Set<String> timedOutNodeIds = ConcurrentHashMap.newKeySet();
+
+	public void markNodeTimedOut(String nodeId) {
+		ensureRuntimeState();
+		timedOutNodeIds.add(nodeId);
+	}
+
+	public boolean isNodeTimedOut(String nodeId) {
+		ensureRuntimeState();
+		return timedOutNodeIds.contains(nodeId);
+	}
 
 	/**
 	 * Enable the event stream consumed by WorkflowServiceImpl.
@@ -286,6 +300,9 @@ public class WorkflowContext extends RequestContext {
 		if (nodeUpdateVersions == null) {
 			nodeUpdateVersions = new ConcurrentHashMap<>();
 		}
+		if (timedOutNodeIds == null) {
+			timedOutNodeIds = ConcurrentHashMap.newKeySet();
+		}
 	}
 
 	private void rebindNodeResultMap() {
@@ -329,6 +346,7 @@ public class WorkflowContext extends RequestContext {
 			copy.streamEventSink = null;
 			copy.nodeUpdateMonitor = new Object();
 			copy.nodeUpdateVersions = new ConcurrentHashMap<>();
+			copy.timedOutNodeIds = ConcurrentHashMap.newKeySet();
 			copy.rebindNodeResultMap();
 			// 确保版本号被正确复制
 			if (copy.getVersion() == 0) {

@@ -20,6 +20,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
@@ -67,6 +68,12 @@ public class ThreadPoolUtils {
 			new ThreadPoolExecutor(100, 200, 120, TimeUnit.SECONDS, new LinkedBlockingQueue<>(100),
 					new ThreadFactoryBuilder().setNameFormat(NODE_EXECUTOR_NAME + "-%d").setDaemon(true).build(),
 					new ThreadPoolExecutor.CallerRunsPolicy()));
+
+	/** Dedicated workers let the node scheduler enforce a deadline without occupying its own pool. */
+	public static final ExecutorService timedNodeExecutorService = new RequestContextThreadPoolWrapper(
+			new ThreadPoolExecutor(0, 200, 60, TimeUnit.SECONDS, new SynchronousQueue<>(),
+					new ThreadFactoryBuilder().setNameFormat(NODE_EXECUTOR_NAME + "-timed-%d").setDaemon(true).build(),
+					new ThreadPoolExecutor.AbortPolicy()));
 
 	/**
 	 * Thread pool for plugin execution with queue size 50 and thread count 40-50

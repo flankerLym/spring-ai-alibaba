@@ -350,8 +350,7 @@ public class ProviderController {
 
 	/** Returns model IDs available from the configured provider account. */
 	@GetMapping("/{provider}/available-models")
-	public Result<List<Map<String, Object>>> listAvailableModels(
-			@PathVariable("provider") String provider) {
+	public Result<List<Map<String, Object>>> listAvailableModels(@PathVariable("provider") String provider) {
 		ProviderConfigInfo detail = providerManager.getProviderDetail(provider, false);
 		String protocol = ModelProviderConfig.normalize(detail.getProtocol());
 		ModelCredential credential = detail.getCredential();

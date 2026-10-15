@@ -27,6 +27,7 @@ const ModelConfigModal: React.FC<ModelConfigModalProps> = ({
   const isEdit = !!model?.model_id;
   const [availableModels, setAvailableModels] = useState<IAvailableModel[]>([]);
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
+  const [manualModelId, setManualModelId] = useState('');
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -47,6 +48,7 @@ const ModelConfigModal: React.FC<ModelConfigModalProps> = ({
     if (!open) return;
     setName(model?.name || '');
     setSelectedModels([]);
+    setManualModelId('');
     if (model || !providerId) return;
     fetchAvailableModels();
   }, [open, model, providerId, fetchAvailableModels]);
@@ -71,6 +73,7 @@ const ModelConfigModal: React.FC<ModelConfigModalProps> = ({
       await onOk(selectedModels.map((modelId) => {
         const item = availableModels.find((model) => model.model_id === modelId);
         const id = modelId.toLowerCase();
+        const tags = item?.tags || inferTagsFromName(modelId);
         const type = item?.tags.includes('embedding') ? 'text_embedding'
           : id.includes('rerank') ? 'rerank'
             : /(^|[-_])(tts|speech)([-_]|$)/.test(id) ? 'tts'
@@ -79,12 +82,24 @@ const ModelConfigModal: React.FC<ModelConfigModalProps> = ({
           name: modelId,
           model_id: modelId,
           type,
-          tags: item?.tags || [],
+          tags,
         };
       }));
     } finally {
       setSaving(false);
     }
+  };
+
+  const addManualModel = () => {
+    const id = manualModelId.trim();
+    if (!id) return;
+    if (existingIds.has(id) || selectedModels.includes(id)) {
+      message.warning('该模型已添加或已在选择列表中');
+      return;
+    }
+    setAvailableModels((models) => [...models, { model_id: id, tags: inferTagsFromName(id) }]);
+    setSelectedModels((models) => [...models, id]);
+    setManualModelId('');
   };
 
   return (
@@ -128,6 +143,18 @@ const ModelConfigModal: React.FC<ModelConfigModalProps> = ({
                 style={{ width: '100%' }}
               />
             </Spin>
+            <div className={styles['manual-model']}>
+              <span>找不到模型？手动输入模型 ID</span>
+              <div>
+                <Input
+                  value={manualModelId}
+                  onChange={(event) => setManualModelId(event.target.value)}
+                  onPressEnter={addManualModel}
+                  placeholder="输入模型 ID"
+                />
+                <Button onClick={addManualModel} disabled={!manualModelId.trim()}>加入选择</Button>
+              </div>
+            </div>
             {loadError && <Button type="link" onClick={fetchAvailableModels}>重试</Button>}
           </>
         )}
@@ -137,3 +164,14 @@ const ModelConfigModal: React.FC<ModelConfigModalProps> = ({
 };
 
 export default ModelConfigModal;
+
+function inferTagsFromName(modelId: string): string[] {
+  const name = modelId.toLowerCase();
+  const tags: string[] = [];
+  if (/vision|(^|[-_])vl([-_]|$)|gpt-4o|gemini/.test(name)) tags.push('vision');
+  if (/search|web[-_]?search/.test(name)) tags.push('web_search');
+  if (/embed|embedding/.test(name)) tags.push('embedding');
+  if (/reason|(^|[-_])r1([-_]|$)|qwq|thinking|(^|[-_])o[1-9]([-_]|$)/.test(name)) tags.push('reasoning');
+  if (!tags.includes('embedding') && !/image|tts|whisper|rerank/.test(name)) tags.push('function_call');
+  return tags;
+}

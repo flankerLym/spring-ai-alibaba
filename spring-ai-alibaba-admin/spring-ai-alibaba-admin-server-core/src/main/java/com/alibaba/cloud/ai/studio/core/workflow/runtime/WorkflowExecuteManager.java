@@ -69,7 +69,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -771,16 +774,8 @@ public class WorkflowExecuteManager {
 			context.getExecuteOrderList().add(node.getId());
 			node.setType(type);
 			// Keep the original proxied call (including conversation and annotation advice).
-			// The scope also covers raw processor references and the Auto END path above.
-			try (WorkflowNodeTraceScope scope = WorkflowNodeTraceScope.open(workflowTraceManager, context, node)) {
-				try {
-					processorMap.get(type + "ExecuteProcessor").execute(graph, node, context);
-				}
-				catch (RuntimeException | Error e) {
-					scope.recordError(e);
-					throw e;
-				}
-			}
+			// The dedicated worker lets every processor share one configurable deadline.
+			executeProcessorWithTimeout(graph, node, context, processorMap.get(type + "ExecuteProcessor"));
 			NodeResult result = context.getNodeResultMap().get(nodeId);
 		}
 		catch (Exception e) {
@@ -800,6 +795,45 @@ public class WorkflowExecuteManager {
 			context.setTaskStatus(NodeStatusEnum.FAIL.getCode());
 			workflowInnerService.refreshContextCache(context);
 			throw new BizException(ErrorCode.WORKFLOW_EXECUTE_ERROR.toError("error node id is: " + nodeId));
+		}
+	}
+
+	private void executeProcessorWithTimeout(DirectedAcyclicGraph<String, Edge> graph, Node node,
+			WorkflowContext context, AbstractExecuteProcessor processor) throws InterruptedException {
+		long timeoutSeconds = commonConfig.getWorkflowNodeTimeoutSeconds() == null ? 300L
+				: Math.max(1L, commonConfig.getWorkflowNodeTimeoutSeconds());
+		long startTime = System.currentTimeMillis();
+		Future<?> future = ThreadPoolUtils.timedNodeExecutorService.submit(() -> {
+			try (WorkflowNodeTraceScope scope = WorkflowNodeTraceScope.open(workflowTraceManager, context, node)) {
+				try {
+					processor.execute(graph, node, context);
+				}
+				catch (RuntimeException | Error e) {
+					scope.recordError(e);
+					throw e;
+				}
+			}
+		});
+		try {
+			future.get(timeoutSeconds, TimeUnit.SECONDS);
+		}
+		catch (TimeoutException e) {
+			context.markNodeTimedOut(node.getId());
+			future.cancel(true);
+			NodeResult timeoutResult = NodeResult.error(node, "节点执行超过最大时间（" + timeoutSeconds + "秒）");
+			timeoutResult.setErrorCode(WorkflowContext.NODE_TIMEOUT_ERROR_CODE);
+			processor.handleNodeResult(graph, node, context, timeoutResult, startTime);
+		}
+		catch (ExecutionException e) {
+			Throwable cause = e.getCause();
+			if (cause instanceof RuntimeException runtimeException) throw runtimeException;
+			if (cause instanceof Error error) throw error;
+			throw new IllegalStateException("Workflow node execution failed", cause);
+		}
+		catch (InterruptedException e) {
+			future.cancel(true);
+			Thread.currentThread().interrupt();
+			throw e;
 		}
 	}
 

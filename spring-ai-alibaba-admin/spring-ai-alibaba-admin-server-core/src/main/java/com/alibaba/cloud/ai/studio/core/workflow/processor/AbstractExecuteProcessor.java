@@ -152,14 +152,17 @@ public abstract class AbstractExecuteProcessor implements ExecuteProcessor {
 			catch (Exception e) {
 				nodeResult = NodeResult.error(node, e.getMessage());
 			}
+			if (context.isNodeTimedOut(node.getId())) return;
 			// Handle retry on failure
 			nodeResult = handleRetry(graph, node, context, nodeResult);
+			if (context.isNodeTimedOut(node.getId())) return;
 			// Handle exception handling
 			nodeResult = handleTryCatch(graph, node, context, nodeResult);
+			if (context.isNodeTimedOut(node.getId())) return;
 			handleVariables(graph, node, context, nodeResult);
 			handleNodeResult(graph, node, context, nodeResult, start);
 			// Handle node's short-term memory at child node dimension
-			handleSelfShortTermMemory(node, context, nodeResult);
+			if (!context.isNodeTimedOut(node.getId())) handleSelfShortTermMemory(node, context, nodeResult);
 		}
 		catch (Exception e) {
 			// Node execution error, save execution result and record error information
@@ -212,6 +215,7 @@ public abstract class AbstractExecuteProcessor implements ExecuteProcessor {
 	 */
 	public void handleVariables(DirectedAcyclicGraph<String, Edge> graph, Node node, WorkflowContext context,
 			NodeResult nodeResult) {
+		if (context.isNodeTimedOut(node.getId())) return;
 		if (nodeResult.getNodeStatus().equals(NodeStatusEnum.SUCCESS.getCode())
 				|| nodeResult.getNodeStatus().equals(NodeStatusEnum.EXECUTING.getCode())) {
 			// Output node content does not need to record variables
@@ -439,6 +443,8 @@ public abstract class AbstractExecuteProcessor implements ExecuteProcessor {
 		if (nodeResult == null) {
 			return;
 		}
+		if (context.isNodeTimedOut(node.getId())
+				&& !WorkflowContext.NODE_TIMEOUT_ERROR_CODE.equals(nodeResult.getErrorCode())) return;
 
 		if (nodeResult.getNodeStatus().equals(NodeStatusEnum.FAIL.getCode())) {
 			// If any task fails, set the task status to failed

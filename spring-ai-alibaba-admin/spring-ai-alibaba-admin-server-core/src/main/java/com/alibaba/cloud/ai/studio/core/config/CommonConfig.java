@@ -17,6 +17,7 @@
 package com.alibaba.cloud.ai.studio.core.config;
 
 import com.google.common.collect.Sets;
+import org.springframework.beans.factory.annotation.Value;
 import lombok.Data;
 import org.springframework.context.annotation.Configuration;
 
@@ -54,6 +55,10 @@ public class CommonConfig {
 
 	// Workflow awaiting time between operations (in milliseconds)
 	private Long workflowAwaitingTime = 100L;
+
+	/** Maximum execution time for one workflow node, configured in seconds. */
+	@Value("${spring.ai.alibaba.studio.workflow.node-timeout-seconds:300}")
+	private Long workflowNodeTimeoutSeconds = 300L;
 
 	// Template for file search prompt
 	private String fileSearchPrompt = """
