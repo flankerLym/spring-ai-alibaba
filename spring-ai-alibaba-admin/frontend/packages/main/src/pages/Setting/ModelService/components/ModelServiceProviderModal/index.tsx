@@ -1,7 +1,7 @@
 import TipBox from '@/components/TipBox';
 import $i18n from '@/i18n';
 import { API_KEY_TIP_SECTIONS } from '@/pages/Setting/utils';
-import { createProvider, getProviderProtocols } from '@/services/modelService';
+import { createProvider, getProviderProtocols, testProvider } from '@/services/modelService';
 import type { ICreateProviderParams } from '@/types/modelService';
 import { Button, Form, Input, Modal, Radio, message } from '@spark-ai/design';
 import { Space } from 'antd';
@@ -23,6 +23,7 @@ const ModelServiceProviderModal: React.FC<ModelServiceProviderModalProps> = ({
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [protocols, setProtocols] = useState<string[]>([]);
+  const protocol = Form.useWatch('protocol', form) || 'openai';
 
   useEffect(() => {
     getProviderProtocols().then((res) => {
@@ -48,6 +49,7 @@ const ModelServiceProviderModal: React.FC<ModelServiceProviderModalProps> = ({
         },
       };
 
+      await testProvider(params);
       const res = await createProvider(params);
 
       if (res) {
@@ -60,6 +62,8 @@ const ModelServiceProviderModal: React.FC<ModelServiceProviderModalProps> = ({
         form.resetFields();
         onSuccess();
       }
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'API-KEY 或 API URL 验证失败，请检查后重新输入');
     } finally {
       setLoading(false);
     }
@@ -178,6 +182,7 @@ const ModelServiceProviderModal: React.FC<ModelServiceProviderModalProps> = ({
         >
           <Input.TextArea
             rows={2}
+            disabled={protocol !== 'openai'}
             placeholder={$i18n.get({
               id: 'main.pages.Setting.ModelService.components.ModelServiceProviderModal.index.enterYourApiUrl',
               dm: '输入您的API URL，请在服务商文档获取，如 https://dashscope.aliyuncs.com/compatible-mode',
@@ -204,10 +209,7 @@ const ModelServiceProviderModal: React.FC<ModelServiceProviderModalProps> = ({
           <Radio.Group className={styles['protocol-type-radio']}
             onChange={(event) => {
               const selected = event.target.value;
-              const current = form.getFieldValue('endpoint');
-              if (!current || current === 'https://dashscope.aliyuncs.com/compatible-mode' || PROVIDER_TYPES.some((item) => item.endpoint === current)) {
-                form.setFieldValue('endpoint', providerType(selected).endpoint);
-              }
+              form.setFieldValue('endpoint', providerType(selected).endpoint);
             }}>
 
             <Space wrap>

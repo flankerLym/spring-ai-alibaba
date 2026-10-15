@@ -48,8 +48,14 @@ import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiEmbeddingModel;
 import org.springframework.ai.openai.OpenAiEmbeddingOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.web.client.RestClient;
 
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 
 import static com.alibaba.cloud.ai.studio.core.rag.RagConstants.DEFAULT_DIMENSION;
@@ -235,6 +241,56 @@ public class ModelFactory {
             default -> throw new IllegalArgumentException("Not a native vendor: " + provider);
         }
         return new NativeOptionsChatModel(type, model);
+    }
+
+    /** Checks the provider's authenticated model-catalog endpoint without invoking a model. */
+    public void testProviderConnection(String provider, ModelCredential credential) {
+        String type = ModelProviderConfig.normalize(provider);
+        String endpoint = StringUtils.removeEnd(credential.getEndpoint().trim(), "/");
+        endpoint = endpoint.replaceFirst("/chat/completions$", "");
+        if ("doubao".equals(type)) {
+            testArkConnection(endpoint, credential.getApiKey());
+            return;
+        }
+        if ("dashscope".equals(type)) {
+            endpoint = endpoint.replaceFirst("/compatible-mode(?:/v1)?$", "");
+        }
+        String path = switch (type) {
+            case "deepseek" -> "/models";
+            case "dashscope" -> (endpoint.endsWith("/api/v1") ? "" : "/api/v1") + "/models";
+            default -> (endpoint.endsWith("/v1") ? "" : "/v1") + "/models";
+        };
+        checkApi(endpoint + path, credential.getApiKey());
+    }
+
+    private void checkApi(String url, String apiKey) {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(Duration.ofSeconds(5));
+        requestFactory.setReadTimeout(Duration.ofSeconds(10));
+        RestClient.builder().requestFactory(requestFactory).build().get().uri(URI.create(url))
+                .header("Authorization", "Bearer " + apiKey)
+                .retrieve().toBodilessEntity();
+    }
+
+    /** Ark has no model-list API; an omitted model is rejected before inference, after auth. */
+    private void testArkConnection(String endpoint, String apiKey) {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(Duration.ofSeconds(5));
+        requestFactory.setReadTimeout(Duration.ofSeconds(10));
+        RestClient.builder().requestFactory(requestFactory).build().post()
+                .uri(URI.create(endpoint + "/chat/completions"))
+                .header("Authorization", "Bearer " + apiKey)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("messages", List.of(Map.of("role", "user", "content", "ping"))))
+                .exchange((request, response) -> {
+                    int status = response.getStatusCode().value();
+                    String body = new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8)
+                            .toLowerCase(java.util.Locale.ROOT);
+                    boolean missingModel = status == 400 && body.contains("model")
+                            && (body.contains("required") || body.contains("missing") || body.contains("empty"));
+                    if ((status >= 200 && status < 300) || missingModel) return null;
+                    throw new IllegalStateException("豆包 API Key 或 API URL 校验失败（HTTP " + status + "）");
+                });
     }
 
     /** Migrate the previously saved compatible-mode URL to the native DashScope root. */

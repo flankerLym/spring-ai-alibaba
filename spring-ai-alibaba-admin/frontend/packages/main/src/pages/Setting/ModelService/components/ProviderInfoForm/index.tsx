@@ -1,10 +1,10 @@
 import TipBox from '@/components/TipBox';
 import $i18n from '@/i18n';
 import { API_KEY_TIP_SECTIONS } from '@/pages/Setting/utils';
-import { updateProvider } from '@/services/modelService';
+import { testProvider, updateProvider } from '@/services/modelService';
 import type { IProviderConfigInfo } from '@/types/modelService';
 import { AlertDialog, Button, Form, Input, message } from '@spark-ai/design';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Radio, Space } from 'antd';
 import { PROVIDER_TYPES, providerType } from '../../providerTypes';
 import { useNavigate } from 'react-router-dom';
@@ -75,6 +75,8 @@ const ProviderInfoForm: React.FC<ProviderInfoFormProps> = ({
   onRefresh,
 }) => {
   const [form] = Form.useForm();
+  const [saving, setSaving] = useState(false);
+  const protocol = Form.useWatch('protocol', form) || 'openai';
   const navigate = useNavigate();
   const isPreset = provider?.source === 'preset';
 
@@ -88,15 +90,18 @@ const ProviderInfoForm: React.FC<ProviderInfoFormProps> = ({
       name: provider?.name,
       protocol: providerType(provider?.protocol).value,
       apiKey: provider?.credential?.api_key || '',
-      endpoint: provider?.credential?.endpoint || '',
+      endpoint: providerType(provider?.protocol).value === 'openai'
+        ? provider?.credential?.endpoint || ''
+        : providerType(provider?.protocol).endpoint,
     });
   };
 
-  const handleFormSubmit = () => {
-    form.validateFields().then((values) => {
+  const handleFormSubmit = async () => {
+    try {
+      const values = await form.validateFields();
       if (!providerId || !provider) return;
-
-      updateProvider(providerId, {
+      setSaving(true);
+      const params = {
         ...provider,
         name: values.name,
         protocol: values.protocol,
@@ -105,18 +110,23 @@ const ProviderInfoForm: React.FC<ProviderInfoFormProps> = ({
           api_key: values.apiKey,
           endpoint: values.endpoint,
         },
-      }).then((response) => {
-        if (response) {
-          message.success(
-            $i18n.get({
-              id: 'main.pages.Setting.ModelService.components.ProviderInfoForm.index.configurationUpdated',
-              dm: '配置已更新',
-            }),
-          );
-          onRefresh?.();
-        }
-      });
-    });
+      };
+      await testProvider({ ...params, provider_id: providerId });
+      const response = await updateProvider(providerId, params);
+      if (response) {
+        message.success(
+          $i18n.get({
+            id: 'main.pages.Setting.ModelService.components.ProviderInfoForm.index.configurationUpdated',
+            dm: '配置已更新',
+          }),
+        );
+        onRefresh?.();
+      }
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'API-KEY 或 API URL 验证失败，请检查后重新输入');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const enableService = async (enable: boolean) => {
@@ -211,10 +221,7 @@ const ProviderInfoForm: React.FC<ProviderInfoFormProps> = ({
           </div>
           <Form.Item name="protocol" label="服务商类型" rules={[{ required: true }]}>
             <Radio.Group onChange={(event) => {
-              const current = form.getFieldValue('endpoint');
-              if (!current || current === 'https://dashscope.aliyuncs.com/compatible-mode' || PROVIDER_TYPES.some((item) => item.endpoint === current)) {
-                form.setFieldValue('endpoint', providerType(event.target.value).endpoint);
-              }
+              form.setFieldValue('endpoint', providerType(event.target.value).endpoint);
             }}>
               <Space wrap>
                 {PROVIDER_TYPES.map((item) => (
@@ -261,6 +268,7 @@ const ProviderInfoForm: React.FC<ProviderInfoFormProps> = ({
           >
             <Input.TextArea
               rows={2}
+              disabled={protocol !== 'openai'}
               placeholder={$i18n.get({
                 id: 'main.pages.Setting.ModelService.components.ProviderInfoForm.index.enterApiUrl',
                 dm: '输入您的API URL，请在服务商文档中获取，如https://dashscope.aliyuncs.com/compatible-mode',
@@ -278,7 +286,7 @@ const ProviderInfoForm: React.FC<ProviderInfoFormProps> = ({
           </Form.Item>
           <Form.Item>
             <div className={styles.actions}>
-              <Button type="primary" htmlType="submit">
+              <Button type="primary" htmlType="submit" loading={saving}>
                 {$i18n.get({
                   id: 'main.pages.Setting.ModelService.components.ProviderInfoForm.index.save',
                   dm: '保存',

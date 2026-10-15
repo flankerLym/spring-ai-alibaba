@@ -33,6 +33,7 @@ import com.alibaba.cloud.ai.studio.core.base.manager.RedisManager;
 import com.alibaba.cloud.ai.studio.core.context.RequestContextHolder;
 import com.alibaba.cloud.ai.studio.core.model.llm.ModelProvider;
 import com.alibaba.cloud.ai.studio.core.model.llm.ModelProviderConfig;
+import com.alibaba.cloud.ai.studio.core.model.llm.ModelFactory;
 import com.alibaba.cloud.ai.studio.core.model.llm.domain.ModelConfigInfo;
 import com.alibaba.cloud.ai.studio.core.model.llm.domain.ModelCredential;
 import com.alibaba.cloud.ai.studio.core.model.llm.domain.ParameterRule;
@@ -88,12 +89,46 @@ public class ProviderController {
 
 	private final RedisManager redisManager;
 
+	private final ModelFactory modelFactory;
+
 	public ProviderController(ProviderManager providerManager, Map<String, ModelProvider> providerMap,
-			ModelManager modelManager, RedisManager redisManager) {
+			ModelManager modelManager, RedisManager redisManager, ModelFactory modelFactory) {
 		this.providerManager = providerManager;
 		this.providerMap = providerMap;
 		this.modelManager = modelManager;
 		this.redisManager = redisManager;
+		this.modelFactory = modelFactory;
+	}
+
+	/** Verify credentials and endpoint with the selected provider client before saving. */
+	@PostMapping("/test")
+	public Result<Boolean> testProvider(@RequestBody Map<String, Object> request) {
+		String protocol = normalizeProtocol(MapUtils.getString(request, "protocol"));
+		Map<String, Object> config = (Map<String, Object>) request.get("credential_config");
+		if (config == null) {
+			throw new BizException(ErrorCode.INVALID_PARAMS.toError("credential_config", "api key and endpoint are required"));
+		}
+		String providerId = MapUtils.getString(request, "provider_id");
+		ModelCredential credential = new ModelCredential();
+		credential.setApiKey(MapUtils.getString(config, "api_key"));
+		credential.setEndpoint(MapUtils.getString(config, "endpoint"));
+		if (StringUtils.isNotBlank(providerId)) {
+			ModelCredential saved = providerManager.getProviderDetail(providerId, false).getCredential();
+			if (saved != null && (StringUtils.isBlank(credential.getApiKey())
+					|| (StringUtils.isNotBlank(saved.getApiKey())
+							&& CryptoUtils.mask(saved.getApiKey()).equals(credential.getApiKey())))) {
+				credential.setApiKey(saved.getApiKey());
+			}
+			if (StringUtils.isBlank(credential.getEndpoint()) && saved != null) {
+				credential.setEndpoint(saved.getEndpoint());
+			}
+		}
+		if (!"openai".equals(protocol)) credential.setEndpoint(ModelProviderConfig.defaultEndpoint(protocol));
+		if (StringUtils.isAnyBlank(credential.getApiKey(), credential.getEndpoint())) {
+			throw new BizException(ErrorCode.INVALID_PARAMS.toError("credential_config", "api key and endpoint are required"));
+		}
+		modelFactory.testProviderConnection(protocol, credential);
+		return Result.success(true);
 	}
 
 	/**
@@ -135,11 +170,14 @@ public class ProviderController {
 		providerConfigInfo.setSupportedModelTypes(supportedModelTypes);
 
 		// Set protocol
-        providerConfigInfo.setProtocol(normalizeProtocol(request.getProtocol()));
+		String protocol = normalizeProtocol(request.getProtocol());
+		providerConfigInfo.setProtocol(protocol);
 
-        if (request.getCredentialConfig() != null) {
-            providerConfigInfo.setCredential(buildCredentialConfig(request.getCredentialConfig()));
-        }
+		if (request.getCredentialConfig() != null) {
+			ModelCredential credential = buildCredentialConfig(request.getCredentialConfig());
+			if (!"openai".equals(protocol)) credential.setEndpoint(ModelProviderConfig.defaultEndpoint(protocol));
+			providerConfigInfo.setCredential(credential);
+		}
 
 		boolean b = providerManager.addProvider(providerConfigInfo);
 		RequestContext requestContext = RequestContextHolder.getRequestContext();
@@ -185,6 +223,8 @@ public class ProviderController {
         }
         if (request.getCredentialConfig() != null) {
             ModelCredential credential = buildCredentialConfig(request.getCredentialConfig());
+            String protocol = normalizeProtocol(request.getProtocol());
+            if (!"openai".equals(protocol)) credential.setEndpoint(ModelProviderConfig.defaultEndpoint(protocol));
             String suppliedKey = MapUtils.getString(request.getCredentialConfig(), "api_key");
             ModelCredential current = providerManager.getProviderDetail(provider, false).getCredential();
             if (current != null && (StringUtils.isBlank(suppliedKey)

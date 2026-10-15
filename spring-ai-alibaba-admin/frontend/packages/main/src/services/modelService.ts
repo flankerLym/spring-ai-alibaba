@@ -27,6 +27,20 @@ export async function createProvider(
   return response.data;
 }
 
+export async function testProvider(params: {
+  protocol?: string;
+  credential_config?: Record<string, any>;
+  provider_id?: string;
+}): Promise<IApiResponse<boolean>> {
+  const response = await request({
+    url: '/console/v1/providers/test',
+    method: 'POST',
+    data: params,
+    autoMsg: false,
+  });
+  return response.data;
+}
+
 /**
  * Update an existing provider
  * @param provider Provider identifier
