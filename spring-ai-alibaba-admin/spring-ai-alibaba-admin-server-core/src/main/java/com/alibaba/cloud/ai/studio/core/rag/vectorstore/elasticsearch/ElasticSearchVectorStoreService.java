@@ -67,7 +67,7 @@ import static com.alibaba.cloud.ai.studio.core.rag.RagConstants.*;
  *
  * @since 1.0.0.3
  */
-@Service
+//@Service
 @Slf4j
 @Qualifier("elasticSearchVectorStoreService")
 public class ElasticSearchVectorStoreService implements VectorStoreService {

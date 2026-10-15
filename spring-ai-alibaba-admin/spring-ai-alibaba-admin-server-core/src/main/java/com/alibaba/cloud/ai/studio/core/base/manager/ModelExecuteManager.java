@@ -25,8 +25,6 @@ import com.alibaba.cloud.ai.studio.core.model.llm.ModelFactory;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -100,15 +98,19 @@ public class ModelExecuteManager {
 		chatOptionsBuilder.streamUsage(true);
 
 		ChatOptions chatOptions = chatOptionsBuilder.build();
-		ChatClient chatClient = ChatClient.builder(chatModel).defaultAdvisors(new SimpleLoggerAdvisor()).build();
-		ChatClient.Builder chatClientBuilder = chatClient.mutate();
-		Prompt prompt = new Prompt(messages);
-		return chatClientBuilder.build()
-			.prompt(prompt)
-			.options(chatOptions)
-			.stream()
-			.chatResponse()
+		Prompt prompt = new Prompt(messages, chatOptions);
+		// Call the model's streaming API directly. ChatClient.stream() requires
+		// StreamAdvisor instances; SimpleLoggerAdvisor is a regular advisor and is not
+		// sufficient for this workflow streaming path.
+		Flux<AgentResponse> stream = chatModel.stream(prompt)
 			.concatMap(response -> convertResponse(response).flux());
+
+		// DashScope may complete the streaming publisher without a usable generation
+		// (for example, when it only returns an empty/usage chunk). Retry that empty
+		// result once through the same provider's non-streaming ChatModel API.
+		return stream.switchIfEmpty(Flux.defer(() -> convertResponse(chatModel.call(prompt))
+			.switchIfEmpty(Mono.error(new IllegalStateException("模型未返回有效回复")))
+			.flux()));
 	}
 
 	/**

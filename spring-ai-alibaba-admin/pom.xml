@@ -213,6 +213,12 @@
                 <groupId>com.alibaba.cloud.ai</groupId>
                 <artifactId>spring-ai-alibaba-core</artifactId>
                 <version>${spring-ai-alibaba.version}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId></groupId>
+                        <artifactId></artifactId>
+                    </exclusion>
+                </exclusions>
             </dependency>
 
             <!-- Nacos -->

@@ -57,11 +57,10 @@ import java.util.List;
 @Component("RetrievalExecuteProcessor")
 public class RetrievalExecuteProcessor extends AbstractExecuteProcessor {
 
-	private final DocumentRetrieverManager documentRetrieverManager;
+	private  DocumentRetrieverManager documentRetrieverManager;
 
 	public RetrievalExecuteProcessor(RedisManager redisManager, WorkflowInnerService workflowInnerService,
-			ChatMemory conversationChatMemory, CommonConfig commonConfig,
-			DocumentRetrieverManager documentRetrieverManager) {
+			ChatMemory conversationChatMemory, CommonConfig commonConfig) {
 		super(redisManager, workflowInnerService, conversationChatMemory, commonConfig);
 		this.documentRetrieverManager = documentRetrieverManager;
 	}

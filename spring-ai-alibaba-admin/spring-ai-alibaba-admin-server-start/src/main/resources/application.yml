@@ -59,7 +59,7 @@ spring:
           capture-output: true
       studio:
         workflow:
-          node-timeout-seconds: 30
+          node-timeout-seconds: 1000
   servlet:
     multipart:
       max-file-size: 50MB

@@ -38,7 +38,7 @@ import java.util.List;
  *
  * @since 1.0.0.3
  */
-@Component
+//@Component
 @RequiredArgsConstructor
 public class DocumentRetrieverManager {
 

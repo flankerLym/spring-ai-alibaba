@@ -117,7 +117,7 @@ public class BasicAgentExecutor extends AbstractAgentExecutor {
 	private final AppComponentManager appComponentManager;
 
 	/** Manager for document retrieval */
-	private final DocumentRetrieverManager documentRetrieverManager;
+	private  DocumentRetrieverManager documentRetrieverManager;
 
 	/** Chat memory for conversation history */
 	private final ChatMemory chatMemory;

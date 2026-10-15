@@ -52,16 +52,12 @@ import java.util.Objects;
 public class KnowledgeBaseController {
 
 	/** Service for managing knowledge base operations */
-	private final KnowledgeBaseService knowledgeBaseService;
+	private  KnowledgeBaseService knowledgeBaseService;
 
 	/** Manager for handling document retrieval operations */
-	private final DocumentRetrieverManager documentRetrieverManager;
+	private  DocumentRetrieverManager documentRetrieverManager;
 
-	public KnowledgeBaseController(KnowledgeBaseService knowledgeBaseService,
-			DocumentRetrieverManager documentRetrieverManager) {
-		this.knowledgeBaseService = knowledgeBaseService;
-		this.documentRetrieverManager = documentRetrieverManager;
-	}
+
 
 	/**
 	 * Creates a new knowledge base

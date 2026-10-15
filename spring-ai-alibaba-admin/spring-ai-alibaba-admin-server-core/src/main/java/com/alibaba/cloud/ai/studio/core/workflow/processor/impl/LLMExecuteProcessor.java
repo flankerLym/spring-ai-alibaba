@@ -165,6 +165,12 @@ public class LLMExecuteProcessor extends AbstractExecuteProcessor {
 			.doOnNext((response) -> handleResponse(response, requestMessages, paramMap, modelConfig, node, context,
 					tmpResponseContent))
 			.blockLast();
+		if (agentResponse == null) {
+			nodeResult.setNodeStatus(NodeStatusEnum.FAIL.getCode());
+			nodeResult.setErrorInfo("模型流已结束，但没有返回有效回复");
+			nodeResult.setError(ErrorCode.WORKFLOW_EXECUTE_ERROR.toError(nodeResult.getErrorInfo()));
+			return nodeResult;
+		}
 		if (agentResponse.isSuccess()) {
 			String responseText = tmpResponseContent.getTemporaryContent().toString();
 			String reasoningContent = tmpResponseContent.getTemporaryReasoningContent().toString();
