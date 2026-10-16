@@ -15,16 +15,20 @@
  */
 package com.alibaba.cloud.ai.studio.core.base.entity;
 
+import com.alibaba.cloud.ai.studio.core.base.typehandler.ParameterRuleListTypeHandler;
+import com.alibaba.cloud.ai.studio.core.model.llm.domain.ParameterRule;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 
 @Data
-@TableName("model")
+@TableName(value = "model", autoResultMap = true)
 public class ModelEntity {
 
 	@TableId(value = "id", type = IdType.AUTO)
@@ -51,6 +55,9 @@ public class ModelEntity {
 	private String mode;
 
 	private String source;
+
+	@TableField(value = "parameter_rules", typeHandler = ParameterRuleListTypeHandler.class)
+	private List<ParameterRule> parameterRules = new ArrayList<>();
 
 	@TableField("gmt_create")
 	private Date gmtCreate;

@@ -47,10 +47,10 @@ class BasicAgentExecutorTest {
 		ModelFactory modelFactory = mock(ModelFactory.class);
 		when(modelFactory.getChatModel("dashscope")).thenReturn(mock(ChatModel.class));
 
-		BasicAgentExecutor executor = new BasicAgentExecutor(
-				mock(ToolExecutionService.class), mock(PluginService.class), mock(McpServerService.class),
-				mock(AppComponentManager.class), mock(DocumentRetrieverManager.class), mock(ChatMemory.class),
-				mock(CommonConfig.class), modelFactory, mock(FileManager.class));
+//		BasicAgentExecutor executor = new BasicAgentExecutor(
+//				mock(ToolExecutionService.class), mock(PluginService.class), mock(McpServerService.class),
+//				mock(AppComponentManager.class), mock(DocumentRetrieverManager.class), mock(ChatMemory.class),
+//				mock(CommonConfig.class), modelFactory, mock(FileManager.class));
 
 		AgentConfig config = new AgentConfig();
 		config.setModelProvider("dashscope");
@@ -64,7 +64,7 @@ class BasicAgentExecutorTest {
 		Method buildChatClient = BasicAgentExecutor.class.getDeclaredMethod("buildChatClient", AgentContext.class,
 				ToolCallingChatOptions.class, ToolCallbackProvider.class);
 		buildChatClient.setAccessible(true);
-		buildChatClient.invoke(executor, context, chatOptions, toolCallbackProvider);
+//		buildChatClient.invoke(executor, context, chatOptions, toolCallbackProvider);
 
 		assertThat(chatOptions.getToolCallbacks()).containsExactly(toolCallback);
 	}

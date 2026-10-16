@@ -21,36 +21,60 @@ import com.alibaba.cloud.ai.studio.core.model.llm.ModelProviderConfig;
 import com.alibaba.cloud.ai.studio.core.model.llm.domain.ModelCredential;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.stereotype.Component;
+
+import java.util.HashMap;
 import java.util.Map;
 
-/** Registers the missing vendor in the existing factory registry. */
+/** Registers the vendor-specific Doubao factory while reusing the existing options path. */
 @Component
 public class DoubaoChatClientFactory implements ChatClientFactory {
-    private final ModelFactory modelFactory;
-    private final ModelProviderConfig providerConfig;
-    private final OpenAiChatClientFactory sharedOptions;
 
-    public DoubaoChatClientFactory(ModelFactory modelFactory, ModelProviderConfig providerConfig,
-            OpenAiChatClientFactory sharedOptions) {
-        this.modelFactory = modelFactory;
-        this.providerConfig = providerConfig;
-        this.sharedOptions = sharedOptions;
-    }
+	private final ModelFactory modelFactory;
 
-    @Override public String getSupportProvider() { return "doubao"; }
+	private final ModelProviderConfig providerConfig;
 
-    @Override public ChatModel buildChatModel(ModelConfigDO config) {
-        ModelCredential saved = new ModelCredential();
-        saved.setApiKey(config.getApiKey());
-        saved.setEndpoint(config.getBaseUrl());
-        saved.setCompletionsPath(config.getCompletionsPath());
-        return modelFactory.createNativeChatModel("doubao", providerConfig.resolve("doubao", saved));
-    }
+	private final OpenAiChatClientFactory sharedOptions;
 
-    @Override public ChatOptions buildChatOptions(ModelConfigDO config, Map<String, Object> parameters,
-            Map<String, String> observationMetadata) {
-        // Reuse common options; ArkChatModel builds the actual request through Ark SDK.
-        return sharedOptions.buildChatOptions(config, parameters, observationMetadata);
-    }
+	public DoubaoChatClientFactory(ModelFactory modelFactory, ModelProviderConfig providerConfig,
+			OpenAiChatClientFactory sharedOptions) {
+		this.modelFactory = modelFactory;
+		this.providerConfig = providerConfig;
+		this.sharedOptions = sharedOptions;
+	}
+
+	@Override
+	public String getSupportProvider() {
+		return "doubao";
+	}
+
+	@Override
+	public ChatModel buildChatModel(ModelConfigDO config) {
+		ModelCredential saved = new ModelCredential();
+		saved.setApiKey(config.getApiKey());
+		saved.setEndpoint(config.getBaseUrl());
+		saved.setCompletionsPath(config.getCompletionsPath());
+		return modelFactory.createNativeChatModel("doubao", providerConfig.resolve("doubao", saved));
+	}
+
+	@Override
+	public ChatOptions buildChatOptions(ModelConfigDO config, Map<String, Object> parameters,
+			Map<String, String> observationMetadata) {
+		ChatOptions result = sharedOptions.buildChatOptions(config, parameters, observationMetadata);
+		if (!(result instanceof OpenAiChatOptions options)) {
+			return result;
+		}
+
+		Object thinking = parameters.get("thinking");
+		if (thinking != null) {
+			Map<String, Object> extraBody = options.getExtraBody() == null
+					? new HashMap<>()
+					: new HashMap<>(options.getExtraBody());
+			extraBody.put("thinking", Map.of("type", thinking.toString()));
+			options.setExtraBody(extraBody);
+		}
+		return options;
+	}
+
 }
