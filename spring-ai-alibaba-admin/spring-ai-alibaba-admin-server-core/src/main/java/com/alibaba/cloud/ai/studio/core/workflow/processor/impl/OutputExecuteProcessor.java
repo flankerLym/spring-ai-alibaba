@@ -141,22 +141,9 @@ public class OutputExecuteProcessor extends AbstractExecuteProcessor {
 								if (streamSwitch) {
 									NodeResult keyFromNodeResult = context.getNodeResultMap().get(keyFrom);
 									if (keyFromNodeResult != null) {
-										String keyFromOutput = keyFromNodeResult.getOutput();
-										if (StringUtils.isNotBlank(keyFromOutput)) {
-											String value;
-											if (NodeTypeEnum.START.getCode().equals(keyFromNodeResult.getNodeType())) {
-												// Start node value can be obtained at once,
-												// other nodes get through nodeResult output
-												value = VariableUtils.getValueStringFromPayload(key,
-														context.getVariablesMap());
-											}
-											else {
-												Map<String, Object> keyFromMap = JsonUtils.fromJsonToMap(keyFromOutput);
-												value = VariableUtils.getValueStringFromPayload(subPath, keyFromMap);
-											}
-											if (value != null) {
-												updateOutput(nodeResult, tmpContent + value, context, true);
-											}
+										String value = getStreamingValue(key, subPath, keyFromNodeResult, context);
+										if (value != null) {
+											updateOutput(nodeResult, tmpContent + value, context, true);
 										}
 									}
 								}
@@ -210,6 +197,29 @@ public class OutputExecuteProcessor extends AbstractExecuteProcessor {
 			updateOutput(nodeResult, outputTemplate, context, streamSwitch);
 		}
 		nodeResult.setOutputType("text");
+	}
+
+	private String getStreamingValue(String key, String subPath, NodeResult nodeResult,
+			WorkflowContext context) {
+		if (NodeTypeEnum.START.getCode().equals(nodeResult.getNodeType())) {
+			return VariableUtils.getValueStringFromPayload(key, context.getVariablesMap());
+		}
+
+		if (NodeTypeEnum.LLM.getCode().equals(nodeResult.getNodeType())) {
+			if ("output".equals(subPath) && nodeResult.getStreamingOutput() != null) {
+				return nodeResult.getStreamingOutput();
+			}
+			if ("reasoning_content".equals(subPath) && nodeResult.getStreamingReasoningContent() != null) {
+				return nodeResult.getStreamingReasoningContent();
+			}
+		}
+
+		String output = nodeResult.getOutput();
+		if (StringUtils.isBlank(output)) {
+			return null;
+		}
+		Map<String, Object> outputMap = JsonUtils.fromJsonToMap(output);
+		return VariableUtils.getValueStringFromPayload(subPath, outputMap);
 	}
 
 	/**

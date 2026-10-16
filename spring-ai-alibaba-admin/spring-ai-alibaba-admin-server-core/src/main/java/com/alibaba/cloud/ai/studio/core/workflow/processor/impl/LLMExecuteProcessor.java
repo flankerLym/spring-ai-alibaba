@@ -142,7 +142,7 @@ public class LLMExecuteProcessor extends AbstractExecuteProcessor {
 				&& nodeParam.getStructuredOutputSchema() != null) {
 			requestMessages.add(0, new SystemMessage(
 					"Return only one valid JSON object matching this JSON Schema. "
-							+ "Do not use Markdown code fences or explanatory text.\n"
+							+ "Do not use Markdown code fences or explanatory text. "
 							+ JsonUtils.toJson(nodeParam.getStructuredOutputSchema())));
 		}
 
@@ -156,6 +156,13 @@ public class LLMExecuteProcessor extends AbstractExecuteProcessor {
 				}
 			});
 		}
+		Map<String, Object> inputObj = Maps.newHashMap();
+		inputObj.put("provider", modelConfig.getProvider());
+		inputObj.put("modelId", modelConfig.getModelId());
+		inputObj.put("messages", convertToChatMessage(requestMessages));
+		inputObj.put("params", paramMap);
+		String inputJson = JsonUtils.toJson(decorateInput(inputObj));
+
 		log.info(
 				context.getRequestId() + " LLMExecuteProcessor requestMessages : " + JsonUtils.toJson(requestMessages));
 		ModelTmpResponseContent tmpResponseContent = new ModelTmpResponseContent();
@@ -163,7 +170,7 @@ public class LLMExecuteProcessor extends AbstractExecuteProcessor {
 				paramMap, requestMessages);
 		AgentResponse agentResponse = stream
 			.doOnNext((response) -> handleResponse(response, requestMessages, paramMap, modelConfig, node, context,
-					tmpResponseContent))
+					tmpResponseContent, inputJson))
 			.blockLast();
 		if (agentResponse == null) {
 			nodeResult.setNodeStatus(NodeStatusEnum.FAIL.getCode());
@@ -181,12 +188,7 @@ public class LLMExecuteProcessor extends AbstractExecuteProcessor {
 					.setError(ErrorCode.WORKFLOW_EXECUTE_ERROR.toError("Model service did not return any response"));
 			}
 			else {
-				Map<String, Object> inputObj = Maps.newHashMap();
-				inputObj.put("provider", modelConfig.getProvider());
-				inputObj.put("modelId", modelConfig.getModelId());
-				inputObj.put("messages", convertToChatMessage(requestMessages));
-				inputObj.put("params", paramMap);
-				nodeResult.setInput(JsonUtils.toJson(decorateInput(inputObj)));
+				nodeResult.setInput(inputJson);
 				Map<String, Object> outputMap = Maps.newHashMap();
 				outputMap.put(OUTPUT_DECORATE_PARAM_KEY, responseText);
 
@@ -221,8 +223,8 @@ public class LLMExecuteProcessor extends AbstractExecuteProcessor {
 
 	private static Map<String, Object> parseStructuredOutput(String text) {
 		String json = StringUtils.trimToEmpty(text)
-			.replaceFirst("^```(?:json)?\\s*", "")
-			.replaceFirst("\\s*```$", "");
+			.replaceFirst("^```(?:json)?\s*", "")
+			.replaceFirst("\s*```$", "");
 		int start = json.indexOf('{');
 		int end = json.lastIndexOf('}');
 		if (start < 0 || end < start) {
@@ -242,7 +244,8 @@ public class LLMExecuteProcessor extends AbstractExecuteProcessor {
 	 * @param tmpResponseContent Temporary storage for response content
 	 */
 	private void handleResponse(AgentResponse response, List<Message> requestMessages, Map<String, Object> paramMap,
-			ModelConfig modelConfig, Node node, WorkflowContext context, ModelTmpResponseContent tmpResponseContent) {
+			ModelConfig modelConfig, Node node, WorkflowContext context, ModelTmpResponseContent tmpResponseContent,
+			String inputJson) {
 		if (!response.isSuccess()) {
 			Error error = response.getError();
 			// Node execution error, save execution result and record error information
@@ -255,22 +258,14 @@ public class LLMExecuteProcessor extends AbstractExecuteProcessor {
 			nodeResult.setNodeName(node.getName());
 			nodeResult.setNodeType(node.getType());
 			nodeResult.setNodeStatus(NodeStatusEnum.EXECUTING.getCode());
-			Map<String, Object> inputObj = Maps.newHashMap();
-			inputObj.put("provider", modelConfig.getProvider());
-			inputObj.put("modelId", modelConfig.getModelId());
-			inputObj.put("messages", convertToChatMessage(requestMessages));
-			inputObj.put("params", paramMap);
-			nodeResult.setInput(JsonUtils.toJson(decorateInput(inputObj)));
+			nodeResult.setInput(inputJson);
 			String content = fetchContent(response);
 			String reasoningContent = fetchReasoningContent(response);
 			tmpResponseContent.getTemporaryContent().append(content == null ? "" : content);
 			tmpResponseContent.getTemporaryReasoningContent().append(reasoningContent == null ? "" : reasoningContent);
-			Map<String, Object> tmpMap = decorateOutput(tmpResponseContent.getTemporaryContent().toString());
-			String tmpReasoningContent = tmpResponseContent.getTemporaryReasoningContent().toString();
-			if (StringUtils.isNotBlank(tmpReasoningContent)) {
-				tmpMap.put(REASONING_DECORATE_PARAM_KEY, tmpReasoningContent);
-			}
-			nodeResult.setOutput(JsonUtils.toJson(tmpMap));
+			nodeResult.setStreamingOutput(tmpResponseContent.getTemporaryContent().toString());
+			nodeResult.setStreamingReasoningContent(
+					tmpResponseContent.getTemporaryReasoningContent().toString());
 			nodeResult.setUsages(Lists.newArrayList(response.getUsage()));
 			context.getNodeResultMap().put(node.getId(), nodeResult);
 		}
@@ -309,7 +304,7 @@ public class LLMExecuteProcessor extends AbstractExecuteProcessor {
 
 	/**
 	 * Constructs a user message with support for media content
-	 * @param node The workflow node
+	 * @param node The node to process
 	 * @param modelConfig The model configuration
 	 * @param userPrompt The user prompt content
 	 * @param context The workflow context
@@ -355,7 +350,7 @@ public class LLMExecuteProcessor extends AbstractExecuteProcessor {
 
 	/**
 	 * Constructs a media object from the provided value
-	 * @param value The value to convert into media
+	 * @param value The value to convert into a media object
 	 * @return A Media object if conversion is successful, null otherwise
 	 */
 	private Media constructMedia(Object value) {

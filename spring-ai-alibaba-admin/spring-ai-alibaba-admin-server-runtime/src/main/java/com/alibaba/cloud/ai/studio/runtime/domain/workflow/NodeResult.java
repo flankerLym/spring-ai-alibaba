@@ -18,6 +18,7 @@ package com.alibaba.cloud.ai.studio.runtime.domain.workflow;
 import com.alibaba.cloud.ai.studio.runtime.domain.Error;
 import com.alibaba.cloud.ai.studio.runtime.domain.chat.ChatMessage;
 import com.alibaba.cloud.ai.studio.runtime.domain.chat.Usage;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
@@ -85,7 +86,7 @@ public class NodeResult implements Serializable {
 	@JsonProperty("parent_node_id")
 	private String parentNodeId;
 
-	// 判���是否批处理节点
+	// 判断是否批处理节点
 	@JsonProperty("is_batch")
 	private boolean isBatch = false;
 
@@ -96,6 +97,14 @@ public class NodeResult implements Serializable {
 	private Integer index;
 
 	private String ext;
+
+	/** Runtime-only cumulative LLM streaming content. */
+	@JsonIgnore
+	private transient String streamingOutput;
+
+	/** Runtime-only cumulative LLM streaming reasoning content. */
+	@JsonIgnore
+	private transient String streamingReasoningContent;
 
 	public static NodeResult error(Node node, Error error) {
 		NodeResult result = new NodeResult();
