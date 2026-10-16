@@ -1,5 +1,7 @@
 import { request } from '@/request';
 
+export type TraceTime = string | number;
+
 export interface WorkflowTrace {
   traceId: string;
   rootSpanId?: string;
@@ -11,8 +13,8 @@ export interface WorkflowTrace {
   invokeSource?: string;
   status?: string;
   finishReason?: string;
-  startTime?: string;
-  endTime?: string;
+  startTime?: TraceTime;
+  endTime?: TraceTime;
   durationMs?: number;
   promptTokens?: number;
   completionTokens?: number;
@@ -44,8 +46,8 @@ export interface WorkflowSpan {
   modelName?: string;
   priceCost?: number;
   status?: string;
-  startTime?: string;
-  endTime?: string;
+  startTime?: TraceTime;
+  endTime?: TraceTime;
   durationMs?: number;
   promptTokens?: number;
   completionTokens?: number;

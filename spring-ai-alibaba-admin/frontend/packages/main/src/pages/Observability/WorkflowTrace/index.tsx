@@ -11,7 +11,7 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import {
   getWorkflowTraceDetail, getWorkflowTraceOverview, getWorkflowTraces,
-  type TraceDetail, type TraceListParams, type WorkflowSpan,
+  type TraceDetail, type TraceListParams, type TraceTime, type WorkflowSpan,
   type WorkflowTrace, type WorkflowTraceOverview,
 } from '@/services/workflowTrace';
 import styles from './index.module.less';
@@ -44,7 +44,28 @@ const KIND: Record<string, [string, string]> = {
 const num = (v?: number) => new Intl.NumberFormat('zh-CN').format(v || 0);
 const duration = (v?: number) =>
   v === null || v === undefined ? '-' : v < 1000 ? `${v} ms` : `${(v / 1000).toFixed(2)} s`;
-const time = (v?: string) => v ? dayjs(v).format('YYYY-MM-DD HH:mm:ss.SSS') : '-';
+
+const parseTraceTime = (v?: TraceTime | null) => {
+  if (v === undefined || v === null || v === '') return null;
+  if (typeof v === 'number') {
+    return dayjs(v < 1e12 ? v * 1000 : v);
+  }
+
+  const value = v.trim();
+  if (/^\d+(?:\.\d+)?$/.test(value)) {
+    const timestamp = Number(value);
+    return dayjs(timestamp < 1e12 ? timestamp * 1000 : timestamp);
+  }
+
+  const parsed = dayjs(value);
+  return parsed.isValid() ? parsed : null;
+};
+
+const time = (v?: TraceTime | null) => {
+  const parsed = parseTraceTime(v);
+  return parsed ? parsed.format('YYYY-MM-DD HH:mm:ss.SSS') : '-';
+};
+
 const json = (v?: string) => {
   if (!v) return '-';
   try { return JSON.stringify(JSON.parse(v), null, 2); } catch { return v; }
@@ -192,7 +213,11 @@ export default function WorkflowTracePage() {
   ];
 
   const flat = useMemo(() => flatten(spanTree(detail?.spans || [])), [detail]);
-  const traceStart = detail?.trace.startTime ? dayjs(detail.trace.startTime).valueOf() : 0;
+  const traceStart = parseTraceTime(detail?.trace.startTime)?.valueOf()
+    ?? flat.map(s => parseTraceTime(s.startTime)?.valueOf())
+      .filter((v): v is number => v !== undefined)
+      .sort((a,b) => a-b)[0]
+    ?? 0;
   const traceDuration = Math.max(detail?.trace.durationMs || 1, 1);
 
   return (
@@ -267,7 +292,7 @@ export default function WorkflowTracePage() {
                 {!flat.length ? <Empty/> : <div className={styles.waterfall}>
                   <div className={styles.waterfallHeader}><div>Span</div><div>时间轴</div></div>
                   {flat.map(s=>{
-                    const start=s.startTime?dayjs(s.startTime).valueOf():traceStart;
+                    const start=parseTraceTime(s.startTime)?.valueOf() ?? traceStart;
                     const left=Math.max(0,Math.min(98,((start-traceStart)/traceDuration)*100));
                     const width=Math.max(1.5,Math.min(100-left,((s.durationMs||0)/traceDuration)*100));
                     return <div key={s.spanId}

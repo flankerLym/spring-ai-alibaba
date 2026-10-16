@@ -1,5 +1,6 @@
 package com.alibaba.cloud.ai.studio.admin.trace.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -18,8 +19,13 @@ public class WorkflowTraceView {
     private String invokeSource;
     private String status;
     private String finishReason;
+
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
     private OffsetDateTime startTime;
+
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
     private OffsetDateTime endTime;
+
     private Long durationMs;
     private Long promptTokens;
     private Long completionTokens;
