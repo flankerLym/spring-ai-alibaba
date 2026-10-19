@@ -38,12 +38,15 @@ const STATUS: Record<string, [string, string]> = {
 const KIND: Record<string, [string, string]> = {
   NODE: ['blue', 'NODE'],
   MODEL_CALL: ['purple', 'MODEL'],
+  MODEL_PHASE: ['gold', 'MODEL PHASE'],
   SUB_WORKFLOW: ['cyan', 'SUB FLOW'],
 };
 
 const num = (v?: number) => new Intl.NumberFormat('zh-CN').format(v || 0);
 const duration = (v?: number) =>
   v === null || v === undefined ? '-' : v < 1000 ? `${v} ms` : `${(v / 1000).toFixed(2)} s`;
+
+const isModelSpan = (kind?: string) => kind === 'MODEL_CALL' || kind === 'MODEL_PHASE';
 
 const parseTraceTime = (v?: TraceTime | null) => {
   if (v === undefined || v === null || v === '') return null;
@@ -303,12 +306,12 @@ export default function WorkflowTracePage() {
                           <Tooltip title={s.spanName||s.nodeName}><Text ellipsis style={{maxWidth:220}}>{s.spanName||s.nodeName||s.nodeId}</Text></Tooltip>
                         </Space>
                         <Text type="secondary" className={styles.spanMeta}>
-                          {s.spanKind==='MODEL_CALL'?`${s.provider||'-'} / ${s.modelName||s.modelId||'-'}`:s.nodeType||''}
+                          {isModelSpan(s.spanKind)?`${s.provider||'-'} / ${s.modelName||s.modelId||'-'}`:s.nodeType||''}
                         </Text>
                       </div>
                       <div className={styles.timeline}>
                         <Tooltip title={`${duration(s.durationMs)} · ${time(s.startTime)}`}>
-                          <div className={`${styles.bar} ${s.status==='fail'?styles.barFail:s.spanKind==='MODEL_CALL'?styles.barModel:styles.barNode}`}
+                          <div className={`${styles.bar} ${s.status==='fail'?styles.barFail:isModelSpan(s.spanKind)?styles.barModel:styles.barNode}`}
                             style={{left:`${left}%`,width:`${width}%`}}><span>{duration(s.durationMs)}</span></div>
                         </Tooltip>
                       </div>
@@ -325,7 +328,7 @@ export default function WorkflowTracePage() {
                     <Descriptions.Item label="状态">{statusTag(selectedSpan.status)}</Descriptions.Item>
                     <Descriptions.Item label="节点">{selectedSpan.nodeName||selectedSpan.nodeId||'-'}</Descriptions.Item>
                     <Descriptions.Item label="节点类型">{selectedSpan.nodeType||'-'}</Descriptions.Item>
-                    <Descriptions.Item label="模型">{selectedSpan.spanKind==='MODEL_CALL'?`${selectedSpan.provider||'-'} / ${selectedSpan.modelName||selectedSpan.modelId||'-'}`:'-'}</Descriptions.Item>
+                    <Descriptions.Item label="模型">{isModelSpan(selectedSpan.spanKind)?`${selectedSpan.provider||'-'} / ${selectedSpan.modelName||selectedSpan.modelId||'-'}`:'-'}</Descriptions.Item>
                     <Descriptions.Item label="耗时">{duration(selectedSpan.durationMs)}</Descriptions.Item>
                     <Descriptions.Item label="Token">{selectedSpan.spanKind==='MODEL_CALL'?`${num(selectedSpan.promptTokens)} + ${num(selectedSpan.completionTokens)} = ${num(selectedSpan.totalTokens)}`:'-'}</Descriptions.Item>
                   </Descriptions>
