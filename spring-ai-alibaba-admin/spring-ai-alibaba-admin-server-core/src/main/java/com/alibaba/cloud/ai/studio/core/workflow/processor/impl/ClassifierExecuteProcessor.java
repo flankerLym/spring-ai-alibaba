@@ -57,7 +57,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -128,13 +127,11 @@ public class ClassifierExecuteProcessor extends AbstractExecuteProcessor {
 		targetIdAndActualDecision.setActualDecision(removeDuplicates(targetIdAndActualDecision.getActualDecision()));
 		targetIdAndActualDecision.setConditionId(removeDuplicates(targetIdAndActualDecision.getConditionId()));
 
-		// A successful classifier without a connected target makes all real downstream
-		// branches SKIP and leaves the workflow waiting for the global timeout. Fail fast
-		// with a clear error instead of silently producing a dead route.
-		if (CollectionUtils.isEmpty(targetIdAndActualDecision.getTargetIds())
-				|| CollectionUtils.isEmpty(targetIdAndActualDecision.getActualDecision())) {
+		// A valid decision without a connected target is a terminal branch. The runtime
+		// will finish it through END after the other graph branches have settled.
+		if (CollectionUtils.isEmpty(targetIdAndActualDecision.getActualDecision())) {
 			nodeResult.setNodeStatus(NodeStatusEnum.FAIL.getCode());
-			nodeResult.setErrorInfo("Classifier selected branch has no connected target node, decisions="
+			nodeResult.setErrorInfo("Classifier did not produce a valid decision, decisions="
 					+ decisionAndThoughtAndUsage.getDecisions());
 			return nodeResult;
 		}
@@ -168,51 +165,43 @@ public class ClassifierExecuteProcessor extends AbstractExecuteProcessor {
 		TargetIdAndActualDecision result = new TargetIdAndActualDecision();
 		NodeParam config = JsonUtils.fromMap(node.getConfig().getNodeParam(), NodeParam.class);
 		List<Condition> conditions = config.getConditions();
-		// 默认分支
-		Optional<Condition> defaultOptional = conditions.stream()
-			.filter(condition -> condition.getId().equals("default"))
-			.findAny();
-		Condition defaultCondition = defaultOptional.get();
+		// Dify question classifiers only route to configured classes. Ignore the legacy
+		// "default" entry when loading workflows created by older versions.
+		List<Condition> classConditions = CollectionUtils.isEmpty(conditions) ? new ArrayList<>()
+				: conditions.stream()
+					.filter(condition -> condition != null && !"default".equals(condition.getId()))
+					.collect(Collectors.toList());
 
 		List<String> decisions = decisionAndThoughtAndUsage.getDecisions();
+		if (CollectionUtils.isEmpty(decisions) || !checkDecision(decisions)) {
+			return result;
+		}
 
-		if (!decisions.isEmpty() && checkDecision(decisions)) {
-			for (String decision : decisions) {
-				if (Integer.parseInt(decision) == -1) {
-					result.getConditionId().add(defaultCondition.getId());
-					List<String> targetIds = graph.outgoingEdgesOf(node.getId())
-						.stream()
-						.filter(edge -> edge.getSourceHandle().equals(node.getId() + "_default"))
-						.map(Edge::getTarget)
-						.collect(Collectors.toList());
-					result.getTargetIds().addAll(targetIds);
-					result.getActualDecision().add("Other");
-				}
-				else {
-					Condition condition = conditions.get(Integer.parseInt(decision));
-					result.getConditionId().add(condition.getId());
-					List<String> targetIds = graph.outgoingEdgesOf(node.getId())
-						.stream()
-						.filter(edge -> edge.getSourceHandle().equals(node.getId() + "_" + condition.getId()))
-						.map(Edge::getTarget)
-						.collect(Collectors.toList());
-					result.getTargetIds().addAll(targetIds);
-					result.getActualDecision().add(replaceTemplateContent(condition.getSubject(), context));
-				}
+		for (String decision : decisions) {
+			int classIndex;
+			try {
+				// Prompt indices start at 1; Java lists start at 0.
+				classIndex = Integer.parseInt(decision.trim()) - 1;
 			}
-			return result;
-		}
-		else {
-			result.getConditionId().add(defaultCondition.getId());
+			catch (NumberFormatException e) {
+				return new TargetIdAndActualDecision();
+			}
+			if (classIndex < 0 || classIndex >= classConditions.size()) {
+				// There is no implicit "Other/default" branch in a Dify-style classifier.
+				return new TargetIdAndActualDecision();
+			}
+
+			Condition condition = classConditions.get(classIndex);
+			result.getConditionId().add(condition.getId());
 			List<String> targetIds = graph.outgoingEdgesOf(node.getId())
-				.stream()
-				.filter(edge -> edge.getSourceHandle().equals(node.getId() + "_default"))
-				.map(Edge::getTarget)
-				.collect(Collectors.toList());
+					.stream()
+					.filter(edge -> edge.getSourceHandle().equals(node.getId() + "_" + condition.getId()))
+					.map(Edge::getTarget)
+					.collect(Collectors.toList());
 			result.getTargetIds().addAll(targetIds);
-			result.getActualDecision().add("Other");
-			return result;
+			result.getActualDecision().add(replaceTemplateContent(condition.getSubject(), context));
 		}
+		return result;
 	}
 
 	/**
@@ -221,8 +210,17 @@ public class ClassifierExecuteProcessor extends AbstractExecuteProcessor {
 	 * @return true if all decisions are valid numbers, false otherwise
 	 */
 	public boolean checkDecision(List<String> decision) {
+		if (CollectionUtils.isEmpty(decision)) {
+			return false;
+		}
 		for (String item : decision) {
-			if (!NumberUtils.isCreatable(item)) {
+			if (StringUtils.isBlank(item)) {
+				return false;
+			}
+			try {
+				Integer.parseInt(item.trim());
+			}
+			catch (NumberFormatException e) {
 				return false;
 			}
 		}
@@ -271,19 +269,17 @@ public class ClassifierExecuteProcessor extends AbstractExecuteProcessor {
 		String promptTemplate;
 		if ("efficient".equals(config.getModeSwitch())) {
 			promptTemplate = "You are an intelligent decision-making expert. Your task is to determine which of the candidate categories the given input question/text belongs to.\n"
-					+ "\n" + "## Candidate categories\n" + "%s\n" + "\n" + "### -1.Other categories\n"
-					+ "Does not belong to any of the categories.\n" + "\n" + "## Output format\n"
+					+ "\n" + "## Candidate categories\n" + "%s\n" + "\n" + "## Output format\n"
 					+ "Your output must strictly follow the format within the '---' below: \n" + "---\n"
-					+ "<Decision>：Your decision result, specifically the serial number in \"Candidate categories\", must be one of [%s]. Output only the serial number directly, for example: 0. You must not answer questions. Simply terminate after making the decision. \n"
+					+ "<Decision>：Your decision result, specifically the serial number in \"Candidate categories\", must be one of [%s]. Output only the serial number directly, for example: 1. You must not answer questions. Simply terminate after making the decision. \n"
 					+ "---\n" + "\n" + "\"\"\"\n" + "## Enter the question\n%s\"\"\"\n" + "## Note\n%s\n";
 		}
 		else {
 			promptTemplate = "You are an intelligent decision-making expert. Your task is to determine which of the candidate categories the given input question/text belongs to.\n"
-					+ "\n" + "## Candidate categories\n" + "%s\n" + "\n" + "### -1.Other categories\n"
-					+ "Does not belong to any of the categories.\n" + "\n" + "## Output format\n"
+					+ "\n" + "## Candidate categories\n" + "%s\n" + "\n" + "## Output format\n"
 					+ "Your output must strictly follow the format within the '---' below: \n" + "---\n"
 					+ "<Thinking>：Analyze the category of the input information to be classified. Think through it step by step.\n"
-					+ "<Decision>：Your decision result, specifically the serial number in \"Candidate categories\", must be one of [%s]. Output only the serial number directly, for example: 0. You must not answer questions. Simply terminate after making the decision. \n"
+					+ "<Decision>：Your decision result, specifically the serial number in \"Candidate categories\", must be one of [%s]. Output only the serial number directly, for example: 1. You must not answer questions. Simply terminate after making the decision. \n"
 					+ "---\n" + "\n" + "\"\"\"\n" + "## Enter the question\n%s\"\"\"\n" + "## Note\n%s\n";
 		}
 
@@ -573,15 +569,18 @@ public class ClassifierExecuteProcessor extends AbstractExecuteProcessor {
 		}
 		StringBuilder stringBuilder = new StringBuilder();
 		List<Condition> conditions = nodeParam.getConditions();
-		if (CollectionUtils.isEmpty(conditions)) {
+		List<Condition> classConditions = CollectionUtils.isEmpty(conditions) ? new ArrayList<>()
+				: conditions.stream()
+					.filter(condition -> condition != null && !"default".equals(condition.getId()))
+					.collect(Collectors.toList());
+		if (CollectionUtils.isEmpty(classConditions)) {
 			result.setSuccess(false);
-			stringBuilder.append("[conditions] is missing;\n");
+			stringBuilder.append("[conditions] must contain at least one classification;\n");
 		}
 		else {
-			for (int i = 0; i < conditions.size(); i++) {
-				Condition condition = conditions.get(i);
-				if (!"default".equals(condition.getId())
-						&& (condition.getSubject() == null || condition.getSubject().isEmpty())) {
+			for (int i = 0; i < classConditions.size(); i++) {
+				Condition condition = classConditions.get(i);
+				if (StringUtils.isBlank(condition.getSubject())) {
 					result.setSuccess(false);
 					stringBuilder.append("[conditions.").append(i).append(".subject] is missing;\n");
 				}

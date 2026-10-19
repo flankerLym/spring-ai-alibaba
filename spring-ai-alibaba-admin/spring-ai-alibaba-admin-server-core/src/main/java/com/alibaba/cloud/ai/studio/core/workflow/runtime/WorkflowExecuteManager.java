@@ -583,6 +583,33 @@ public class WorkflowExecuteManager {
 			return true;
 		}
 
+		// A selected multi-branch route can have no connected target. Wait until all
+		// graph sinks have settled before completing the workflow through Auto END.
+		Optional<NodeResult> emptyBranchResult = graph.vertexSet()
+				.stream()
+				.map(context.getNodeResultMap()::get)
+				.filter(nodeResult -> nodeResult != null
+						&& NodeStatusEnum.SUCCESS.getCode().equals(nodeResult.getNodeStatus())
+						&& nodeResult.isMultiBranch()
+						&& CollectionUtils.isNotEmpty(nodeResult.getMultiBranchResults())
+						&& nodeResult.getMultiBranchResults().stream()
+								.allMatch(branch -> CollectionUtils.isEmpty(branch.getTargetIds())))
+				.findFirst();
+
+		if (emptyBranchResult.isPresent()) {
+			boolean allSinksSettled = graph.vertexSet()
+					.stream()
+					.filter(nodeId -> graph.outgoingEdgesOf(nodeId).isEmpty())
+					.map(context.getNodeResultMap()::get)
+					.allMatch(nodeResult -> nodeResult != null
+							&& (NodeStatusEnum.SUCCESS.getCode().equals(nodeResult.getNodeStatus())
+									|| NodeStatusEnum.SKIP.getCode().equals(nodeResult.getNodeStatus())));
+			if (allSinksSettled) {
+				executeAutoEnd(graph, context, emptyBranchResult.get());
+				return true;
+			}
+		}
+
 		return false;
 	}
 

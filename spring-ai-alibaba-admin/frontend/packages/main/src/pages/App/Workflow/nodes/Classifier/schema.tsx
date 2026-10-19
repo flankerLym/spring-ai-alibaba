@@ -29,10 +29,12 @@ const checkClassifyNodeDataValid = (data: IClassifierNodeData) => {
 
   checkLLMData(data.node_param.model_config, errorMsg);
 
+  const classConditions = data.node_param.conditions.filter(
+    (item) => item.id !== 'default',
+  );
   if (
-    data.node_param.conditions.some(
-      (item) => !item.subject && item.id !== 'default',
-    )
+    classConditions.length === 0 ||
+    classConditions.some((item) => !item.subject)
   ) {
     errorMsg.push({
       label: $i18n.get({
@@ -62,7 +64,9 @@ const getClassifyVariables = (data: IClassifierNodeData) => {
   }
 
   data.node_param.conditions.forEach((item) => {
-    getVariablesFromText(item.subject, variableKeyMap);
+    if (item.id !== 'default') {
+      getVariablesFromText(item.subject, variableKeyMap);
+    }
   });
 
   return Object.keys(variableKeyMap);
@@ -94,13 +98,7 @@ export const ClassifierSchema: INodeSchema = {
     ],
 
     node_param: {
-      conditions: [
-        {
-          id: 'default',
-          subject: '',
-        },
-      ],
-
+      conditions: [],
       model_config: SELECTED_MODEL_PARAMS_DEFAULT,
       short_memory: SHORT_MEMORY_CONFIG_DEFAULT,
       instruction: '',

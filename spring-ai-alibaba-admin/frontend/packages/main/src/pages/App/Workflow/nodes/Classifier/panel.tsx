@@ -61,6 +61,9 @@ export default memo(function ClassifyPanel(props: {
   const nodes = useReactFlowStore((store) => store.nodes);
   const edges = useReactFlowStore((store) => store.edges);
   const { nodesReadOnly } = useNodesReadOnly();
+  const classCount = props.data.node_param.conditions.filter(
+    (item) => item.id !== 'default',
+  ).length;
 
   const flowVariableList = useMemo(() => {
     return getVariableList({
@@ -102,6 +105,7 @@ export default memo(function ClassifyPanel(props: {
     },
     [props.data.node_param],
   );
+
   const changeConditionItem = useCallback(
     (ind: number, subject: string) => {
       changeNodeParam({
@@ -126,14 +130,14 @@ export default memo(function ClassifyPanel(props: {
   );
 
   const addConditionItem = useCallback(() => {
-    if (props.data.node_param.conditions.length >= MAX_LEN + 1) return;
+    if (classCount >= MAX_LEN) return;
     changeNodeParam({
       conditions: [
         ...props.data.node_param.conditions,
         { id: uniqueId(4), subject: '' },
       ],
     });
-  }, [props.data.node_param]);
+  }, [props.data.node_param, classCount]);
 
   const changeInputVariable = useCallback(
     (val: Partial<IVarItem>) => {
@@ -268,7 +272,7 @@ export default memo(function ClassifyPanel(props: {
             size="small"
             className="self-start spark-flow-text-btn"
             icon={<IconFont type="spark-plus-line" />}
-            disabled={nodesReadOnly}
+            disabled={nodesReadOnly || classCount >= MAX_LEN}
           >
             {$i18n.get(
               {
@@ -276,24 +280,11 @@ export default memo(function ClassifyPanel(props: {
                 dm: '添加意图（{var1}/{var2}）',
               },
               {
-                var1: props.data.node_param.conditions.length - 1,
+                var1: classCount,
                 var2: MAX_LEN,
               },
             )}
           </Button>
-          <div className="spark-flow-panel-form-title">
-            {$i18n.get({
-              id: 'main.pages.App.Workflow.nodes.Classifier.panel.otherIntention',
-              dm: '其他意图',
-            })}
-
-            <InfoIcon
-              tip={$i18n.get({
-                id: 'main.pages.App.Workflow.nodes.Classifier.panel.executeThisBranchWhenNoIntentionMatches',
-                dm: '当模型判断所有意图均不满足时执行该分支。',
-              })}
-            />
-          </div>
         </Flex>
         <Flex vertical gap={12}>
           <div className="spark-flow-panel-form-title">
