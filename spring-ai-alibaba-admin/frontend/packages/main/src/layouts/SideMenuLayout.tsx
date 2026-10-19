@@ -9,7 +9,6 @@ import {
   UnorderedListOutlined,
   PlayCircleOutlined,
   BarChartOutlined,
-  NodeIndexOutlined,
   SettingOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -58,7 +57,6 @@ const getSelectedMenuKey = (pathname: string): string => {
     return pathname === '/admin/playground' ? '/admin/playground' : '/admin/prompts';
   }
   if (pathname.startsWith('/admin/workflow-tracing')) return '/admin/workflow-tracing';
-  if (pathname.startsWith('/admin/tracing')) return '/admin/tracing';
   return pathname;
 };
 
@@ -186,7 +184,6 @@ export default function SideMenuLayout({ children }: { children: React.ReactNode
         }),
         icon: <LineChartOutlined />,
         children: [
-          { key: '/admin/tracing', label: 'Tracing', icon: <NodeIndexOutlined /> },
           { key: '/admin/workflow-tracing', label: '工作流Trace', icon: <ApartmentOutlined /> },
         ],
       },
