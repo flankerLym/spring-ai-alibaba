@@ -60,6 +60,12 @@ export default memo(function FlowBaseEdge({
   }, [target]);
 
   const colorList: ILinearGradientSvgProps['colorList'] = useMemo(() => {
+    if (edgeData._branch_selected === false) {
+      return [
+        { color: `var(--${getCommonConfig().antPrefix}-color-mauve)`, offset: 0 },
+        { color: `var(--${getCommonConfig().antPrefix}-color-mauve)`, offset: 100 },
+      ];
+    }
     if (edgeData._source_node_status && edgeData._target_node_status) {
       if (
         edgeData._source_node_status === 'success' &&
@@ -114,6 +120,7 @@ export default memo(function FlowBaseEdge({
   }, [edgeData, selected]);
 
   const isAnimated = useMemo(() => {
+    if (edgeData._branch_selected === false || edgeData._target_node_status === 'skip') return false;
     if (
       edgeData._source_node_status === 'executing' &&
       edgeData._target_node_status === 'executing'
@@ -126,6 +133,9 @@ export default memo(function FlowBaseEdge({
   }, [edgeData]);
 
   const markerEndColor = useMemo(() => {
+    if (edgeData._branch_selected === false) {
+      return { stroke: `var(--${getCommonConfig().antPrefix}-color-mauve)` };
+    }
     if (edgeData._source_node_status && edgeData._target_node_status) {
       if (
         edgeData._source_node_status === 'success' &&
@@ -167,6 +177,7 @@ export default memo(function FlowBaseEdge({
     };
   }, [
     edgeData._hover,
+    edgeData._branch_selected,
     selected,
     getCommonConfig,
     edgeData._source_node_status,

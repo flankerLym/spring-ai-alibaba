@@ -1,4 +1,5 @@
 import { IWorkFlowNodeResultItem } from '@/types/work-flow';
+import { isSelectedBranchEdge } from '@/utils/branch-edge';
 import {
   applyEdgeChanges,
   Edge,
@@ -31,12 +32,14 @@ export const useEdgesInteraction = () => {
         if (!cacheNodeResult[target]) {
           cacheNodeResult[target] = targetNodeResult;
         }
+        const branchSelected = isSelectedBranchEdge(item, sourceNodeResult);
         if (!!sourceNodeResult && !!targetNodeResult)
           return {
             ...item,
-            animated: targetNodeResult.node_status === 'executing',
+            animated: branchSelected !== false && targetNodeResult.node_status === 'executing',
             data: {
               ...item.data,
+              _branch_selected: branchSelected,
               _source_node_status: sourceNodeResult.node_status,
               _target_node_status: targetNodeResult.node_status,
             },
@@ -46,6 +49,7 @@ export const useEdgesInteraction = () => {
           animated: false,
           data: {
             ...item.data,
+            _branch_selected: branchSelected,
             _source_node_status: undefined,
             _target_node_status: undefined,
           },
@@ -64,6 +68,7 @@ export const useEdgesInteraction = () => {
         animated: false,
         data: {
           ...item.data,
+          _branch_selected: undefined,
           _source_node_status: undefined,
           _target_node_status: undefined,
         },

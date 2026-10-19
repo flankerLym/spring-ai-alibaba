@@ -62,6 +62,7 @@ export interface IPointItem {
 }
 
 export interface IEdgeData {
+  _branch_selected?: boolean;
   _hover?: boolean;
   _source_node_status?: IWorkFlowStatus;
   _target_node_status?: IWorkFlowStatus;
