@@ -348,6 +348,12 @@
                 <configuration>
                     <mainClass>com.alibaba.cloud.ai.studio.admin.SaaStudioAdmin</mainClass>
                     <skip>false</skip>
+                    <requiresUnpack>
+                        <dependency>
+                            <groupId>org.graalvm.python</groupId>
+                            <artifactId>python-resources</artifactId>
+                        </dependency>
+                    </requiresUnpack>
                 </configuration>
             </plugin>
             <plugin>
