@@ -18,6 +18,7 @@ import {
   ToolOutlined,
   SwapOutlined,
   SafetyCertificateOutlined,
+  MessageOutlined,
 } from '@ant-design/icons';
 import $i18n from '@/i18n';
 import Header from './Header';
@@ -57,6 +58,7 @@ const getSelectedMenuKey = (pathname: string): string => {
     return pathname === '/admin/playground' ? '/admin/playground' : '/admin/prompts';
   }
   if (pathname.startsWith('/admin/workflow-tracing')) return '/admin/workflow-tracing';
+  if (pathname.startsWith('/admin/conversations')) return '/admin/conversations';
   return pathname;
 };
 
@@ -185,6 +187,7 @@ export default function SideMenuLayout({ children }: { children: React.ReactNode
         icon: <LineChartOutlined />,
         children: [
           { key: '/admin/workflow-tracing', label: '工作流Trace', icon: <ApartmentOutlined /> },
+          { key: '/admin/conversations', label: '会话历史', icon: <MessageOutlined /> },
         ],
       },
       {
