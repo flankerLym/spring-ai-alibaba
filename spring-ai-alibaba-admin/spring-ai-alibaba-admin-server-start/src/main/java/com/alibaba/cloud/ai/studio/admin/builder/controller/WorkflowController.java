@@ -501,7 +501,7 @@ public class WorkflowController {
 		context.setRequestId(requestContext.getRequestId());
 		context.setInvokeSource(InvokeSourceEnum.console.getCode());
 		context.setWorkspaceId(requestContext.getWorkspaceId());
-		context.setConversationId(IdGenerator.uuid());
+		context.setConversationId(IdGenerator.idStr());
 		String taskId = workflowExecuteManager.execute(workflowConfig, context);
 		TaskPartGraphResponse response = new TaskPartGraphResponse();
 		response.setTaskId(taskId);

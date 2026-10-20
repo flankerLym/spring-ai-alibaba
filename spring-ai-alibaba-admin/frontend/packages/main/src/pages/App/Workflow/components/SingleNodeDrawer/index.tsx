@@ -24,7 +24,7 @@ import {
   useStore,
 } from '@spark-ai/flow';
 import { useMount, useSetState, useUnmount } from 'ahooks';
-import { Flex, Typography } from 'antd';
+import { Flex, Typography, message } from 'antd';
 import classNames from 'classnames';
 import { memo, useMemo, useRef } from 'react';
 import { useWorkflowAppStore } from '../../context/WorkflowAppProvider';
@@ -167,6 +167,23 @@ const getVariableSimpleKey = (key: string) => {
   return match ? match[1] : key;
 };
 
+const getDebugErrorText = (error: unknown, fallback: string) => {
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === 'object') {
+    const detail = error as {
+      message?: string;
+      response?: { data?: { message?: string; error?: string } };
+    };
+    return (
+      detail.response?.data?.message ||
+      detail.response?.data?.error ||
+      detail.message ||
+      fallback
+    );
+  }
+  return fallback;
+};
+
 const SingleNodeDrawer = (props: ISingleNodeDrawer) => {
   const { selectedNodeData } = props;
   const nodeSchemaMap = useStore((state) => state.nodeSchemaMap);
@@ -217,108 +234,170 @@ const SingleNodeDrawer = (props: ISingleNodeDrawer) => {
     clearTimer();
   });
 
-  const queryTaskStatus = () => {
+  // SINGLE_NODE_DEBUG_FIX_V1: surface polling failures and always release loading state.
+  const queryTaskStatus = async () => {
     clearTimer();
     if (!taskId.current) return;
-    getWorkFlowTaskProcess({
-      task_id: taskId.current,
-    }).then((res) => {
-      res.node_results = res.node_results.filter(
+
+    try {
+      const res = await getWorkFlowTaskProcess({
+        task_id: taskId.current,
+      });
+      if (!res) {
+        throw new Error('后端未返回节点执行状态');
+      }
+
+      res.node_results = (res.node_results || []).filter(
         (item) => !['Start', 'End'].includes(item.node_type),
       );
-      res.task_results = res.task_results.filter(
+      res.task_results = (res.task_results || []).filter(
         (item) => !['Start', 'End'].includes(item.node_type),
       );
       updateTaskStore(res);
-      setState({
-        taskInfo: res,
-      });
+      setState({ taskInfo: res });
+
       if (res.task_status === 'executing') {
         timer.current = setTimeout(() => {
-          queryTaskStatus();
+          void queryTaskStatus();
         }, 500);
-      } else {
-        setState({
-          loading: false,
-        });
-        clearTimer();
+        return;
       }
-    });
+
+      setState({ loading: false });
+      clearTimer();
+
+      if (['fail', 'failed'].includes(String(res.task_status))) {
+        const failedNode = res.node_results.find(
+          (item) => item.node_status === 'fail' || item.node_status === 'failed',
+        ) as unknown as { error_info?: string } | undefined;
+        const processError = (res as unknown as { error_info?: string }).error_info;
+        message.error(
+          failedNode?.error_info ||
+            processError ||
+            '节点执行失败，请查看运行结果中的错误详情',
+        );
+      }
+    } catch (error) {
+      clearTimer();
+      setState({ loading: false });
+      message.error(getDebugErrorText(error, '查询节点执行结果失败'));
+    }
   };
 
-  const handleTest = () => {
-    const extraConfig = nodeSchemaMap[selectedNodeData.type].isGroup
-      ? {
-          block: {
-            nodes: [] as {
-              id: string;
-              name: string;
-              type: string;
-              config: IWorkFlowNodeData<INodeDataNodeParam>;
-            }[],
-            edges: [] as IBizEdge[],
-          },
+  const handleTest = async () => {
+    if (state.loading) return;
+
+    // Classifier nodes must receive a real value for the configured input variable.
+    if (selectedNodeData.type === 'Classifier') {
+      const inputParam = selectedNodeData.data.input_params?.[0];
+      if (!inputParam?.value) {
+        message.warning('请先在节点配置中选择输入变量');
+        return;
+      }
+      if ((inputParam.value_from || 'refer') === 'refer') {
+        const inputKey = getVariableSimpleKey(String(inputParam.value));
+        const inputItem = state.inputs.find(
+          (item) => getVariableSimpleKey(item.key) === inputKey,
+        );
+        if (
+          !inputItem ||
+          inputItem.value === undefined ||
+          inputItem.value === null ||
+          String(inputItem.value).trim() === ''
+        ) {
+          message.warning('请先填写待分类文本，再运行意图分类节点');
+          return;
         }
-      : {};
-    if (nodeSchemaMap[selectedNodeData.type].isGroup) {
-      const subFlowNodes = nodes.filter(
-        (item) => item.parentId === selectedNodeData.id,
-      );
-      if (extraConfig.block) {
-        extraConfig.block.nodes = subFlowNodes.map((item) => ({
-          id: item.id,
-          name: item.data.label,
-          type: item.type,
-          config: item.data,
-        }));
-        edges.forEach((item) => {
-          if (
-            subFlowNodes.some((nodeItem) =>
-              [item.source, item.target].includes(nodeItem.id),
-            )
-          ) {
-            extraConfig.block.edges.push({
-              source: item.source,
-              target: item.target,
-              id: item.id,
-              target_handle: item.targetHandle as string,
-              source_handle: item.sourceHandle as string,
-            });
-          }
-        });
       }
     }
-    startPartGraphTask({
-      app_id: appId,
-      nodes: [
-        {
-          id: selectedNodeData.id,
-          name: selectedNodeData.data.label,
-          type: selectedNodeData.type,
-          config: {
-            ...selectedNodeData.data,
-            node_param: {
-              ...selectedNodeData.data.node_param,
-              ...extraConfig,
+
+    setState({
+      loading: true,
+      taskInfo: null,
+    });
+    taskId.current = null;
+
+    try {
+      const extraConfig = nodeSchemaMap[selectedNodeData.type].isGroup
+        ? {
+            block: {
+              nodes: [] as {
+                id: string;
+                name: string;
+                type: string;
+                config: IWorkFlowNodeData<INodeDataNodeParam>;
+              }[],
+              edges: [] as IBizEdge[],
+            },
+          }
+        : {};
+
+      if (nodeSchemaMap[selectedNodeData.type].isGroup) {
+        const subFlowNodes = nodes.filter(
+          (item) => item.parentId === selectedNodeData.id,
+        );
+        if (extraConfig.block) {
+          extraConfig.block.nodes = subFlowNodes.map((item) => ({
+            id: item.id,
+            name: item.data.label,
+            type: item.type,
+            config: item.data,
+          }));
+          edges.forEach((item) => {
+            if (
+              subFlowNodes.some((nodeItem) =>
+                [item.source, item.target].includes(nodeItem.id),
+              )
+            ) {
+              extraConfig.block.edges.push({
+                source: item.source,
+                target: item.target,
+                id: item.id,
+                target_handle: item.targetHandle as string,
+                source_handle: item.sourceHandle as string,
+              });
+            }
+          });
+        }
+      }
+
+      const res = await startPartGraphTask({
+        app_id: appId,
+        nodes: [
+          {
+            id: selectedNodeData.id,
+            name: selectedNodeData.data.label,
+            type: selectedNodeData.type,
+            config: {
+              ...selectedNodeData.data,
+              node_param: {
+                ...selectedNodeData.data.node_param,
+                ...extraConfig,
+              },
             },
           },
-        },
-      ],
-
-      edges: [],
-      input_params: state.inputs.map((item) => ({
-        key: getVariableSimpleKey(item.key),
-        type: item.type,
-        value: item.value,
-      })),
-    }).then((res) => {
-      setState({
-        loading: true,
+        ],
+        edges: [],
+        input_params: state.inputs.map((item) => ({
+          key: getVariableSimpleKey(item.key),
+          type: item.type,
+          value: item.value,
+        })),
       });
-      setShowResults(true);
+
+      if (!res?.task_id) {
+        throw new Error('后端未返回任务 ID，无法查询调试结果');
+      }
+
       taskId.current = res.task_id;
-      queryTaskStatus();
-    });
+      setShowResults(true);
+      void queryTaskStatus();
+    } catch (error) {
+      clearTimer();
+      taskId.current = null;
+      setState({ loading: false });
+      message.error(getDebugErrorText(error, '启动单节点调试失败，请检查后端日志'));
+    }
   };
 
   const renderTitle = useMemo(() => {
