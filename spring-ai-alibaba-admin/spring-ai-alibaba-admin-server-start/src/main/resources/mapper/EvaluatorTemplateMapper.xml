@@ -36,7 +36,7 @@
         <include refid="base_column_list"/>
         FROM
         <include refid="table_name"/>
-        LIMIT #{offset}, #{limit}
+        LIMIT #{limit} OFFSET #{offset}
     </select>
 
     <select id="count" resultType="int">

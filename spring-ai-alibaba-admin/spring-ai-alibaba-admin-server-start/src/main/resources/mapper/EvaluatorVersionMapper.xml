@@ -32,8 +32,7 @@
     </insert>
 
     <delete id="deleteById">
-        DELETE
-        <include refid="table_name"/>
+        DELETE FROM <include refid="table_name"/>
         WHERE id = #{id}
     </delete>
 
@@ -57,7 +56,7 @@
             AND name LIKE CONCAT('%', #{name}, '%')
         </if>
         ORDER BY create_time DESC
-        LIMIT #{offset}, #{limit}
+        LIMIT #{limit} OFFSET #{offset}
     </select>
 
     <!-- 根据评估器ID统计评估器版本数量 -->
