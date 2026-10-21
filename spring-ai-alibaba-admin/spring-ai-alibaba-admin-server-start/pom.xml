@@ -332,7 +332,7 @@
     </dependencies>
 
     <build>
-        <finalName>${project.artifactId}</finalName>
+        <finalName>saa-studio</finalName>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
