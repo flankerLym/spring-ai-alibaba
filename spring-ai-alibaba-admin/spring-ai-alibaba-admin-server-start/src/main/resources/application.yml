@@ -3,9 +3,10 @@ server:
     enabled: true
     mime-types: text/html,text/xml,text/plain,text/css,text/javascript
     min-response-size: 2048
+  port: ${SAA_SERVER_PORT:18999}
 nacos:
   # 支持通过环境变量 NACOS_SERVER_ADDR 覆盖，默认值在各个 profile 中定义
-  server-addr: ${NACOS_SERVER_ADDR}
+  server-addr: ${SAA_NACOS_SERVER_ADDR}
 management:
   tracing:
     sampling:
@@ -76,14 +77,14 @@ spring:
     driver-class-name: org.postgresql.Driver
     # 支持通过环境变量覆盖，默认值在各个 profile 中定义
     # SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://172.16.20.231:5432/saa}
-    username: ${SPRING_DATASOURCE_USERNAME:psy_dev}
-    password: ${SPRING_DATASOURCE_PASSWORD:znxl_dev_123}
+    url: ${SAA_DATASOURCE_URL:jdbc:postgresql://172.16.20.231:5432/saa}
+    username: ${SAA_DATASOURCE_USERNAME:psy_dev}
+    password: ${SAA_DATASOURCE_PASSWORD:znxl_dev_123}
     druid:
       initial-size: 5
       min-idle: 5
       max-active: 20
-      filters: stat,wall,slf4j
+      filters: wall,slf4j
       filter:
         stat:
           log-slow-sql: true
@@ -97,10 +98,10 @@ spring:
     redis:
       # 支持通过环境变量覆盖，默认值在各个 profile 中定义
       # SPRING_REDIS_HOST, SPRING_REDIS_PORT, SPRING_REDIS_DATABASE
-      host: ${SPRING_REDIS_HOST:172.16.20.230}
-      port: ${SPRING_REDIS_PORT:6379}
-      password: bjdx_icode
-      database: ${SPRING_REDIS_DATABASE:3}
+      host: ${SAA_REDIS_HOST:172.16.20.230}
+      port: ${SAA_REDIS_PORT:6379}
+      password: ${SAA_REDIS_PASSWORD:bjdx_icode}
+      database: ${SAA_REDIS_DATABASE:3}
   freemarker:
     cache: false
     charset: UTF-8
@@ -121,22 +122,21 @@ spring:
         persistence:
           jdbc:
             # 使用与 datasource 相同的配置，通过环境变量覆盖
-            url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://172.16.20.231:5432/saa}
-            user: ${SPRING_DATASOURCE_USERNAME:psy_dev}
-            password: ${SPRING_DATASOURCE_PASSWORD:znxl_dev_123}
+            url: ${SAA_DATASOURCE_URL:jdbc:postgresql://172.16.20.231:5432/saa}
+            user: ${SAA_DATASOURCE_USERNAME:psy_dev}
+            password: ${SAA_DATASOURCE_PASSWORD:znxl_dev_123}
             driver: org.postgresql.Driver
 mybatis:
   mapper-locations: classpath:mapper/*.xml
   type-aliases-package: com.alibaba.cloud.ai.studio.admin.entity
   configuration:
     map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
 rocketmq:
   # 支持通过环境变量覆盖，默认值在各个 profile 中定义
   # ROCKETMQ_ENDPOINTS, ROCKETMQ_DOCUMENT_INDEX_TOPIC, ROCKETMQ_DOCUMENT_INDEX_GROUP
-  endpoints: ${ROCKETMQ_ENDPOINTS}
-  document-index-topic: ${ROCKETMQ_DOCUMENT_INDEX_TOPIC:topic_saa_studio_document_index}
-  document_index_group: ${ROCKETMQ_DOCUMENT_INDEX_GROUP:group_saa_studio_document_index}
+  endpoints: ${SAA_ROCKETMQ_ENDPOINTS}
+  document-index-topic: ${SAA_ROCKETMQ_DOCUMENT_INDEX_TOPIC:topic_saa_studio_document_index}
+  document_index_group: ${SAA_ROCKETMQ_DOCUMENT_INDEX_GROUP:group_saa_studio_document_index}
 initializr:
   web:
     enabled: false
