@@ -45,7 +45,10 @@ const getSelectedMenuKey = (pathname: string): string => {
   if (pathname.startsWith('/dify')) return '/dify';
   if (pathname.startsWith('/agent-schema')) return '/agent-schema';
   if (pathname.startsWith('/admin/evaluation/gather')) return '/admin/evaluation/gather';
-  if (pathname.startsWith('/admin/evaluation/evaluator') || pathname === '/admin/evaluation/debug') {
+  if (
+    pathname.startsWith('/admin/evaluation/evaluator') ||
+    pathname === '/admin/evaluation/debug'
+  ) {
     return '/admin/evaluation/evaluator';
   }
   if (pathname.startsWith('/admin/evaluation/experiment')) return '/admin/evaluation/experiment';
@@ -88,7 +91,10 @@ export default function SideMenuLayout({ children }: { children: React.ReactNode
       });
   }, []);
 
-  const selectedKey = useMemo(() => getSelectedMenuKey(location.pathname), [location.pathname]);
+  const selectedKey = useMemo(
+    () => getSelectedMenuKey(location.pathname),
+    [location.pathname],
+  );
 
   const menuItems = useMemo(
     () => [
@@ -135,7 +141,6 @@ export default function SideMenuLayout({ children }: { children: React.ReactNode
           },
         ],
       },
-      // Permission management is the second top-level navigation item.
       {
         key: '/permission',
         label: '权限管理',
@@ -163,17 +168,26 @@ export default function SideMenuLayout({ children }: { children: React.ReactNode
         children: [
           {
             key: '/admin/evaluation/gather',
-            label: $i18n.get({ id: 'main.layouts.SideMenu.evaluationSet', dm: '评测集' }),
+            label: $i18n.get({
+              id: 'main.layouts.SideMenu.evaluationSet',
+              dm: '评测集',
+            }),
             icon: <UnorderedListOutlined />,
           },
           {
             key: '/admin/evaluation/evaluator',
-            label: $i18n.get({ id: 'main.layouts.SideMenu.evaluator', dm: '评估器' }),
+            label: $i18n.get({
+              id: 'main.layouts.SideMenu.evaluator',
+              dm: '评估器',
+            }),
             icon: <BarChartOutlined />,
           },
           {
             key: '/admin/evaluation/experiment',
-            label: $i18n.get({ id: 'main.layouts.SideMenu.experiment', dm: '实验' }),
+            label: $i18n.get({
+              id: 'main.layouts.SideMenu.experiment',
+              dm: '实验',
+            }),
             icon: <ExperimentOutlined />,
           },
         ],
@@ -186,8 +200,16 @@ export default function SideMenuLayout({ children }: { children: React.ReactNode
         }),
         icon: <LineChartOutlined />,
         children: [
-          { key: '/admin/workflow-tracing', label: '工作流Trace', icon: <ApartmentOutlined /> },
-          { key: '/admin/conversations', label: '会话历史', icon: <MessageOutlined /> },
+          {
+            key: '/admin/workflow-tracing',
+            label: '工作流Trace',
+            icon: <ApartmentOutlined />,
+          },
+          {
+            key: '/admin/conversations',
+            label: '会话历史',
+            icon: <MessageOutlined />,
+          },
         ],
       },
       {
@@ -236,13 +258,21 @@ export default function SideMenuLayout({ children }: { children: React.ReactNode
               collapsed={collapsed}
               theme="light"
               className="shadow-lg border-r border-gray-200"
-              style={{ height: '100vh', position: 'fixed', left: 0, top: 0, bottom: 0 }}
+              style={{
+                height: '100vh',
+                position: 'fixed',
+                left: 0,
+                top: 0,
+                bottom: 0,
+              }}
             >
               <div className={styles.sidebar}>
-                <div className={`${styles['sidebar-fixed-section']} p-6 border-b border-gray-200`}>
+                <div
+                  className={`${styles['sidebar-fixed-section']} p-6 border-b border-gray-200`}
+                >
                   <h1 className="text-xl font-bold text-gray-800 flex items-center whitespace-nowrap overflow-hidden">
                     <SettingOutlined className="mr-1 text-blue-500" />
-                    {!collapsed && 'SAA Admin'}
+                    {!collapsed && '尖山 灵析'}
                   </h1>
                 </div>
                 <div className={styles['sidebar-menu']}>
@@ -256,7 +286,9 @@ export default function SideMenuLayout({ children }: { children: React.ReactNode
                     inlineCollapsed={collapsed}
                   />
                 </div>
-                <div className={`${styles['sidebar-fixed-section']} border-t border-gray-200 bg-white`}>
+                <div
+                  className={`${styles['sidebar-fixed-section']} border-t border-gray-200 bg-white`}
+                >
                   <div
                     className="flex items-center justify-center p-4 cursor-pointer hover:bg-gray-50 transition-colors"
                     onClick={() => setCollapsed(!collapsed)}
@@ -278,7 +310,12 @@ export default function SideMenuLayout({ children }: { children: React.ReactNode
                 </div>
               </div>
             </Sider>
-            <AntLayout style={{ marginLeft: collapsed ? 80 : 256, transition: 'margin-left 0.2s' }}>
+            <AntLayout
+              style={{
+                marginLeft: collapsed ? 80 : 256,
+                transition: 'margin-left 0.2s',
+              }}
+            >
               <Header
                 right={
                   <>
@@ -290,7 +327,10 @@ export default function SideMenuLayout({ children }: { children: React.ReactNode
                 }
               />
               <Content className="overflow-hidden">
-                <div className="h-full overflow-y-auto bg-gray-50" style={{ minHeight: 'calc(100vh - 56px)' }}>
+                <div
+                  className="h-full overflow-y-auto bg-gray-50"
+                  style={{ minHeight: 'calc(100vh - 56px)' }}
+                >
                   {children}
                 </div>
               </Content>

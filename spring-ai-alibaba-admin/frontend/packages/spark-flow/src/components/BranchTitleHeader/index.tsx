@@ -23,8 +23,17 @@ export default memo(function BranchTitleHeader(props: IBranchTitleHeaderProps) {
   });
   const isComposingRef = useRef(false);
 
+  const startEdit = useCallback(() => {
+    if (props.disabled) return;
+    setState({
+      isEdit: true,
+      tempName: displayLabel,
+    });
+  }, [displayLabel, props.disabled, setState]);
+
   const handleSure = () => {
-    if (!state.tempName.trim()) {
+    const nextName = state.tempName.trim();
+    if (!nextName) {
       message.warning(
         $i18n.get({
           id: 'spark-flow.BranchTitleHeader.index.conditionGroupNameEmpty',
@@ -33,11 +42,12 @@ export default memo(function BranchTitleHeader(props: IBranchTitleHeaderProps) {
       );
       return;
     }
+
     if (
       props.branches.some(
         (item) =>
           item.id !== props.data.id &&
-          getBranchDisplayLabel(item, props.branches) === state.tempName.trim(),
+          getBranchDisplayLabel(item, props.branches) === nextName,
       )
     ) {
       message.warning(
@@ -48,35 +58,45 @@ export default memo(function BranchTitleHeader(props: IBranchTitleHeaderProps) {
       );
       return;
     }
-    props.onChange({ label: state.tempName.trim() });
-    setState({ isEdit: false });
+
+    // Persist the user-facing name in the branch label. The branch ID and
+    // its edge/handle IDs remain unchanged.
+    props.onChange({ label: nextName });
+    setState({ isEdit: false, tempName: nextName });
   };
 
-  // handle Chinese input start event
+  const cancelEdit = useCallback(() => {
+    setState({
+      isEdit: false,
+      tempName: displayLabel,
+    });
+  }, [displayLabel, setState]);
+
+  // Keep Chinese IME composition from triggering an early Enter-to-save.
   const handleCompositionStart = useCallback(() => {
     isComposingRef.current = true;
   }, []);
 
-  // handle Chinese input end event
   const handleCompositionEnd = useCallback(() => {
     isComposingRef.current = false;
   }, []);
 
-  // handle enter event
   const handlePressEnter = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
-      // if Chinese input is ongoing, do not handle enter event
-      if (isComposingRef.current) {
-        return;
-      }
-
-      // trigger confirm operation
+      if (isComposingRef.current) return;
       handleSure();
-
-      // prevent default behavior (such as form submission)
       e.preventDefault();
     },
     [handleSure],
+  );
+
+  const handleLabelKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLElement>) => {
+      if (props.disabled || (e.key !== 'Enter' && e.key !== ' ')) return;
+      e.preventDefault();
+      startEdit();
+    },
+    [props.disabled, startEdit],
   );
 
   return (
@@ -84,15 +104,16 @@ export default memo(function BranchTitleHeader(props: IBranchTitleHeaderProps) {
       {state.isEdit ? (
         <Flex className="flex-1" gap={8} align="center">
           <Input
+            autoFocus
+            maxLength={64}
+            disabled={props.disabled}
+            onFocus={(e) => e.currentTarget.select()}
             onCompositionStart={handleCompositionStart}
             onCompositionEnd={handleCompositionEnd}
             onPressEnter={handlePressEnter}
             value={state.tempName}
             onChange={(e) => setState({ tempName: e.target.value })}
-            placeholder={$i18n.get({
-              id: 'spark-flow.BranchTitleHeader.index.enterConditionGroupName',
-              dm: '请输入条件组名称',
-            })}
+            placeholder="输入分支名称，例如：用户咨询"
           />
 
           <IconFont
@@ -103,9 +124,7 @@ export default memo(function BranchTitleHeader(props: IBranchTitleHeaderProps) {
           />
 
           <IconFont
-            onClick={() =>
-              setState({ isEdit: false, tempName: displayLabel })
-            }
+            onClick={cancelEdit}
             isCursorPointer
             type="spark-false-line"
           />
@@ -114,9 +133,16 @@ export default memo(function BranchTitleHeader(props: IBranchTitleHeaderProps) {
         <>
           <Flex align="center" gap={16}>
             <Typography.Text
-              ellipsis={{ tooltip: displayLabel }}
-              style={{ maxWidth: 120 }}
+              ellipsis={{ tooltip: `${displayLabel}（点击可修改名称）` }}
+              style={{
+                maxWidth: 120,
+                cursor: props.disabled ? 'default' : 'pointer',
+              }}
               className="spark-flow-panel-form-title"
+              role={props.disabled ? undefined : 'button'}
+              tabIndex={props.disabled ? -1 : 0}
+              onClick={startEdit}
+              onKeyDown={handleLabelKeyDown}
             >
               {displayLabel}
             </Typography.Text>
@@ -164,13 +190,7 @@ export default memo(function BranchTitleHeader(props: IBranchTitleHeaderProps) {
           <Flex gap={12}>
             <IconFont
               className={props.disabled ? 'disabled-icon-btn' : ''}
-              onClick={() => {
-                if (props.disabled) return;
-                setState({
-                  isEdit: true,
-                  tempName: displayLabel,
-                });
-              }}
+              onClick={startEdit}
               size="small"
               isCursorPointer={!props.disabled}
               type="spark-edit-line"
