@@ -1,6 +1,17 @@
 import * as path from 'path';
 import { defineConfig } from 'umi';
+import { config } from 'dotenv';
 
+
+console.log(process.env.NODE_ENV);
+const envFile = process.env.NODE_ENV === 'production'
+  ? '.env.production'
+  : '.env';
+config({ path: path.resolve(__dirname, envFile) });
+console.log('BUILD ENV:', {
+  WEB_SERVER: process.env.WEB_SERVER,
+  BACK_END: process.env.BACK_END,
+});
 export default defineConfig({
   title: 'SAA',
   define: {
