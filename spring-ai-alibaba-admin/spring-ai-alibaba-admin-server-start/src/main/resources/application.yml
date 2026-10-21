@@ -100,7 +100,7 @@ spring:
       # SPRING_REDIS_HOST, SPRING_REDIS_PORT, SPRING_REDIS_DATABASE
       host: ${SAA_REDIS_HOST:172.16.20.230}
       port: ${SAA_REDIS_PORT:6379}
-      password: bjdx_icode
+      password: ${SAA_REDIS_PASSWORD:bjdx_icode}
       database: ${SAA_REDIS_DATABASE:3}
   freemarker:
     cache: false

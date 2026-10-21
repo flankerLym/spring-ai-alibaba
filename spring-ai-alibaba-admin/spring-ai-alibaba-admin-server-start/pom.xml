@@ -369,7 +369,7 @@
                         <configuration>
                             <tasks>
                                 <unzip dest="${project.build.directory}/agentscope"
-                                       src="${project.build.directory}/${project.artifactId}.${project.packaging}"></unzip>
+                                       src="${project.build.directory}/${project.build.finalName}.${project.packaging}"></unzip>
                             </tasks>
                         </configuration>
                     </execution>
