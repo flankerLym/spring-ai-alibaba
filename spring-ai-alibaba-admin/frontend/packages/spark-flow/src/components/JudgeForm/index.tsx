@@ -54,7 +54,6 @@ export default memo(function JudgeForm(props: {
             id: 'spark-flow.JudgeForm.index.newConditionGroup',
             dm: '新条件组',
           }),
-
           value.map((item) => item.label),
         ),
         logic: 'and',
@@ -190,6 +189,17 @@ export default memo(function JudgeForm(props: {
           </div>
         );
       })}
+      <div style={areaStyle} className="spark-flow-panel-form-section">
+        <Flex align="center" justify="space-between">
+          <div className="spark-flow-panel-form-title">
+            {$i18n.get({
+              id: 'spark-flow.JudgeForm.index.defaultBranch',
+              dm: '默认',
+            })}
+          </div>
+          <span>ELSE</span>
+        </Flex>
+      </div>
       <div style={areaStyle} className="spark-flow-panel-form-section">
         <Button
           onClick={() => addBranchItem()}

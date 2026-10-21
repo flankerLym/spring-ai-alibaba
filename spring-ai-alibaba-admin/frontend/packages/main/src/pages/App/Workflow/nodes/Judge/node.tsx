@@ -1,6 +1,6 @@
 import $i18n from '@/i18n';
 import type { IWorkFlowNode, NodeProps } from '@spark-ai/flow';
-import { BaseNode, SourceHandle } from '@spark-ai/flow';
+import { BaseNode, getBranchDisplayLabel, SourceHandle } from '@spark-ai/flow';
 import { Typography } from 'antd';
 import { memo } from 'react';
 import { IJudgeNodeParam } from '../../types';
@@ -12,6 +12,7 @@ export default memo(function Judge(props: NodeProps<IWorkFlowNode>) {
     <BaseNode disableShowSourceHandle {...props}>
       {nodeParam.branches.map((item) => {
         if (item.id === 'default') return null;
+        const displayLabel = getBranchDisplayLabel(item, nodeParam.branches);
         return (
           <div
             key={item.id}
@@ -19,12 +20,12 @@ export default memo(function Judge(props: NodeProps<IWorkFlowNode>) {
           >
             <Typography.Text
               className={styles['judge-label']}
-              ellipsis={{ tooltip: item.label }}
+              ellipsis={{ tooltip: displayLabel }}
               style={{ maxWidth: 200 }}
             >
-              {item.label}
+              {displayLabel}
             </Typography.Text>
-            <span>{item.id === 'default' ? 'ELSE' : 'IF'}</span>
+            <span>IF</span>
             <SourceHandle
               className="spark-flow-judge-branch-handle"
               nodeType={props.type}

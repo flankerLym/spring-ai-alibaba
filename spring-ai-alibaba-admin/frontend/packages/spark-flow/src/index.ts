@@ -52,3 +52,4 @@ export * from './types/work-flow';
 export * from './utils';
 export * from './utils/defaultValues';
 export { default as uniqueId } from './utils/uniqueId';
+export { getBranchDisplayLabel } from './utils/branchLabel';

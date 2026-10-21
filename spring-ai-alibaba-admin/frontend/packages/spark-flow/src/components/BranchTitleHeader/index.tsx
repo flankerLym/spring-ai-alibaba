@@ -1,5 +1,6 @@
 import $i18n from '@/i18n';
 import { IBranchItem } from '@/types/work-flow';
+import { getBranchDisplayLabel } from '@/utils/branchLabel';
 import { IconFont, Select } from '@spark-ai/design';
 import { useSetState } from 'ahooks';
 import { Flex, Input, message, Typography } from 'antd';
@@ -15,14 +16,15 @@ export interface IBranchTitleHeaderProps {
 }
 
 export default memo(function BranchTitleHeader(props: IBranchTitleHeaderProps) {
+  const displayLabel = getBranchDisplayLabel(props.data, props.branches);
   const [state, setState] = useSetState({
     isEdit: false,
-    tempName: props.data.label,
+    tempName: displayLabel,
   });
   const isComposingRef = useRef(false);
 
   const handleSure = () => {
-    if (!state.tempName) {
+    if (!state.tempName.trim()) {
       message.warning(
         $i18n.get({
           id: 'spark-flow.BranchTitleHeader.index.conditionGroupNameEmpty',
@@ -33,7 +35,9 @@ export default memo(function BranchTitleHeader(props: IBranchTitleHeaderProps) {
     }
     if (
       props.branches.some(
-        (item) => item.label === state.tempName && item.id !== props.data.id,
+        (item) =>
+          item.id !== props.data.id &&
+          getBranchDisplayLabel(item, props.branches) === state.tempName.trim(),
       )
     ) {
       message.warning(
@@ -44,7 +48,7 @@ export default memo(function BranchTitleHeader(props: IBranchTitleHeaderProps) {
       );
       return;
     }
-    props.onChange({ label: state.tempName });
+    props.onChange({ label: state.tempName.trim() });
     setState({ isEdit: false });
   };
 
@@ -100,7 +104,7 @@ export default memo(function BranchTitleHeader(props: IBranchTitleHeaderProps) {
 
           <IconFont
             onClick={() =>
-              setState({ isEdit: false, tempName: props.data.label })
+              setState({ isEdit: false, tempName: displayLabel })
             }
             isCursorPointer
             type="spark-false-line"
@@ -110,11 +114,11 @@ export default memo(function BranchTitleHeader(props: IBranchTitleHeaderProps) {
         <>
           <Flex align="center" gap={16}>
             <Typography.Text
-              ellipsis={{ tooltip: props.data.label }}
+              ellipsis={{ tooltip: displayLabel }}
               style={{ maxWidth: 120 }}
               className="spark-flow-panel-form-title"
             >
-              {props.data.label}
+              {displayLabel}
             </Typography.Text>
             <Flex align="center" gap={4}>
               <span>
@@ -164,7 +168,7 @@ export default memo(function BranchTitleHeader(props: IBranchTitleHeaderProps) {
                 if (props.disabled) return;
                 setState({
                   isEdit: true,
-                  tempName: props.data.label,
+                  tempName: displayLabel,
                 });
               }}
               size="small"
