@@ -79,21 +79,23 @@ public class DingTalkWorkflowFailureNotifier {
             Object errorMessage = responseBody == null ? null : responseBody.get("errmsg");
             if (response.statusCode() < 200 || response.statusCode() >= 300
                     || (errorCode != null && !"0".equals(String.valueOf(errorCode)))) {
-                log.error("DingTalk workflow-failure notification rejected, taskId={}, httpStatus={}, errcode={}, errmsg={}",
-                        context.getTaskId(), response.statusCode(), errorCode, errorMessage);
+                log.error("DingTalk workflow-failure notification rejected, taskId={}, traceId={}, httpStatus={}, errcode={}, errmsg={}",
+                        context.getTaskId(), context.getTraceId(), response.statusCode(), errorCode, errorMessage);
             }
             else {
-                log.info("DingTalk workflow-failure notification sent, taskId={}, appId={}, conversationId={}",
-                        context.getTaskId(), context.getAppId(), context.getConversationId());
+                log.info("DingTalk workflow-failure notification sent, taskId={}, traceId={}, appId={}, conversationId={}",
+                        context.getTaskId(), context.getTraceId(), context.getAppId(), context.getConversationId());
             }
         }
         catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.warn("DingTalk workflow-failure notification interrupted, taskId={}", context.getTaskId(), e);
+            log.warn("DingTalk workflow-failure notification interrupted, taskId={}, traceId={}",
+                    context.getTaskId(), context.getTraceId(), e);
         }
         catch (Exception e) {
             // Notification errors must never interrupt or change the workflow result.
-            log.error("DingTalk workflow-failure notification failed, taskId={}", context.getTaskId(), e);
+            log.error("DingTalk workflow-failure notification failed, taskId={}, traceId={}",
+                    context.getTaskId(), context.getTraceId(), e);
         }
     }
 
@@ -108,12 +110,13 @@ public class DingTalkWorkflowFailureNotifier {
         return "### " + TITLE + "\n\n"
                 + "- **应用ID：** " + markdownValue(context.getAppId()) + "\n"
                 + "- **会话ID：** " + markdownValue(context.getConversationId()) + "\n"
+                + "- **Trace ID：** " + markdownValue(context.getTraceId()) + "\n"
                 + "- **来源渠道：** " + markdownValue(context.getInvokeSource()) + "\n"
                 + "- **任务ID：** " + markdownValue(context.getTaskId()) + "\n\n"
                 + "**输入参数（user / system）**\n\n```json\n"
-                + clip(inputJson, MAX_INPUT_LENGTH).replace("```", "'''" ) + "\n```\n\n"
+                + clip(inputJson, MAX_INPUT_LENGTH).replace("```", "'''") + "\n```\n\n"
                 + "**失败原因**\n\n```text\n"
-                + clip(reason, MAX_REASON_LENGTH).replace("```", "'''" ) + "\n```";
+                + clip(reason, MAX_REASON_LENGTH).replace("```", "'''") + "\n```";
     }
 
     private String resolveFailureReason(WorkflowContext context) {
