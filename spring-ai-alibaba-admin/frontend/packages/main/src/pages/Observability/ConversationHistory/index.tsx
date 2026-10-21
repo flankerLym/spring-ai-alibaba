@@ -22,6 +22,7 @@ import {
   message,
   Pagination,
   Row,
+  Select,
   Space,
   Spin,
   Statistic,
@@ -32,6 +33,8 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
+import { getApiKey, listApiKeys } from '@/services/apiKey';
+import type { IApiKey } from '@/types/apiKey';
 import {
   queryConversationMessages,
   queryConversations,
@@ -55,6 +58,8 @@ type FilterForm = {
   invokeSource?: string;
   timeRange?: [dayjs.Dayjs, dayjs.Dayjs];
 };
+
+type ApiKeyOption = IApiKey & { api_key: string };
 
 const readApiKey = () => {
   if (typeof window === 'undefined') return '';
@@ -113,6 +118,8 @@ export default function ConversationHistoryPage() {
   const [form] = Form.useForm<FilterForm>();
   const [apiKeyInput, setApiKeyInput] = useState(readApiKey);
   const [apiKey, setApiKey] = useState(readApiKey);
+  const [apiKeyOptions, setApiKeyOptions] = useState<ApiKeyOption[]>([]);
+  const [apiKeyOptionsLoading, setApiKeyOptionsLoading] = useState(false);
   const [records, setRecords] = useState<ConversationRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [current, setCurrent] = useState(1);
@@ -125,6 +132,37 @@ export default function ConversationHistoryPage() {
   const [messageCurrent, setMessageCurrent] = useState(1);
   const [messageSize, setMessageSize] = useState(10);
   const [messageTotal, setMessageTotal] = useState(0);
+
+  // The console API masks keys in the list response. Fetch each key's detail through
+  // the existing authenticated endpoint so the selector can use the real key value.
+  const loadApiKeyOptions = useCallback(async () => {
+    setApiKeyOptionsLoading(true);
+    try {
+      const result = await listApiKeys({ current: 1, size: 100 });
+      const list = result.data?.records || [];
+      const details = await Promise.all(
+        list.map(async (item): Promise<ApiKeyOption | null> => {
+          if (item.id == null) return null;
+          try {
+            const detail = await getApiKey(item.id);
+            const key = detail.data?.api_key;
+            if (!key || /[*•]/.test(key)) return null;
+            return { ...item, ...detail.data, api_key: key };
+          } catch (error) {
+            console.warn(`Unable to load API Key detail (${item.id})`, error);
+            return null;
+          }
+        }),
+      );
+      setApiKeyOptions(details.filter((item): item is ApiKeyOption => item !== null));
+    } catch (error) {
+      console.error('Failed to load API Key options:', error);
+      message.error(`加载 API Key 列表失败：${getErrorMessage(error)}`);
+      setApiKeyOptions([]);
+    } finally {
+      setApiKeyOptionsLoading(false);
+    }
+  }, []);
 
   const buildQuery = useCallback((pageNum: number, pageSize: number): ConversationQuery => {
     const values = form.getFieldsValue();
@@ -175,7 +213,7 @@ export default function ConversationHistoryPage() {
     key = apiKey,
   ) => {
     if (!key) {
-      message.warning('请先填写 API Key');
+      message.warning('请先选择 API Key');
       return;
     }
     setMessagesLoading(true);
@@ -202,13 +240,17 @@ export default function ConversationHistoryPage() {
   }, [apiKey]);
 
   useEffect(() => {
+    void loadApiKeyOptions();
+  }, [loadApiKeyOptions]);
+
+  useEffect(() => {
     if (apiKey) void loadConversations(1, 20, apiKey);
   }, [apiKey, loadConversations]);
 
   const activateApiKey = () => {
     const key = apiKeyInput.trim();
     if (!key) {
-      message.warning('请先填写 API Key');
+      message.warning('请先从下拉列表选择 API Key');
       return;
     }
     window.sessionStorage.setItem(API_KEY_STORAGE, key);
@@ -219,6 +261,20 @@ export default function ConversationHistoryPage() {
     } else {
       setApiKey(key);
     }
+  };
+
+  const handleApiKeyChange = (key?: string) => {
+    if (!key) {
+      clearApiKey();
+      return;
+    }
+    window.sessionStorage.setItem(API_KEY_STORAGE, key);
+    setApiKeyInput(key);
+    setCurrent(1);
+    setMessages([]);
+    setMessageTotal(0);
+    setDrawerOpen(false);
+    setApiKey(key);
   };
 
   const clearApiKey = () => {
@@ -234,7 +290,7 @@ export default function ConversationHistoryPage() {
 
   const search = () => {
     if (!apiKey) {
-      message.warning('请先填写 API Key 并点击“加载会话”');
+      message.warning('请先选择 API Key');
       return;
     }
     void loadConversations(1, size, apiKey);
@@ -302,6 +358,14 @@ export default function ConversationHistoryPage() {
     },
   ];
 
+  const apiKeySelectOptions = apiKeyOptions.map((item) => ({
+    value: item.api_key,
+    label: `${item.description || '未命名 API Key'}${item.companyName ? ` · ${item.companyName}` : ''} · ${item.api_key}`,
+    description: item.description || '未命名 API Key',
+    companyName: item.companyName || '',
+    apiKey: item.api_key,
+  }));
+
   return (
     <div className={styles.page}>
       <div className={styles.header}>
@@ -311,9 +375,11 @@ export default function ConversationHistoryPage() {
         </div>
         <Button
           icon={<ReloadOutlined />}
-          onClick={() => apiKey
-            ? void loadConversations(current, size, apiKey)
-            : message.warning('请先填写 API Key 并点击“加载会话”')}
+          onClick={() => {
+            void loadApiKeyOptions();
+            if (apiKey) void loadConversations(current, size, apiKey);
+            else message.info('已刷新 API Key 列表，请选择一个密钥');
+          }}
         >
           刷新
         </Button>
@@ -326,22 +392,36 @@ export default function ConversationHistoryPage() {
               <KeyOutlined />
               <Text strong>OpenAPI Key</Text>
             </Space>
-            <Input.Password
-              value={apiKeyInput}
-              onChange={(event) => setApiKeyInput(event.target.value)}
-              onPressEnter={activateApiKey}
-              placeholder="输入有权访问会话数据的 API Key"
-              autoComplete="off"
+            <Select
+              showSearch
+              allowClear
+              value={apiKeyInput || undefined}
+              loading={apiKeyOptionsLoading}
+              placeholder="请选择 API Key（按名称或密钥搜索）"
               className={styles.keyInput}
+              style={{ width: '100%', maxWidth: 760 }}
+              options={apiKeySelectOptions}
+              optionFilterProp="label"
+              filterOption={(input, option) =>
+                String(option?.label || '').toLowerCase().includes(input.toLowerCase())
+              }
+              optionRender={(option) => (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '2px 0' }}>
+                  <Text strong>名称：{option.data.description || '未命名 API Key'}{option.data.companyName ? ` · ${option.data.companyName}` : ''}</Text>
+                  <Text type="secondary" code>{option.data.apiKey}</Text>
+                </div>
+              )}
+              onChange={(value) => handleApiKeyChange(value || undefined)}
+              notFoundContent={apiKeyOptionsLoading ? <Spin size="small" /> : '当前账号暂无可用 API Key'}
             />
             <Text type="secondary" className={styles.keyHelp}>
-              密钥用于调用 /api/v1/conversations 接口，仅保存在当前浏览器标签页的会话存储中。
+              已自动读取当前账号的 API Key；选择后立即加载会话。密钥仅保存在当前浏览器标签页的会话存储中。
             </Text>
           </Col>
           <Col>
             <Space>
               <Button type="primary" icon={<SearchOutlined />} loading={loading} onClick={activateApiKey}>
-                加载会话
+                {apiKey ? '重新加载' : '加载会话'}
               </Button>
               <Button onClick={clearApiKey}>清除密钥</Button>
             </Space>
@@ -393,7 +473,7 @@ export default function ConversationHistoryPage() {
       <Card className={styles.tableCard} bodyStyle={{ padding: 0 }}>
         {!apiKey ? (
           <div className={styles.emptyState}>
-            <Empty description="请先输入 API Key，再加载会话历史" />
+            <Empty description="请先选择 API Key，再加载会话历史" />
           </div>
         ) : (
           <Table

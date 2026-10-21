@@ -144,3 +144,11 @@ logging:
   level:
     org.springframework.boot.autoconfigure: INFO
     org.springframework.boot.task: INFO
+
+# 工作流失败钉钉通知（统一配置在 application.yml）
+workflow:
+  failure-notification:
+    dingtalk:
+      enabled: ${WORKFLOW_FAILURE_DINGTALK_ENABLED:true}
+      webhook-url: "${DINGTALK_WEBHOOK_URL:https://oapi.dingtalk.com/robot/send?access_token=831f223374eba35c95c5b1e4d3352f0f5a1d8c231118d7546f23577c70e49824}"
+      secret: "${DINGTALK_WEBHOOK_SECRET:}"

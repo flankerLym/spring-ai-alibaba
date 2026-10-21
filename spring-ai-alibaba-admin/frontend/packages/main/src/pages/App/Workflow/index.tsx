@@ -47,6 +47,7 @@ import { channelConfigEventBus } from '../components/ChannelConfig/PublishCompon
 import { EditNameModal } from '../components/EditNameModal';
 import { MCPToolSelectModalFuncs } from '../components/MCPSelector';
 import { ToolSelectorModalFuncs } from '../components/PluginSelector/show';
+import ImportDslButton from '../components/ImportDslButton';
 import { ComponentSelectorModalFuncs } from './components/ComponentSelectorModal/show';
 import GlobalVariableFormModal from './components/GlobalVariableFormModal';
 import { HistoryConfigBtn } from './components/HistoryConfigModal';
@@ -202,6 +203,10 @@ export const FlowBase = memo((props: IFlowBaseProps) => {
                   dm: '导出SAA工程代码',
                 })}
               </Button>
+              <ImportDslButton
+                appDetail={props.appDetail}
+                onImported={() => init(true)}
+              />
               <Button
                 disabled={actionLoading}
                 onClick={() => {
@@ -292,7 +297,6 @@ export const FlowEditor = memo((props: IProps) => {
 
     setActionLoading(true);
     try {
-      // 准备请求参数
       const params = {
         dependencies: 'spring-ai-alibaba-graph,web,spring-ai-alibaba-starter-dashscope,spring-ai-starter-mcp-client',
         appMode: 'workflow',
@@ -311,10 +315,7 @@ export const FlowEditor = memo((props: IProps) => {
         dsl: JSON.stringify(props.appDetail),
       };
 
-      // 调用转换服务
       const response = await convertDifyToSpringAI(params);
-
-      // 处理 zip 文件下载
       const blob = response.data;
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -330,7 +331,7 @@ export const FlowEditor = memo((props: IProps) => {
       console.error('转换失败:', error);
       message.error(`转换失败：${error.message || '请重试'}`);
     } finally {
-      setActionLoading(false); // 重置加载状态
+      setActionLoading(false);
     }
   }, [props.appDetail]);
 

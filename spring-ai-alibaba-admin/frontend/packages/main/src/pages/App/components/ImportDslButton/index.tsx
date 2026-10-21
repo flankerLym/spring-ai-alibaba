@@ -1,9 +1,11 @@
 import { request } from '@/request';
 import { IAppType } from '@/services/appComponent';
-import { createApp } from '@/services/appManage';
+import { createApp, updateApp } from '@/services/appManage';
 import { getModelSelector } from '@/services/modelService';
 import { createAppInProjectArchiveFolder } from '@/services/projectArchive';
+import type { IWorkFlowAppDetail } from '@/types/appManage';
 import { Button, message } from '@spark-ai/design';
+import { Modal } from 'antd';
 import { useRef, useState } from 'react';
 import {
   prepareDifyArithmeticAssignments,
@@ -14,11 +16,14 @@ import { importWorkflowDsl } from '../../utils/importWorkflowDsl';
 interface ImportDslButtonProps {
   onImported: (id: string) => void | Promise<void>;
   archiveFolderId?: string;
+  /** When supplied, import into the existing workflow instead of creating an app. */
+  appDetail?: IWorkFlowAppDetail;
 }
 
 export default function ImportDslButton({
   onImported,
   archiveFolderId,
+  appDetail,
 }: ImportDslButtonProps) {
   const input = useRef<HTMLInputElement>(null);
   const busy = useRef(false);
@@ -51,19 +56,32 @@ export default function ImportDslButton({
         prepared.operations,
       );
 
-      const appParams = {
-        name: imported.name,
-        type: IAppType.WORKFLOW,
-        config: imported.config,
-      };
-      const id = archiveFolderId
-        ? await createAppInProjectArchiveFolder(archiveFolderId, appParams)
-        : await createApp(appParams);
+      if (appDetail) {
+        // Update the current app, preserving its ID and existing name/type.
+        await updateApp({
+          app_id: appDetail.app_id,
+          name: appDetail.name,
+          type: appDetail.type,
+          config: imported.config,
+        });
+        await onImported(appDetail.app_id);
+        message.success('DSL 已覆盖当前工作流，应用 ID 保持不变');
+      } else {
+        const appParams = {
+          name: imported.name,
+          type: IAppType.WORKFLOW,
+          config: imported.config,
+        };
+        const id = archiveFolderId
+          ? await createAppInProjectArchiveFolder(archiveFolderId, appParams)
+          : await createApp(appParams);
 
-      await onImported(id);
-      message.success(
-        archiveFolderId ? 'DSL 已导入并归档到当前文件夹' : 'DSL 已导入为草稿',
-      );
+        await onImported(id);
+        message.success(
+          archiveFolderId ? 'DSL 已导入并归档到当前文件夹' : 'DSL 已导入为草稿',
+        );
+      }
+
       if (imported.dify)
         message.warning(
           '已转换为可编辑画布；运行前请检查模型配置及节点参数',
@@ -86,11 +104,30 @@ export default function ImportDslButton({
         accept=".yml,.yaml,.json"
         hidden
         onChange={(event) => {
-          void importFile(event.target.files?.[0]);
+          const file = event.target.files?.[0];
+          if (!file) return;
+
+          if (appDetail) {
+            Modal.confirm({
+              title: '覆盖当前工作流？',
+              content:
+                '导入的 DSL 将替换当前草稿中的节点、连线和工作流配置。应用 ID 与应用名称保持不变，此操作无法自动撤销，建议先导出备份。',
+              okText: '确认覆盖',
+              cancelText: '取消',
+              okButtonProps: { danger: true },
+              onOk: () => importFile(file),
+              onCancel: () => {
+                if (input.current) input.current.value = '';
+              },
+            });
+            return;
+          }
+
+          void importFile(file);
         }}
       />
-      <Button loading={loading} onClick={() => input.current?.click()}>
-        导入 DSL
+      <Button loading={loading} disabled={loading} onClick={() => input.current?.click()}>
+        {appDetail ? '导入 DSL 覆盖' : '导入 DSL'}
       </Button>
     </>
   );
