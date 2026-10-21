@@ -22,6 +22,7 @@ const { Text, Title } = Typography;
 type FilterForm = {
   appId?: string;
   keyword?: string;
+  userId?: string;
   status?: string;
   invokeSource?: string;
   timeRange?: [dayjs.Dayjs, dayjs.Dayjs];
@@ -124,8 +125,9 @@ export default function WorkflowTracePage() {
       current: page, size: pageSize,
       appId: v.appId?.trim() || undefined,
       keyword: v.keyword?.trim() || undefined,
+      userId: v.userId?.trim() || undefined,
       status: v.status || undefined,
-      invokeSource: v.invokeSource || undefined,
+      invokeSource: v.invokeSource?.trim() || undefined,
       startTime: v.timeRange?.[0]?.toISOString(),
       endTime: v.timeRange?.[1]?.toISOString(),
     };
@@ -163,8 +165,8 @@ export default function WorkflowTracePage() {
 
   const reset = () => {
     form.setFieldsValue({
-      appId: undefined, keyword: undefined, status: undefined, invokeSource: undefined,
-      timeRange: [dayjs().subtract(24, 'hour'), dayjs()],
+      appId: undefined, keyword: undefined, userId: undefined, status: undefined,
+      invokeSource: undefined, timeRange: [dayjs().subtract(24, 'hour'), dayjs()],
     });
     setTimeout(() => { loadList(1, size); loadOverview(); }, 0);
   };
@@ -205,7 +207,8 @@ export default function WorkflowTracePage() {
       title:'应用 / 版本', width:190,
       render:(_,r)=><div><div>{r.appId||'-'}</div><Text type="secondary">v{r.workflowVersion||'-'}</Text></div>,
     },
-    { title:'来源', dataIndex:'invokeSource', width:95, render:v=><Tag>{v||'-'}</Tag> },
+    { title:'User ID', dataIndex:'userId', width:150, ellipsis:true, render:(v:string)=><Text ellipsis={{tooltip:v}}>{v||'-'}</Text> },
+    { title:'invoke_source', dataIndex:'invokeSource', width:180, ellipsis:true, render:v=><Tag>{v||'-'}</Tag> },
     { title:'耗时', dataIndex:'durationMs', width:105, render:duration },
     { title:'Token', dataIndex:'totalTokens', width:105, align:'right', render:num },
     { title:'模型调用', dataIndex:'modelCallCount', width:90, align:'center', render:v=>v||0 },
@@ -247,11 +250,11 @@ export default function WorkflowTracePage() {
         <Form form={form} layout="inline" onFinish={search}>
           <Form.Item name="keyword"><Input allowClear prefix={<SearchOutlined/>} placeholder="Trace / Task / Request / Conversation ID" style={{width:290}}/></Form.Item>
           <Form.Item name="appId"><Input allowClear placeholder="App ID" style={{width:180}}/></Form.Item>
+          <Form.Item name="userId"><Input allowClear placeholder="User ID（精确匹配）" style={{width:170}}/></Form.Item>
           <Form.Item name="status"><Select allowClear placeholder="状态" style={{width:120}} options={[
             {label:'成功',value:'success'},{label:'失败',value:'fail'},{label:'执行中',value:'executing'},
             {label:'停止',value:'stop'},{label:'暂停',value:'pause'}]}/></Form.Item>
-          <Form.Item name="invokeSource"><Select allowClear placeholder="调用来源" style={{width:120}} options={[
-            {label:'API',value:'api'},{label:'Console',value:'console'},{label:'Async',value:'async'}]}/></Form.Item>
+          <Form.Item name="invokeSource"><Input allowClear placeholder="invoke_source / 调用来源" style={{width:210}}/></Form.Item>
           <Form.Item name="timeRange"><RangePicker showTime style={{width:350}}/></Form.Item>
           <Form.Item><Space><Button type="primary" htmlType="submit" icon={<SearchOutlined/>}>查询</Button><Button onClick={reset}>重置</Button></Space></Form.Item>
         </Form>
@@ -259,7 +262,7 @@ export default function WorkflowTracePage() {
 
       <Card className={styles.tableCard} bodyStyle={{padding:0}}>
         <Table rowKey="traceId" loading={loading} columns={columns} dataSource={records}
-          scroll={{x:1400}}
+          scroll={{x:1540}}
           onRow={r=>({onDoubleClick:()=>openDetail(r)})}
           pagination={{
             current,pageSize:size,total,showSizeChanger:true,showQuickJumper:true,
@@ -277,9 +280,10 @@ export default function WorkflowTracePage() {
               <Descriptions.Item label="Task ID"><Text copyable>{detail.trace.taskId||'-'}</Text></Descriptions.Item>
               <Descriptions.Item label="结束原因">{detail.trace.finishReason||'-'}</Descriptions.Item>
               <Descriptions.Item label="App ID">{detail.trace.appId||'-'}</Descriptions.Item>
+              <Descriptions.Item label="User ID"><Text copyable>{detail.trace.userId||'-'}</Text></Descriptions.Item>
               <Descriptions.Item label="版本">{detail.trace.workflowVersion||'-'}</Descriptions.Item>
               <Descriptions.Item label="Conversation ID">{detail.trace.conversationId||'-'}</Descriptions.Item>
-              <Descriptions.Item label="来源">{detail.trace.invokeSource||'-'}</Descriptions.Item>
+              <Descriptions.Item label="invoke_source">{detail.trace.invokeSource||'-'}</Descriptions.Item>
               <Descriptions.Item label="总耗时">{duration(detail.trace.durationMs)}</Descriptions.Item>
               <Descriptions.Item label="Prompt Token">{num(detail.trace.promptTokens)}</Descriptions.Item>
               <Descriptions.Item label="Completion Token">{num(detail.trace.completionTokens)}</Descriptions.Item>

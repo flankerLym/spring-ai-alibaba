@@ -1,11 +1,14 @@
 package com.alibaba.cloud.ai.studio.admin.trace.aspect;
 
+import com.alibaba.cloud.ai.studio.core.context.RequestContextHolder;
 import com.alibaba.cloud.ai.studio.core.workflow.WorkflowContext;
 import com.alibaba.cloud.ai.studio.core.workflow.trace.context.WorkflowTraceContext;
 import com.alibaba.cloud.ai.studio.core.workflow.trace.service.WorkflowTraceManager;
+import com.alibaba.cloud.ai.studio.runtime.domain.RequestContext;
 import com.alibaba.cloud.ai.studio.runtime.domain.app.ApplicationVersion;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
@@ -32,8 +35,20 @@ public class WorkflowTraceAspect {
             if (context != null && appVersion != null && context.getTraceId() == null) {
                 WorkflowTraceContext trace = traceManager.startTrace(appVersion, context, rawInput);
                 if (trace != null) {
-                    trace.setUserId(context.getUserId());
-                    trace.setApiKeyCompanyName(context.getApiKeyCompanyName());
+                    RequestContext requestContext = RequestContextHolder.getRequestContext();
+                    String userId = context.getUserId();
+                    if (StringUtils.isBlank(userId) && requestContext != null) {
+                        userId = requestContext.getUserId();
+                    }
+                    if (StringUtils.isNotBlank(userId)) {
+                        trace.setUserId(userId.trim());
+                    }
+
+                    String companyName = context.getApiKeyCompanyName();
+                    if (StringUtils.isBlank(companyName) && requestContext != null) {
+                        companyName = requestContext.getApiKeyCompanyName();
+                    }
+                    trace.setApiKeyCompanyName(companyName);
                 }
             }
         }

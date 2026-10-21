@@ -15,6 +15,7 @@
                     OR user_id ILIKE CONCAT('%', #{keyword}, '%')
                 )
             </if>
+            <if test="userId != null and userId != ''">AND user_id = #{userId}</if>
             <if test="status != null and status != ''">AND status = #{status}</if>
             <if test="invokeSource != null and invokeSource != ''">AND invoke_source = #{invokeSource}</if>
             <if test="startTime != null">AND start_time <![CDATA[ >= ]]> #{startTime}</if>

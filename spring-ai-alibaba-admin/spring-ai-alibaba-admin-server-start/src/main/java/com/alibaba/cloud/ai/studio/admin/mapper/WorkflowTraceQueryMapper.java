@@ -12,6 +12,7 @@ public interface WorkflowTraceQueryMapper {
     List<WorkflowTraceView> selectTracePage(
             @Param("appId") String appId,
             @Param("keyword") String keyword,
+            @Param("userId") String userId,
             @Param("status") String status,
             @Param("invokeSource") String invokeSource,
             @Param("startTime") OffsetDateTime startTime,
@@ -22,6 +23,7 @@ public interface WorkflowTraceQueryMapper {
     long countTraces(
             @Param("appId") String appId,
             @Param("keyword") String keyword,
+            @Param("userId") String userId,
             @Param("status") String status,
             @Param("invokeSource") String invokeSource,
             @Param("startTime") OffsetDateTime startTime,
@@ -30,6 +32,7 @@ public interface WorkflowTraceQueryMapper {
     WorkflowTraceOverviewView selectOverview(
             @Param("appId") String appId,
             @Param("keyword") String keyword,
+            @Param("userId") String userId,
             @Param("status") String status,
             @Param("invokeSource") String invokeSource,
             @Param("startTime") OffsetDateTime startTime,
