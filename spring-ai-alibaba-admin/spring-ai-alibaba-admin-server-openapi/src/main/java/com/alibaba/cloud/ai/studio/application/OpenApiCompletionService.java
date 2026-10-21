@@ -31,13 +31,32 @@ public class OpenApiCompletionService {
 
     public AgentResponse chat(AgentRequest request) { return agentService.call(request); }
     public Flux<AgentResponse> streamChat(AgentRequest request) { return agentService.streamCall(Flux.just(request)); }
-    public WorkflowResponse workflow(WorkflowRequest request) { return workflowService.call(request); }
-    public Flux<WorkflowResponse> streamWorkflow(WorkflowRequest request) { return workflowService.streamCall(Flux.just(request)); }
+
+    public WorkflowResponse workflow(WorkflowRequest request) {
+        applyUserId(request);
+        return workflowService.call(request);
+    }
+
+    public Flux<WorkflowResponse> streamWorkflow(WorkflowRequest request) {
+        applyUserId(request);
+        return workflowService.streamCall(Flux.just(request));
+    }
 
     public Result<TaskRunResponse> startWorkflow(WorkflowRequest request) {
         RequestContext context = RequestContextHolder.getRequestContext();
+        applyUserId(request);
         context.setStartTime(System.currentTimeMillis());
         return Result.success(workflowService.asyncCall(request));
+    }
+
+    private void applyUserId(WorkflowRequest request) {
+        if (request == null || StringUtils.isBlank(request.getUserId())) {
+            return;
+        }
+        RequestContext context = RequestContextHolder.getRequestContext();
+        if (context != null) {
+            context.setUserId(request.getUserId().trim());
+        }
     }
 
     public Result<Boolean> stopWorkflow(TaskStopRequest request) {

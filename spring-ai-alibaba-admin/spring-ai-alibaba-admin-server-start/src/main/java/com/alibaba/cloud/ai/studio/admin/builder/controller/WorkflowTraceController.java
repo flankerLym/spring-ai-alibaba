@@ -23,6 +23,7 @@ public class WorkflowTraceController {
             @RequestParam(defaultValue = "20") Integer size,
             @RequestParam(required = false) String appId,
             @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String userId,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String invokeSource,
             @RequestParam(required = false)
@@ -30,13 +31,14 @@ public class WorkflowTraceController {
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime endTime) {
         return Result.success(queryService.page(
-                current, size, appId, keyword, status, invokeSource, startTime, endTime));
+                current, size, appId, keyword, userId, status, invokeSource, startTime, endTime));
     }
 
     @GetMapping("/overview")
     public Result<WorkflowTraceOverviewView> overview(
             @RequestParam(required = false) String appId,
             @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String userId,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String invokeSource,
             @RequestParam(required = false)
@@ -44,7 +46,7 @@ public class WorkflowTraceController {
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime endTime) {
         return Result.success(queryService.overview(
-                appId, keyword, status, invokeSource, startTime, endTime));
+                appId, keyword, userId, status, invokeSource, startTime, endTime));
     }
 
     @GetMapping("/{traceId}")

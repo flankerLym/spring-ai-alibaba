@@ -3,7 +3,7 @@ import { IBranchItem, IConditionItem } from '@/types/work-flow';
 import { generateUniqueName } from '@/utils';
 import uniqueId from '@/utils/uniqueId';
 import { Button, IconFont } from '@spark-ai/design';
-import { Flex } from 'antd';
+import { Flex, Tag, Tooltip, Typography } from 'antd';
 import classNames from 'classnames';
 import React, { memo, useCallback } from 'react';
 import BranchTitleHeader from '../BranchTitleHeader';
@@ -18,8 +18,9 @@ export default memo(function JudgeForm(props: {
   rightVariableList: IVarTreeItem[];
   disabled?: boolean;
   areaStyle?: React.CSSProperties;
+  branchNextNodes?: Record<string, { id: string; label: string }[]>;
 }) {
-  const { value = [], onChange, disabled, areaStyle } = props;
+  const { value = [], onChange, disabled, areaStyle, branchNextNodes } = props;
 
   const changeBranchItem = useCallback(
     (id: string, payload: Partial<IBranchItem>) => {
@@ -121,6 +122,39 @@ export default memo(function JudgeForm(props: {
     [value, onChange],
   );
 
+  const renderNextNodes = (branchId: string) => {
+    const nextNodes = branchNextNodes?.[branchId] || [];
+    return (
+      <div className="spark-flow-judge-next-nodes">
+        <span className="spark-flow-judge-next-nodes-label">
+          {$i18n.get({
+            id: 'spark-flow.JudgeForm.index.nextNode',
+            dm: '下一个节点',
+          })}
+        </span>
+        <span className="spark-flow-judge-next-nodes-arrow">→</span>
+        {nextNodes.length > 0 ? (
+          <div className="spark-flow-judge-next-nodes-list">
+            {nextNodes.map((node) => (
+              <Tooltip key={node.id} title={node.label} placement="topLeft">
+                <Tag className="spark-flow-judge-next-node-chip" bordered={false}>
+                  <Typography.Text ellipsis>{node.label}</Typography.Text>
+                </Tag>
+              </Tooltip>
+            ))}
+          </div>
+        ) : (
+          <span className="spark-flow-judge-next-nodes-empty">
+            {$i18n.get({
+              id: 'spark-flow.JudgeForm.index.noNextNode',
+              dm: '未连接',
+            })}
+          </span>
+        )}
+      </div>
+    );
+  };
+
   return (
     <>
       {value.map((item) => {
@@ -133,13 +167,16 @@ export default memo(function JudgeForm(props: {
               className="spark-flow-panel-form-section"
             >
               <Flex vertical gap={16}>
-                <BranchTitleHeader
-                  data={item}
-                  onChange={(payload) => changeBranchItem(item.id, payload)}
-                  deleteBranchItem={() => deleteBranchItem(item.id)}
-                  branches={value}
-                  disabled={disabled}
-                />
+                <div className="spark-flow-judge-branch-header-wrap">
+                  <BranchTitleHeader
+                    data={item}
+                    onChange={(payload) => changeBranchItem(item.id, payload)}
+                    deleteBranchItem={() => deleteBranchItem(item.id)}
+                    branches={value}
+                    disabled={disabled}
+                  />
+                  {renderNextNodes(item.id)}
+                </div>
 
                 {(item.conditions || []).map((condition, index) => (
                   <Flex key={index} gap={8}>
@@ -190,14 +227,17 @@ export default memo(function JudgeForm(props: {
         );
       })}
       <div style={areaStyle} className="spark-flow-panel-form-section">
-        <Flex align="center" justify="space-between">
-          <div className="spark-flow-panel-form-title">
-            {$i18n.get({
-              id: 'spark-flow.JudgeForm.index.defaultBranch',
-              dm: '默认',
-            })}
-          </div>
-          <span>ELSE</span>
+        <Flex vertical gap={8}>
+          <Flex align="center" justify="space-between">
+            <div className="spark-flow-panel-form-title">
+              {$i18n.get({
+                id: 'spark-flow.JudgeForm.index.defaultBranch',
+                dm: '默认',
+              })}
+            </div>
+            <span>ELSE</span>
+          </Flex>
+          {renderNextNodes('default')}
         </Flex>
       </div>
       <div style={areaStyle} className="spark-flow-panel-form-section">

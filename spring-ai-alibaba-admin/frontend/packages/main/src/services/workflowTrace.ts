@@ -10,6 +10,7 @@ export interface WorkflowTrace {
   appId?: string;
   workflowVersion?: string;
   conversationId?: string;
+  userId?: string;
   invokeSource?: string;
   status?: string;
   finishReason?: string;
@@ -74,6 +75,7 @@ export interface TraceListParams {
   size: number;
   appId?: string;
   keyword?: string;
+  userId?: string;
   status?: string;
   invokeSource?: string;
   startTime?: string;
