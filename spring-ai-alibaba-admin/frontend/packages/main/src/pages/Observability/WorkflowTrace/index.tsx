@@ -29,6 +29,14 @@ type FilterForm = {
 };
 type SpanNode = WorkflowSpan & { children: SpanNode[]; depth: number };
 type PayloadDirection = 'input' | 'output';
+type SessionVariableChange = {
+  key: string;
+  before: unknown;
+  after: unknown;
+  beforeExists: boolean;
+  afterExists: boolean;
+  change: '新增' | '修改' | '删除' | '未变化';
+};
 
 const STATUS: Record<string, [string, string]> = {
   success: ['success', '成功'],
@@ -175,6 +183,17 @@ const copyPayload = (raw?: string) => {
     .catch(() => message.error('复制失败'));
 };
 
+const sameVariableValue = (left: unknown, right: unknown) => {
+  try { return JSON.stringify(left) === JSON.stringify(right); }
+  catch { return Object.is(left, right); }
+};
+
+const variableText = (value: unknown) => {
+  if (typeof value === 'string') return value;
+  try { return JSON.stringify(value, null, 2) ?? String(value); }
+  catch { return String(value); }
+};
+
 const statusTag = (v?: string) => {
   const m = STATUS[v || ''] || ['default', v || '-'];
   return <Tag color={m[0]}>{m[1]}</Tag>;
@@ -220,6 +239,7 @@ export default function WorkflowTracePage() {
   const [detail, setDetail] = useState<TraceDetail | null>(null);
   const [selectedSpan, setSelectedSpan] = useState<WorkflowSpan | null>(null);
   const [rawPayloadView, setRawPayloadView] = useState<Record<string, boolean>>({});
+  const [showUnchangedSessionVariables, setShowUnchangedSessionVariables] = useState(false);
 
   const params = useCallback((page=current, pageSize=size): TraceListParams => {
     const v = form.getFieldsValue();
@@ -275,6 +295,7 @@ export default function WorkflowTracePage() {
 
   const openDetail = async (trace: WorkflowTrace) => {
     setDrawerOpen(true); setDetail(null); setSelectedSpan(null); setDetailLoading(true);
+    setShowUnchangedSessionVariables(false);
     try {
       const d = await getWorkflowTraceDetail(trace.traceId);
       setDetail(d);
@@ -321,12 +342,99 @@ export default function WorkflowTracePage() {
   ];
 
   const flat = useMemo(() => flatten(spanTree(detail?.spans || [])), [detail]);
+  const sessionVariableSnapshot = useMemo<{
+    before: Record<string, unknown> | null;
+    after: Record<string, unknown> | null;
+  }>(() => {
+    try {
+      const data = JSON.parse(detail?.trace.traceData || '{}') as Record<string, unknown>;
+      const isRecord = (value: unknown): value is Record<string, unknown> =>
+        value !== null && typeof value === 'object' && !Array.isArray(value);
+      return {
+        before: isRecord(data.sessionVariablesBefore) ? data.sessionVariablesBefore : null,
+        after: isRecord(data.sessionVariablesAfter) ? data.sessionVariablesAfter : null,
+      };
+    } catch {
+      return { before: null, after: null };
+    }
+  }, [detail]);
+  const sessionVariablesBefore = sessionVariableSnapshot.before;
+  const sessionVariablesAfter = sessionVariableSnapshot.after;
+  const allSessionVariableChanges = useMemo<SessionVariableChange[]>(() => {
+    if (!sessionVariablesBefore || !sessionVariablesAfter) return [];
+    const keys = Array.from(new Set([
+      ...Object.keys(sessionVariablesBefore),
+      ...Object.keys(sessionVariablesAfter),
+    ])).sort();
+    return keys.map(key => {
+      const beforeExists = Object.prototype.hasOwnProperty.call(sessionVariablesBefore, key);
+      const afterExists = Object.prototype.hasOwnProperty.call(sessionVariablesAfter, key);
+      const change: SessionVariableChange['change'] = !beforeExists
+        ? '新增'
+        : !afterExists
+          ? '删除'
+          : sameVariableValue(sessionVariablesBefore[key], sessionVariablesAfter[key])
+            ? '未变化'
+            : '修改';
+      return {
+        key,
+        before: sessionVariablesBefore[key],
+        after: sessionVariablesAfter[key],
+        beforeExists,
+        afterExists,
+        change,
+      };
+    });
+  }, [sessionVariablesBefore, sessionVariablesAfter]);
+  const sessionVariableChanges = useMemo(
+    () => showUnchangedSessionVariables
+      ? allSessionVariableChanges
+      : allSessionVariableChanges.filter(item => item.change !== '未变化'),
+    [allSessionVariableChanges, showUnchangedSessionVariables],
+  );
   const traceStart = parseTraceTime(detail?.trace.startTime)?.valueOf()
     ?? flat.map(s => parseTraceTime(s.startTime)?.valueOf())
       .filter((v): v is number => v !== undefined)
       .sort((a,b) => a-b)[0]
     ?? 0;
   const traceDuration = Math.max(detail?.trace.durationMs || 1, 1);
+  const sessionVariableColumns: ColumnsType<SessionVariableChange> = [
+    {
+      title: '变量',
+      dataIndex: 'key',
+      width: 150,
+      render: (value: string) => <Text code>{value}</Text>,
+    },
+    {
+      title: '执行前',
+      key: 'before',
+      render: (_: unknown, record: SessionVariableChange) => (
+        <pre className={styles.sessionVariableValue}>
+          {record.beforeExists ? variableText(record.before) : '（不存在）'}
+        </pre>
+      ),
+    },
+    {
+      title: '执行后',
+      key: 'after',
+      render: (_: unknown, record: SessionVariableChange) => (
+        <pre className={styles.sessionVariableValue}>
+          {record.afterExists ? variableText(record.after) : '（不存在）'}
+        </pre>
+      ),
+    },
+    {
+      title: '变化',
+      dataIndex: 'change',
+      width: 90,
+      render: (value: SessionVariableChange['change']) => (
+        <Tag color={value === '新增' ? 'green' : value === '删除' ? 'red' : value === '修改' ? 'blue' : 'default'}>
+          {value}
+        </Tag>
+      ),
+    },
+  ];
+
   const spanPayloads: Array<{ key: PayloadDirection; label: string; value?: string }> = selectedSpan ? [
     { key: 'input', label: 'Input（节点关键信息）', value: selectedSpan.inputData },
     { key: 'output', label: 'Output（节点关键信息）', value: selectedSpan.outputData },
@@ -419,6 +527,54 @@ export default function WorkflowTracePage() {
                   </div>
                 </Col>
               </Row>
+            </Card>
+
+            <Card title="会话变量变化" size="small" className={styles.sessionVariablesCard}>
+              {!sessionVariablesBefore || !sessionVariablesAfter ? (
+                <Empty description="当前 Trace 未记录完整会话变量快照（旧记录或 Start 节点未执行）" />
+              ) : (
+                <>
+                  <div className={styles.sessionVariablesSummary}>
+                    <Text type="secondary">
+                      执行前 {Object.keys(sessionVariablesBefore).length} 项 · 执行后 {Object.keys(sessionVariablesAfter).length} 项 ·
+                      变化 {allSessionVariableChanges.filter(item => item.change !== '未变化').length} 项
+                    </Text>
+                    <Button type="link" size="small"
+                      onClick={() => setShowUnchangedSessionVariables(value => !value)}>
+                      {showUnchangedSessionVariables ? '隐藏未变化' : '显示未变化'}
+                    </Button>
+                  </div>
+                  {sessionVariableChanges.length ? (
+                    <Table<SessionVariableChange>
+                      rowKey="key"
+                      size="small"
+                      pagination={false}
+                      columns={sessionVariableColumns}
+                      dataSource={sessionVariableChanges}
+                      scroll={{ x: 720 }}
+                    />
+                  ) : (
+                    <Empty description="本次执行没有会话变量变化" />
+                  )}
+                  <Row gutter={[12, 12]} className={styles.sessionVariableSnapshots}>
+                    <Col xs={24} xl={12}>
+                      <details className={styles.rawDetails}>
+                        <summary>执行前完整会话变量</summary>
+                        <pre>{JSON.stringify(sessionVariablesBefore, null, 2)}</pre>
+                      </details>
+                    </Col>
+                    <Col xs={24} xl={12}>
+                      <details className={styles.rawDetails}>
+                        <summary>执行后完整会话变量</summary>
+                        <pre>{JSON.stringify(sessionVariablesAfter, null, 2)}</pre>
+                      </details>
+                    </Col>
+                  </Row>
+                  <Text type="secondary" className={styles.sessionVariablesNote}>
+                    结束快照记录的是本次运行结束时的变量状态；失败、停止或暂停时，不代表这些变量已写入会话记录。
+                  </Text>
+                </>
+              )}
             </Card>
 
             {detail.trace.errorMessage && <Card size="small" className={styles.errorCard}>

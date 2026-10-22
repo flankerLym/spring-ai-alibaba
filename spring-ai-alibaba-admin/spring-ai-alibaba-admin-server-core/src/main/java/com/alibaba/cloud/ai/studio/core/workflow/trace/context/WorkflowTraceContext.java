@@ -3,6 +3,7 @@ package com.alibaba.cloud.ai.studio.core.workflow.trace.context;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -43,6 +44,11 @@ public class WorkflowTraceContext {
     private String inputData;
     private String outputData;
     private String traceData;
+
+    /** Session variables at workflow start; persisted inside trace_data JSONB. */
+    private Map<String, Object> sessionVariablesBefore;
+    /** Session variables at workflow finish; persisted inside trace_data JSONB. */
+    private Map<String, Object> sessionVariablesAfter;
     private String errorData;
     private String errorCode;
     private String errorMessage;

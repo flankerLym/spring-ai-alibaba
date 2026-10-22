@@ -96,6 +96,28 @@ public class WorkflowTraceManager {
         }
     }
 
+    /**
+     * Record the effective session variables at the start of the workflow.
+     * A JSON round-trip makes this a deep snapshot rather than a live reference.
+     */
+    public void recordSessionVariablesBefore(WorkflowContext context, Map<String, Object> variables) {
+        WorkflowTraceContext trace = getTrace(context);
+        if (trace == null || variables == null) {
+            return;
+        }
+        try {
+            synchronized (trace) {
+                if (trace.getSessionVariablesBefore() == null) {
+                    trace.setSessionVariablesBefore(copyVariables(variables));
+                }
+            }
+        }
+        catch (Exception e) {
+            // Trace diagnostics must never interrupt the real workflow.
+            log.warn("capture session variables before workflow failed, traceId={}", trace.getTraceId(), e);
+        }
+    }
+
     public WorkflowSpanContext startNodeSpan(
             WorkflowContext context,
             Node node,
@@ -393,6 +415,7 @@ public class WorkflowTraceManager {
         }
 
         copyFinalState(trace, context);
+        captureSessionVariablesAfter(trace, context);
 
         if (trace.getFinishRequested().compareAndSet(false, true)) {
             trace.setFinishReason(reason.name());
@@ -473,6 +496,56 @@ public class WorkflowTraceManager {
         if (context.getError() != null) {
             trace.setErrorData(JsonUtils.toJson(context.getError()));
         }
+    }
+
+    private void captureSessionVariablesAfter(WorkflowTraceContext trace, WorkflowContext context) {
+        if (trace == null || context == null) {
+            return;
+        }
+        try {
+            Map<String, Object> variables = readSessionVariables(context);
+            if (variables == null) {
+                // A workflow without configured session variables still has a valid empty snapshot
+                // when its starting snapshot was recorded.
+                if (trace.getSessionVariablesBefore() == null) {
+                    return;
+                }
+                variables = new HashMap<>();
+            }
+            trace.setSessionVariablesAfter(copyVariables(variables));
+        }
+        catch (Exception e) {
+            // Snapshot failures must not prevent trace persistence or change workflow behavior.
+            log.warn("capture session variables after workflow failed, traceId={}", trace.getTraceId(), e);
+        }
+    }
+
+    private Map<String, Object> readSessionVariables(WorkflowContext context) {
+        if (context.getVariablesMap() == null) {
+            return null;
+        }
+        Object value = context.getVariablesMap().get("conversation");
+        if (!(value instanceof Map<?, ?>)) {
+            value = context.getVariablesMap().get("session");
+        }
+        if (!(value instanceof Map<?, ?> map)) {
+            return null;
+        }
+        Map<String, Object> result = new HashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (entry.getKey() != null) {
+                result.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+        }
+        return result;
+    }
+
+    private Map<String, Object> copyVariables(Map<String, Object> variables) {
+        if (variables == null) {
+            return null;
+        }
+        Map<String, Object> copy = JsonUtils.fromJsonToMap(JsonUtils.toJson(variables));
+        return copy == null ? new HashMap<>() : copy;
     }
 
     private WorkflowTraceContext getTrace(WorkflowContext context) {
@@ -558,6 +631,9 @@ public class WorkflowTraceManager {
         Map<String, Object> data = new HashMap<>();
         data.put("spanCount", trace.getSpanCount());
         data.put("modelCallCount", trace.getModelCallCount());
+        // Stored inside the existing trace_data JSONB column; no schema migration is needed.
+        data.put("sessionVariablesBefore", trace.getSessionVariablesBefore());
+        data.put("sessionVariablesAfter", trace.getSessionVariablesAfter());
         trace.setTraceData(JsonUtils.toJson(data));
     }
 
