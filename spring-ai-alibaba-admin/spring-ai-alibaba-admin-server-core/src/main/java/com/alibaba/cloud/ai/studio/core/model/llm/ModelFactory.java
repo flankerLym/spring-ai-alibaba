@@ -17,6 +17,7 @@ package com.alibaba.cloud.ai.studio.core.model.llm;
 
 import com.alibaba.cloud.ai.dashscope.api.DashScopeApi;
 import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatModel;
+import okhttp3.ConnectionPool;
 import org.springframework.ai.deepseek.DeepSeekChatModel;
 import org.springframework.ai.deepseek.api.DeepSeekApi;
 import com.volcengine.ark.runtime.service.ArkService;
@@ -54,12 +55,14 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
+import java.util.concurrent.TimeUnit;
 
 import static com.alibaba.cloud.ai.studio.core.rag.RagConstants.DEFAULT_DIMENSION;
 
@@ -93,6 +96,23 @@ public class ModelFactory {
 
 	@Resource
 	private ChatModelObservationConvention customChatModelObservationConvention;
+
+
+    @Resource
+    RestClient.Builder deepSeekRestClientBuilder;
+
+    @Resource
+    WebClient.Builder deepSeekWebClientBuilder;
+
+    @Resource
+    RestClient.Builder dashScopeRestClientBuilder;
+
+    @Resource
+    WebClient.Builder dashScopeWebClientBuilder;
+
+
+    private final ConnectionPool arkConnectionPool = new ConnectionPool(20, 1, TimeUnit.MINUTES);
+
 
 	/**
 	 * Creates and returns a chat model instance for the specified provider
@@ -223,7 +243,8 @@ public class ModelFactory {
         switch (type) {
             case "dashscope" -> {
                 DashScopeChatModel nativeModel = DashScopeChatModel.builder()
-                        .dashScopeApi(DashScopeApi.builder().apiKey(credential.getApiKey())
+                        .dashScopeApi(DashScopeApi.builder().apiKey(credential.getApiKey()).restClientBuilder(dashScopeRestClientBuilder)
+                                .webClientBuilder(dashScopeWebClientBuilder)
                                 .baseUrl(dashScopeBaseUrl(credential.getEndpoint())).build())
                         .toolCallingManager(toolCallingManager).observationRegistry(observationRegistry).build();
                 nativeModel.setObservationConvention(customChatModelObservationConvention);
@@ -233,14 +254,16 @@ public class ModelFactory {
                 DeepSeekChatModel nativeModel = DeepSeekChatModel.builder()
                         .deepSeekApi(DeepSeekApi.builder().apiKey(credential.getApiKey())
                                 .baseUrl(credential.getEndpoint())
+                                .webClientBuilder(deepSeekWebClientBuilder)
+                                .restClientBuilder(deepSeekRestClientBuilder)
                                 .completionsPath(credential.getCompletionsPath()).build())
                         .toolCallingManager(toolCallingManager).observationRegistry(observationRegistry).build();
                 nativeModel.setObservationConvention(customChatModelObservationConvention);
                 model = nativeModel;
             }
-            case "doubao" -> model = new ArkChatModel(() -> ArkService.builder()
+            case "doubao" -> model = new ArkChatModel(() -> ArkService.builder().connectionPool(arkConnectionPool)
                     .apiKey(credential.getApiKey()).baseUrl(credential.getEndpoint())
-                    .timeout(Duration.ofMinutes(5)).build(), toolCallingManager, observationRegistry, customChatModelObservationConvention);
+                    .timeout(Duration.ofMinutes(15)).build(), toolCallingManager, observationRegistry, customChatModelObservationConvention);
             default -> throw new IllegalArgumentException("Not a native vendor: " + provider);
         }
         return new NativeOptionsChatModel(type, model);
