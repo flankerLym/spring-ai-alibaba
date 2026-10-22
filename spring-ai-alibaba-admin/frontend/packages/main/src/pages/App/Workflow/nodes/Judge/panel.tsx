@@ -33,8 +33,8 @@ export default memo(function JudgePanel(props: {
     return [...globalVariableList, ...flowVariableList];
   }, [globalVariableList, flowVariableList]);
 
-  // Resolve each CASE's outgoing edges to readable downstream node names.
-  // Branch IDs and source-handle IDs are read-only here; workflow execution is unchanged.
+  // Resolve each CASE's outgoing edges to readable downstream node names and types.
+  // Branch IDs and source-handle IDs remain unchanged; workflow execution is unaffected.
   const branchNextNodes = useMemo(() => {
     const branchIds = [
       ...(props.data.node_param.branches || []).map((branch) => branch.id),
@@ -42,10 +42,16 @@ export default memo(function JudgePanel(props: {
     ];
     const nodeById = new Map<string, (typeof nodes)[number]>();
     nodes.forEach((node) => nodeById.set(node.id, node));
-    const result: Record<string, { id: string; label: string }[]> = {};
+    const result: Record<
+      string,
+      { id: string; label: string; type?: string }[]
+    > = {};
 
     branchIds.forEach((branchId) => {
-      const nextNodeMap = new Map<string, { id: string; label: string }>();
+      const nextNodeMap = new Map<
+        string,
+        { id: string; label: string; type?: string }
+      >();
       const sourceHandleId = `${props.id}_${branchId}`;
 
       edges.forEach((edge) => {
@@ -59,7 +65,11 @@ export default memo(function JudgePanel(props: {
           String(targetNode.data?.label || '').trim() ||
           targetNode.type ||
           '未命名节点';
-        nextNodeMap.set(targetNode.id, { id: targetNode.id, label });
+        nextNodeMap.set(targetNode.id, {
+          id: targetNode.id,
+          label,
+          type: targetNode.type,
+        });
       });
 
       result[branchId] = Array.from(nextNodeMap.values());

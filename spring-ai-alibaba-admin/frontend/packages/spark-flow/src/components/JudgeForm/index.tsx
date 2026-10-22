@@ -8,6 +8,7 @@ import classNames from 'classnames';
 import React, { memo, useCallback } from 'react';
 import BranchTitleHeader from '../BranchTitleHeader';
 import ConditionItem from '../ConditionItem';
+import FlowIcon from '../FlowIcon';
 import { IVarTreeItem } from '../VariableTreeSelect';
 import './index.less';
 
@@ -18,7 +19,10 @@ export default memo(function JudgeForm(props: {
   rightVariableList: IVarTreeItem[];
   disabled?: boolean;
   areaStyle?: React.CSSProperties;
-  branchNextNodes?: Record<string, { id: string; label: string }[]>;
+  branchNextNodes?: Record<
+    string,
+    { id: string; label: string; type?: string }[]
+  >;
 }) {
   const { value = [], onChange, disabled, areaStyle, branchNextNodes } = props;
 
@@ -138,7 +142,10 @@ export default memo(function JudgeForm(props: {
             {nextNodes.map((node) => (
               <Tooltip key={node.id} title={node.label} placement="topLeft">
                 <Tag className="spark-flow-judge-next-node-chip" bordered={false}>
-                  <Typography.Text ellipsis>{node.label}</Typography.Text>
+                  <span className="spark-flow-judge-next-node-content">
+                    {node.type && <FlowIcon nodeType={node.type} size="small" />}
+                    <Typography.Text ellipsis>{node.label}</Typography.Text>
+                  </span>
                 </Tag>
               </Tooltip>
             ))}
@@ -160,73 +167,74 @@ export default memo(function JudgeForm(props: {
       {value.map((item) => {
         if (item.id === 'default') return null;
         return (
-          <div key={item.id}>
-            <div
-              key={item.id}
-              style={areaStyle}
-              className="spark-flow-panel-form-section"
-            >
-              <Flex vertical gap={16}>
-                <div className="spark-flow-judge-branch-header-wrap">
-                  <BranchTitleHeader
-                    data={item}
-                    onChange={(payload) => changeBranchItem(item.id, payload)}
-                    deleteBranchItem={() => deleteBranchItem(item.id)}
-                    branches={value}
-                    disabled={disabled}
-                  />
-                  {renderNextNodes(item.id)}
-                </div>
-
-                {(item.conditions || []).map((condition, index) => (
-                  <Flex key={index} gap={8}>
-                    <div className="flex-1 flex-start">
-                      <ConditionItem
-                        disabled={disabled}
-                        onChange={(val) =>
-                          changeConditionItem(item.id, index, val)
-                        }
-                        value={condition}
-                        leftVariableList={props.leftVariableList}
-                        rightVariableList={props.rightVariableList}
-                      />
-                    </div>
-                    <div
-                      className={classNames(
-                        'py-[8px] flex-shrink-0',
-                        'spark-flow-judge-form-delete-btn-wrap',
-                      )}
-                    >
-                      <IconFont
-                        onClick={() => {
-                          deleteConditionItem(item.id, index);
-                        }}
-                        className={disabled ? 'disabled-icon-btn' : ''}
-                        size="small"
-                        isCursorPointer={!disabled}
-                        type="spark-delete-line"
-                      />
-                    </div>
-                  </Flex>
-                ))}
-                <Button
-                  onClick={() => addConditionItem(item.id)}
-                  icon={<IconFont type="spark-plus-line" />}
-                  type="dashed"
+          <div
+            key={item.id}
+            style={areaStyle}
+            className="spark-flow-panel-form-section spark-flow-judge-case-card"
+          >
+            <Flex vertical gap={16}>
+              <div className="spark-flow-judge-branch-header-wrap">
+                <BranchTitleHeader
+                  data={item}
+                  onChange={(payload) => changeBranchItem(item.id, payload)}
+                  deleteBranchItem={() => deleteBranchItem(item.id)}
+                  branches={value}
                   disabled={disabled}
-                  className="spark-flow-judge-form-add-branch-btn"
-                >
-                  {$i18n.get({
-                    id: 'spark-flow.JudgeForm.index.addCondition',
-                    dm: '添加条件',
-                  })}
-                </Button>
-              </Flex>
-            </div>
+                />
+                {renderNextNodes(item.id)}
+              </div>
+
+              {(item.conditions || []).map((condition, index) => (
+                <Flex key={index} gap={8}>
+                  <div className="flex-1 flex-start">
+                    <ConditionItem
+                      disabled={disabled}
+                      onChange={(val) =>
+                        changeConditionItem(item.id, index, val)
+                      }
+                      value={condition}
+                      leftVariableList={props.leftVariableList}
+                      rightVariableList={props.rightVariableList}
+                    />
+                  </div>
+                  <div
+                    className={classNames(
+                      'py-[8px] flex-shrink-0',
+                      'spark-flow-judge-form-delete-btn-wrap',
+                    )}
+                  >
+                    <IconFont
+                      onClick={() => {
+                        deleteConditionItem(item.id, index);
+                      }}
+                      className={disabled ? 'disabled-icon-btn' : ''}
+                      size="small"
+                      isCursorPointer={!disabled}
+                      type="spark-delete-line"
+                    />
+                  </div>
+                </Flex>
+              ))}
+              <Button
+                onClick={() => addConditionItem(item.id)}
+                icon={<IconFont type="spark-plus-line" />}
+                type="dashed"
+                disabled={disabled}
+                className="spark-flow-judge-form-add-branch-btn"
+              >
+                {$i18n.get({
+                  id: 'spark-flow.JudgeForm.index.addCondition',
+                  dm: '添加条件',
+                })}
+              </Button>
+            </Flex>
           </div>
         );
       })}
-      <div style={areaStyle} className="spark-flow-panel-form-section">
+      <div
+        style={areaStyle}
+        className="spark-flow-panel-form-section spark-flow-judge-case-card spark-flow-judge-default-card"
+      >
         <Flex vertical gap={8}>
           <Flex align="center" justify="space-between">
             <div className="spark-flow-panel-form-title">
