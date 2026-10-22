@@ -7,6 +7,8 @@ import {
   ReloadOutlined,
   SearchOutlined,
   UserOutlined,
+  DownOutlined,
+  UpOutlined,
 } from '@ant-design/icons';
 import {
   Button,
@@ -132,6 +134,8 @@ export default function ConversationHistoryPage() {
   const [messageCurrent, setMessageCurrent] = useState(1);
   const [messageSize, setMessageSize] = useState(10);
   const [messageTotal, setMessageTotal] = useState(0);
+  const [expandedMessageCards, setExpandedMessageCards] = useState<Record<string, boolean>>({});
+  const [expandedMessageParts, setExpandedMessageParts] = useState<Record<string, boolean>>({});
 
   // The console API masks keys in the list response. Fetch each key's detail through
   // the existing authenticated endpoint so the selector can use the real key value.
@@ -463,7 +467,7 @@ export default function ConversationHistoryPage() {
           </Form.Item>
           <Form.Item>
             <Space>
-              <Button type="primary" htmlType="submit" icon={<SearchOutlined />}>查询</Button>
+              <Button type="primary" htmlType="submit" icon={<SearchOutlined/>}>查询</Button>
               <Button onClick={resetFilters}>重置</Button>
             </Space>
           </Form.Item>
@@ -537,9 +541,16 @@ export default function ConversationHistoryPage() {
               <Empty description="当前会话暂无消息记录" />
             ) : (
               <div className={styles.messageList}>
-                {messages.map((item, index) => (
+                {messages.map((item, index) => {
+                  const recordKey = String(item.messageId || `${item.createdAt || 'message'}-${index}`);
+                  const isRecordExpanded = expandedMessageCards[recordKey] ?? true;
+                  const questionKey = `${recordKey}:question`;
+                  const answerKey = `${recordKey}:answer`;
+                  const isQuestionExpanded = expandedMessageParts[questionKey] ?? true;
+                  const isAnswerExpanded = expandedMessageParts[answerKey] ?? true;
+                  return (
                   <Card
-                    key={item.messageId || `${item.createdAt || 'message'}-${index}`}
+                    key={recordKey}
                     size="small"
                     className={styles.messageCard}
                     title={(
@@ -549,19 +560,56 @@ export default function ConversationHistoryPage() {
                         <Text type="secondary">{formatTime(item.createdAt)}</Text>
                       </Space>
                     )}
-                    extra={item.messageId ? <Text type="secondary" code>#{item.messageId}</Text> : null}
+                    extra={(
+                      <Space size={8} wrap>
+                        {item.messageId ? <Text type="secondary" code>#{item.messageId}</Text> : null}
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={isRecordExpanded ? <UpOutlined /> : <DownOutlined />}
+                          onClick={() => setExpandedMessageCards(previous => ({ ...previous, [recordKey]: !isRecordExpanded }))}
+                        >
+                          {isRecordExpanded ? '收起整条记录' : '展开整条记录'}
+                        </Button>
+                      </Space>
+                    )}
                   >
+                    {isRecordExpanded && <>
                     <div className={`${styles.messageBubble} ${styles.questionBubble}`}>
-                      <Text strong>用户问题</Text>
-                      <Paragraph className={styles.messageContent} copyable={{ text: item.question || '' }}>
-                        {item.question || '（接口未返回问题内容）'}
-                      </Paragraph>
+                      <div className={styles.messageSectionHeader}>
+                        <Text strong>用户问题</Text>
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={isQuestionExpanded ? <UpOutlined /> : <DownOutlined />}
+                          onClick={() => setExpandedMessageParts(previous => ({ ...previous, [questionKey]: !isQuestionExpanded }))}
+                        >
+                          {isQuestionExpanded ? '收起' : '展开'}
+                        </Button>
+                      </div>
+                      {isQuestionExpanded && (
+                        <Paragraph className={styles.messageContent} copyable={{ text: item.question || '' }}>
+                          {item.question || '（接口未返回问题内容）'}
+                        </Paragraph>
+                      )}
                     </div>
                     <div className={`${styles.messageBubble} ${styles.answerBubble}`}>
-                      <Text strong>助手回答</Text>
-                      <Paragraph className={styles.messageContent} copyable={{ text: item.answer || '' }}>
-                        {item.answer || '（接口未返回回答内容）'}
-                      </Paragraph>
+                      <div className={styles.messageSectionHeader}>
+                        <Text strong>助手回答</Text>
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={isAnswerExpanded ? <UpOutlined /> : <DownOutlined />}
+                          onClick={() => setExpandedMessageParts(previous => ({ ...previous, [answerKey]: !isAnswerExpanded }))}
+                        >
+                          {isAnswerExpanded ? '收起' : '展开'}
+                        </Button>
+                      </div>
+                      {isAnswerExpanded && (
+                        <Paragraph className={styles.messageContent} copyable={{ text: item.answer || '' }}>
+                          {item.answer || '（接口未返回回答内容）'}
+                        </Paragraph>
+                      )}
                     </div>
                     <Divider className={styles.messageDivider} />
                     <Row gutter={[16, 8]} className={styles.messageMeta}>
@@ -577,8 +625,10 @@ export default function ConversationHistoryPage() {
                         <Text type="secondary">用户 ID：</Text>{item.userId || selectedConversation.userId || '-'}
                       </Col>
                     </Row>
+                    </>}
                   </Card>
-                ))}
+                  );
+                })}
               </div>
             )}
 

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ApartmentOutlined, CopyOutlined, EyeOutlined, ReloadOutlined,
-  RobotOutlined, SearchOutlined,
+  ApartmentOutlined, CopyOutlined, DownOutlined, EyeOutlined, ReloadOutlined,
+  RobotOutlined, SearchOutlined, UpOutlined,
 } from '@ant-design/icons';
 import {
   Button, Card, Col, DatePicker, Descriptions, Drawer, Empty, Form, Input,
@@ -240,6 +240,8 @@ export default function WorkflowTracePage() {
   const [selectedSpan, setSelectedSpan] = useState<WorkflowSpan | null>(null);
   const [rawPayloadView, setRawPayloadView] = useState<Record<string, boolean>>({});
   const [showUnchangedSessionVariables, setShowUnchangedSessionVariables] = useState(false);
+  const [workflowIOExpanded, setWorkflowIOExpanded] = useState(true);
+  const [sessionVariablesExpanded, setSessionVariablesExpanded] = useState(true);
 
   const params = useCallback((page=current, pageSize=size): TraceListParams => {
     const v = form.getFieldsValue();
@@ -296,6 +298,8 @@ export default function WorkflowTracePage() {
   const openDetail = async (trace: WorkflowTrace) => {
     setDrawerOpen(true); setDetail(null); setSelectedSpan(null); setDetailLoading(true);
     setShowUnchangedSessionVariables(false);
+    setWorkflowIOExpanded(true);
+    setSessionVariablesExpanded(true);
     try {
       const d = await getWorkflowTraceDetail(trace.traceId);
       setDetail(d);
@@ -504,7 +508,13 @@ export default function WorkflowTracePage() {
               <Descriptions.Item label="Total Token">{num(detail.trace.totalTokens)}</Descriptions.Item>
             </Descriptions>
 
-            <Card title="整个流程输入 / 输出" size="small" className={styles.workflowIOCard}>
+            <Card
+              title="整个流程输入 / 输出"
+              size="small"
+              className={styles.workflowIOCard}
+              extra={<Button type="text" size="small" icon={workflowIOExpanded ? <UpOutlined/> : <DownOutlined/>} onClick={() => setWorkflowIOExpanded(value => !value)}>{workflowIOExpanded ? "收起" : "展开"}</Button>}
+            >
+              {workflowIOExpanded && (
               <Row gutter={[16, 16]}>
                 <Col xs={24} xl={12}>
                   <div className={styles.workflowPayload}>
@@ -527,10 +537,17 @@ export default function WorkflowTracePage() {
                   </div>
                 </Col>
               </Row>
+              )}
             </Card>
 
-            <Card title="会话变量变化" size="small" className={styles.sessionVariablesCard}>
-              {!sessionVariablesBefore || !sessionVariablesAfter ? (
+            <Card
+              title="会话变量变化"
+              size="small"
+              className={styles.sessionVariablesCard}
+              extra={<Button type="text" size="small" icon={sessionVariablesExpanded ? <UpOutlined/> : <DownOutlined/>} onClick={() => setSessionVariablesExpanded(value => !value)}>{sessionVariablesExpanded ? "收起" : "展开"}</Button>}
+            >
+              {sessionVariablesExpanded && (
+              !sessionVariablesBefore || !sessionVariablesAfter ? (
                 <Empty description="当前 Trace 未记录完整会话变量快照（旧记录或 Start 节点未执行）" />
               ) : (
                 <>
@@ -574,6 +591,7 @@ export default function WorkflowTracePage() {
                     结束快照记录的是本次运行结束时的变量状态；失败、停止或暂停时，不代表这些变量已写入会话记录。
                   </Text>
                 </>
+              )
               )}
             </Card>
 
