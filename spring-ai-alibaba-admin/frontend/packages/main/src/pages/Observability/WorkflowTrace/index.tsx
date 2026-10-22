@@ -28,6 +28,7 @@ type FilterForm = {
   timeRange?: [dayjs.Dayjs, dayjs.Dayjs];
 };
 type SpanNode = WorkflowSpan & { children: SpanNode[]; depth: number };
+type PayloadDirection = 'input' | 'output';
 
 const STATUS: Record<string, [string, string]> = {
   success: ['success', '成功'],
@@ -74,6 +75,106 @@ const json = (v?: string) => {
   if (!v) return '-';
   try { return JSON.stringify(JSON.parse(v), null, 2); } catch { return v; }
 };
+
+const NOISE_KEY = /^(media|metadata|headers|requestheaders|responseheaders|rawrequest|rawresponse|stacktrace|traceid|spanid|parentspanid)$/i;
+const INPUT_KEYS = /^(sys|query|input|inputs|prompt|messages?|history_list|history|context|question|text|content|variables?|params?|arguments?|condition|expression|value|source|user_input|userinput|input_data|inputdata|request|data|provider|modelid|modelname|model)$/i;
+const OUTPUT_KEYS = /^(sys|output|outputs|result|results|answer|response|content|text|message|messages|value|data|variables?|assigned|selected|selectedbranch|selected_branch|branch|case|label|intent|classification|class|route|nextnode|next_node|success|error|status|taskresult|task_result|query|provider|modelid|modelname|model)$/i;
+const CLASSIFIER_INPUT_KEYS = /^(sys|query|input|text|question|context|variables?|condition|expression|value|intent|class|label|data)$/i;
+const CLASSIFIER_OUTPUT_KEYS = /^(sys|branch|case|selected|selectedbranch|selected_branch|label|intent|class|classification|route|nextnode|next_node|result|output|value|variables?|status|error|data)$/i;
+const ASSIGN_INPUT_KEYS = /^(sys|input|inputs|variables?|value|expression|source|context|query|data|params?)$/i;
+const ASSIGN_OUTPUT_KEYS = /^(sys|variables?|value|output|outputs|result|data|assigned|status|error)$/i;
+const LLM_INPUT_KEYS = /^(sys|query|input|prompt|messages?|history_list|history|context|variables?|user_input|userinput|request|data|provider|modelid|modelname|model)$/i;
+const LLM_OUTPUT_KEYS = /^(sys|answer|response|content|text|message|messages|result|output|outputs|data|status|error)$/i;
+const START_INPUT_KEYS = /^(sys|query|input|inputs|messages?|history_list|history|text|content|variables?|data|request)$/i;
+const START_OUTPUT_KEYS = /^(sys|query|input|variables?|output|result|data|context|status|error)$/i;
+const END_INPUT_KEYS = /^(sys|query|input|inputs|variables?|context|output|result|answer|content|text|data)$/i;
+const END_OUTPUT_KEYS = /^(sys|output|outputs|result|answer|response|content|text|data|taskresult|task_result|status|error)$/i;
+
+function compactValue(value: unknown, depth = 0, parentKey = ''): unknown {
+  if (value === null || typeof value === 'number' || typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    return value.length > 1800
+      ? `${value.slice(0, 1800)}…（内容过长，已截断；可切换查看原始 JSON）`
+      : value;
+  }
+  if (Array.isArray(value)) {
+    const isHistory = /history|messages/i.test(parentKey);
+    const visible = isHistory ? value.slice(-3) : value.slice(0, 6);
+    const result = visible.map(item => compactValue(item, depth + 1, parentKey));
+    if (value.length > visible.length) {
+      result.unshift(isHistory
+        ? `…前 ${value.length - visible.length} 项历史消息已省略`
+        : `…其余 ${value.length - visible.length} 项已省略`);
+    }
+    return result;
+  }
+  if (typeof value === 'object') {
+    if (depth >= 4) return '[对象已折叠]';
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => !NOISE_KEY.test(key));
+    const result: Record<string, unknown> = {};
+    entries.slice(0, 16).forEach(([key, item]) => {
+      result[key] = compactValue(item, depth + 1, key);
+    });
+    if (entries.length > 16) result['…'] = `其余 ${entries.length - 16} 个字段已省略`;
+    return result;
+  }
+  return String(value);
+}
+
+function compactPayload(raw: string | undefined, span: WorkflowSpan, direction: PayloadDirection) {
+  if (!raw) return '-';
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+    if (typeof parsed === 'string') {
+      try { parsed = JSON.parse(parsed); } catch { /* Keep a plain string payload. */ }
+    }
+  } catch {
+    return raw.length > 1800 ? `${raw.slice(0, 1800)}…（内容过长，已截断）` : raw;
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return JSON.stringify(compactValue(parsed), null, 2) || '-';
+  }
+
+  const hint = `${span.nodeType || ''} ${span.nodeName || ''} ${span.spanName || ''}`.toLowerCase();
+  let pattern = direction === 'input' ? INPUT_KEYS : OUTPUT_KEYS;
+  if (/classifier|judge|condition|意图分类|问题分类|条件分支/.test(hint)) {
+    pattern = direction === 'input' ? CLASSIFIER_INPUT_KEYS : CLASSIFIER_OUTPUT_KEYS;
+  } else if (/variable.?assign|assign|变量赋值/.test(hint)) {
+    pattern = direction === 'input' ? ASSIGN_INPUT_KEYS : ASSIGN_OUTPUT_KEYS;
+  } else if (/llm|model|chat|agent|大模型|模型/.test(hint)) {
+    pattern = direction === 'input' ? LLM_INPUT_KEYS : LLM_OUTPUT_KEYS;
+  } else if (/start|user.?input|用户输入|开始/.test(hint)) {
+    pattern = direction === 'input' ? START_INPUT_KEYS : START_OUTPUT_KEYS;
+  } else if (/output|end|直接回复|结束/.test(hint)) {
+    pattern = direction === 'input' ? END_INPUT_KEYS : END_OUTPUT_KEYS;
+  }
+
+  const object = parsed as Record<string, unknown>;
+  const matchingKeys = Object.keys(object)
+    .filter(key => !NOISE_KEY.test(key) && pattern.test(key));
+  // If a node uses custom variable names, preserve its compacted payload rather than showing nothing.
+  const selected = matchingKeys.length
+    ? Object.fromEntries(matchingKeys.map(key => [key, object[key]]))
+    : object;
+  return JSON.stringify(compactValue(selected), null, 2) || '-';
+}
+
+const copyPayload = (raw?: string) => {
+  if (!raw) {
+    message.info('暂无可复制内容');
+    return;
+  }
+  if (!navigator.clipboard?.writeText) {
+    message.warning('当前浏览器不支持复制');
+    return;
+  }
+  navigator.clipboard.writeText(json(raw))
+    .then(() => message.success('已复制'))
+    .catch(() => message.error('复制失败'));
+};
+
 const statusTag = (v?: string) => {
   const m = STATUS[v || ''] || ['default', v || '-'];
   return <Tag color={m[0]}>{m[1]}</Tag>;
@@ -118,6 +219,7 @@ export default function WorkflowTracePage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [detail, setDetail] = useState<TraceDetail | null>(null);
   const [selectedSpan, setSelectedSpan] = useState<WorkflowSpan | null>(null);
+  const [rawPayloadView, setRawPayloadView] = useState<Record<string, boolean>>({});
 
   const params = useCallback((page=current, pageSize=size): TraceListParams => {
     const v = form.getFieldsValue();
@@ -225,6 +327,10 @@ export default function WorkflowTracePage() {
       .sort((a,b) => a-b)[0]
     ?? 0;
   const traceDuration = Math.max(detail?.trace.durationMs || 1, 1);
+  const spanPayloads: Array<{ key: PayloadDirection; label: string; value?: string }> = selectedSpan ? [
+    { key: 'input', label: 'Input（节点关键信息）', value: selectedSpan.inputData },
+    { key: 'output', label: 'Output（节点关键信息）', value: selectedSpan.outputData },
+  ] : [];
 
   return (
     <div className={styles.page}>
@@ -290,6 +396,31 @@ export default function WorkflowTracePage() {
               <Descriptions.Item label="Total Token">{num(detail.trace.totalTokens)}</Descriptions.Item>
             </Descriptions>
 
+            <Card title="整个流程输入 / 输出" size="small" className={styles.workflowIOCard}>
+              <Row gutter={[16, 16]}>
+                <Col xs={24} xl={12}>
+                  <div className={styles.workflowPayload}>
+                    <div className={styles.payloadHeading}>
+                      <Text strong>流程输入</Text>
+                      <Button type="link" size="small" icon={<CopyOutlined/>}
+                        disabled={!detail.trace.inputData} onClick={() => copyPayload(detail.trace.inputData)}>复制</Button>
+                    </div>
+                    <pre>{json(detail.trace.inputData)}</pre>
+                  </div>
+                </Col>
+                <Col xs={24} xl={12}>
+                  <div className={styles.workflowPayload}>
+                    <div className={styles.payloadHeading}>
+                      <Text strong>流程输出</Text>
+                      <Button type="link" size="small" icon={<CopyOutlined/>}
+                        disabled={!detail.trace.outputData} onClick={() => copyPayload(detail.trace.outputData)}>复制</Button>
+                    </div>
+                    <pre>{json(detail.trace.outputData)}</pre>
+                  </div>
+                </Col>
+              </Row>
+            </Card>
+
             {detail.trace.errorMessage && <Card size="small" className={styles.errorCard}>
               <Text type="danger">{detail.trace.errorCode?`[${detail.trace.errorCode}] `:''}{detail.trace.errorMessage}</Text>
             </Card>}
@@ -337,9 +468,24 @@ export default function WorkflowTracePage() {
                     <Descriptions.Item label="Token">{selectedSpan.spanKind==='MODEL_CALL'?`${num(selectedSpan.promptTokens)} + ${num(selectedSpan.completionTokens)} = ${num(selectedSpan.totalTokens)}`:'-'}</Descriptions.Item>
                   </Descriptions>
                   {selectedSpan.errorMessage&&<div className={styles.errorText}>{selectedSpan.errorCode?`[${selectedSpan.errorCode}] `:''}{selectedSpan.errorMessage}</div>}
-                  <div className={styles.jsonSection}><Text strong>Input</Text><pre>{json(selectedSpan.inputData)}</pre></div>
-                  <div className={styles.jsonSection}><Text strong>Output</Text><pre>{json(selectedSpan.outputData)}</pre></div>
-                  <div className={styles.jsonSection}><Text strong>Span Data</Text><pre>{json(selectedSpan.spanData)}</pre></div>
+                  {spanPayloads.map(item => {
+                    const viewKey = `${selectedSpan.spanId}:${item.key}`;
+                    const showRaw = !!rawPayloadView[viewKey];
+                    return <div className={styles.payloadSection} key={item.key}>
+                      <div className={styles.payloadHeading}>
+                        <Text strong>{item.label}</Text>
+                        <Button type="link" size="small"
+                          onClick={() => setRawPayloadView(previous => ({...previous, [viewKey]: !showRaw}))}>
+                          {showRaw ? '显示关键信息' : '查看原始 JSON'}
+                        </Button>
+                      </div>
+                      <pre>{showRaw ? json(item.value) : compactPayload(item.value, selectedSpan, item.key)}</pre>
+                    </div>;
+                  })}
+                  {selectedSpan.spanData && <details className={styles.rawDetails}>
+                    <summary>原始 Span Data（调试用）</summary>
+                    <pre>{json(selectedSpan.spanData)}</pre>
+                  </details>}
                 </>}
               </Card>
             </div>
