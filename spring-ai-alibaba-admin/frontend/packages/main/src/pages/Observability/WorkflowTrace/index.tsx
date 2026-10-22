@@ -295,23 +295,33 @@ export default function WorkflowTracePage() {
     setTimeout(() => { loadList(1, size); loadOverview(); }, 0);
   };
 
-  const openDetail = async (trace: WorkflowTrace) => {
+  const openDetail = async (trace: WorkflowTrace | string) => {
+    const traceId = typeof trace === 'string' ? trace : trace.traceId;
     setDrawerOpen(true); setDetail(null); setSelectedSpan(null); setDetailLoading(true);
     setShowUnchangedSessionVariables(false);
     setWorkflowIOExpanded(true);
     setSessionVariablesExpanded(true);
     try {
-      const d = await getWorkflowTraceDetail(trace.traceId);
+      const d = await getWorkflowTraceDetail(traceId);
       setDetail(d);
       setSelectedSpan([...(d.spans || [])].sort((a,b)=>(a.sequenceNo||0)-(b.sequenceNo||0))[0] || null);
     } catch (e) {
-      console.error(e); message.error('获取 Trace 详情失败');
+      console.error('Failed to load Workflow Trace detail:', e);
+      message.error(`获取执行链路失败，请检查 Trace ID 是否有效：${traceId}`);
     } finally { setDetailLoading(false); }
   };
 
   useEffect(() => {
     form.setFieldsValue({ timeRange: [dayjs().subtract(24, 'hour'), dayjs()] });
     loadList(1, 20); loadOverview();
+
+    // A conversation message can deep-link directly to a trace without requiring
+    // the user to search the trace table first. Keep the query in the URL so the
+    // detail can also be refreshed or shared with a teammate.
+    const traceId = typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('traceId')?.trim()
+      : undefined;
+    if (traceId) void openDetail(traceId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

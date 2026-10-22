@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ApartmentOutlined,
   ClockCircleOutlined,
   EyeOutlined,
   KeyOutlined,
@@ -36,6 +37,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { getApiKey, listApiKeys } from '@/services/apiKey';
+import { getWorkflowTraceDetail, type TraceDetail, type WorkflowSpan } from '@/services/workflowTrace';
 import type { IApiKey } from '@/types/apiKey';
 import {
   queryConversationMessages,
@@ -62,6 +64,14 @@ type FilterForm = {
 };
 
 type ApiKeyOption = IApiKey & { api_key: string };
+type TraceVariableChange = {
+  key: string;
+  before: unknown;
+  after: unknown;
+  beforeExists: boolean;
+  afterExists: boolean;
+  change: '新增' | '修改' | '删除' | '未变化';
+};
 
 const readApiKey = () => {
   if (typeof window === 'undefined') return '';
@@ -116,6 +126,28 @@ const statusTag = (value?: string) => {
 const getErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : '请求失败，请检查 API Key 和后端服务';
 
+const traceJson = (value?: string) => {
+  if (!value) return '-';
+  try { return JSON.stringify(JSON.parse(value), null, 2); } catch { return value; }
+};
+
+const traceDuration = (value?: number) =>
+  value === undefined || value === null ? '-' : value < 1000 ? `${value} ms` : `${(value / 1000).toFixed(2)} s`;
+
+const isTraceRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+const sameTraceValue = (left: unknown, right: unknown) => {
+  try { return JSON.stringify(left) === JSON.stringify(right); }
+  catch { return Object.is(left, right); }
+};
+
+const traceVariableText = (value: unknown) => {
+  if (typeof value === 'string') return value;
+  try { return JSON.stringify(value, null, 2) ?? String(value); }
+  catch { return String(value); }
+};
+
 export default function ConversationHistoryPage() {
   const [form] = Form.useForm<FilterForm>();
   const [apiKeyInput, setApiKeyInput] = useState(readApiKey);
@@ -136,6 +168,13 @@ export default function ConversationHistoryPage() {
   const [messageTotal, setMessageTotal] = useState(0);
   const [expandedMessageCards, setExpandedMessageCards] = useState<Record<string, boolean>>({});
   const [expandedMessageParts, setExpandedMessageParts] = useState<Record<string, boolean>>({});
+  const [traceDrawerOpen, setTraceDrawerOpen] = useState(false);
+  const [traceDetailLoading, setTraceDetailLoading] = useState(false);
+  const [traceDetail, setTraceDetail] = useState<TraceDetail | null>(null);
+  const [selectedTraceSpan, setSelectedTraceSpan] = useState<WorkflowSpan | null>(null);
+  const [traceWorkflowIOExpanded, setTraceWorkflowIOExpanded] = useState(true);
+  const [traceVariablesExpanded, setTraceVariablesExpanded] = useState(true);
+  const [showUnchangedTraceVariables, setShowUnchangedTraceVariables] = useState(false);
 
   // The console API masks keys in the list response. Fetch each key's detail through
   // the existing authenticated endpoint so the selector can use the real key value.
@@ -313,6 +352,72 @@ export default function ConversationHistoryPage() {
     setMessageCurrent(1);
     void loadMessages(conversation, 1, 10, apiKey);
   };
+
+  const openTraceDetail = async (traceId?: string) => {
+    if (!traceId) {
+      message.info('该消息暂无关联的 Trace ID');
+      return;
+    }
+    setTraceDrawerOpen(true);
+    setTraceDetailLoading(true);
+    setTraceDetail(null);
+    setSelectedTraceSpan(null);
+    setTraceWorkflowIOExpanded(true);
+    setTraceVariablesExpanded(true);
+    setShowUnchangedTraceVariables(false);
+    try {
+      const result = await getWorkflowTraceDetail(traceId);
+      setTraceDetail(result);
+      const spans = [...(result.spans || [])].sort((a, b) => (a.sequenceNo || 0) - (b.sequenceNo || 0));
+      setSelectedTraceSpan(spans[0] || null);
+    } catch (error) {
+      console.error('Failed to load trace from conversation message:', error);
+      message.error(`获取执行链路失败，请检查 Trace ID 是否有效：${traceId}`);
+    } finally {
+      setTraceDetailLoading(false);
+    }
+  };
+
+  const traceSessionSnapshot = useMemo(() => {
+    try {
+      const data = JSON.parse(traceDetail?.trace.traceData || '{}') as Record<string, unknown>;
+      return {
+        before: isTraceRecord(data.sessionVariablesBefore) ? data.sessionVariablesBefore : null,
+        after: isTraceRecord(data.sessionVariablesAfter) ? data.sessionVariablesAfter : null,
+      };
+    } catch {
+      return { before: null, after: null };
+    }
+  }, [traceDetail]);
+
+  const traceVariableChanges = useMemo<TraceVariableChange[]>(() => {
+    const before = traceSessionSnapshot.before;
+    const after = traceSessionSnapshot.after;
+    if (!before || !after) return [];
+    return Array.from(new Set([...Object.keys(before), ...Object.keys(after)])).sort().map((key) => {
+      const beforeExists = Object.prototype.hasOwnProperty.call(before, key);
+      const afterExists = Object.prototype.hasOwnProperty.call(after, key);
+      const change: TraceVariableChange['change'] = !beforeExists ? '新增'
+        : !afterExists ? '删除'
+          : sameTraceValue(before[key], after[key]) ? '未变化' : '修改';
+      return { key, before: before[key], after: after[key], beforeExists, afterExists, change };
+    }).filter(item => showUnchangedTraceVariables || item.change !== '未变化');
+  }, [traceSessionSnapshot, showUnchangedTraceVariables]);
+
+  const traceVariableColumns: ColumnsType<TraceVariableChange> = [
+    { title: '变量', dataIndex: 'key', width: 130, render: (value: string) => <Text code>{value}</Text> },
+    { title: '执行前', key: 'before', render: (_: unknown, item) => <pre style={{ margin: 0, maxHeight: 100, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{item.beforeExists ? traceVariableText(item.before) : '（不存在）'}</pre> },
+    { title: '执行后', key: 'after', render: (_: unknown, item) => <pre style={{ margin: 0, maxHeight: 100, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{item.afterExists ? traceVariableText(item.after) : '（不存在）'}</pre> },
+    { title: '变化', dataIndex: 'change', width: 80, render: (value: TraceVariableChange['change']) => <Tag color={value === '新增' ? 'green' : value === '删除' ? 'red' : value === '修改' ? 'blue' : 'default'}>{value}</Tag> },
+  ];
+
+  const traceSpanColumns: ColumnsType<WorkflowSpan> = [
+    { title: 'Span / 节点', key: 'spanName', width: 230, render: (_, span) => <Space direction="vertical" size={0}><Text strong>{span.spanName || span.nodeName || span.nodeId || '-'}</Text><Text type="secondary" style={{ fontSize: 11 }}>{span.nodeType || span.spanKind || ''}</Text></Space> },
+    { title: '类型', dataIndex: 'spanKind', width: 105, render: (value?: string) => <Tag color={value === 'MODEL_CALL' ? 'purple' : value === 'MODEL_PHASE' ? 'gold' : 'blue'}>{value || 'NODE'}</Tag> },
+    { title: '状态', dataIndex: 'status', width: 80, render: statusTag },
+    { title: '耗时', dataIndex: 'durationMs', width: 90, render: traceDuration },
+    { title: '模型 / Token', key: 'model', width: 190, render: (_, span) => <span>{span.modelName || span.modelId || span.provider || '-'}{span.totalTokens != null ? ` · ${span.totalTokens} tokens` : ''}</span> },
+  ];
 
   const totalMessagesOnPage = useMemo(
     () => records.reduce((sum, item) => sum + (item.messageCount || 0), 0),
@@ -563,6 +668,17 @@ export default function ConversationHistoryPage() {
                     extra={(
                       <Space size={8} wrap>
                         {item.messageId ? <Text type="secondary" code>#{item.messageId}</Text> : null}
+                        <Tooltip title={item.traceId ? '在右侧面板查看该消息对应的 Workflow Trace' : '该消息暂无关联的 Trace ID'}>
+                          <Button
+                            type="link"
+                            size="small"
+                            icon={<ApartmentOutlined />}
+                            disabled={!item.traceId}
+                            onClick={() => void openTraceDetail(item.traceId)}
+                          >
+                            查看执行链路
+                          </Button>
+                        </Tooltip>
                         <Button
                           type="text"
                           size="small"
@@ -651,6 +767,92 @@ export default function ConversationHistoryPage() {
             )}
           </Spin>
         )}
+      </Drawer>
+
+      <Drawer
+        title={(
+          <Space>
+            <ApartmentOutlined />
+            <span>Workflow Trace 详情</span>
+            {traceDetail?.trace.status ? statusTag(traceDetail.trace.status) : null}
+          </Space>
+        )}
+        placement="right"
+        width="76vw"
+        zIndex={1200}
+        open={traceDrawerOpen}
+        onClose={() => setTraceDrawerOpen(false)}
+        destroyOnClose
+      >
+        <Spin spinning={traceDetailLoading}>
+          {!traceDetail ? (traceDetailLoading ? null : <Empty description="暂无 Trace 详情" />) : <>
+            <Descriptions bordered size="small" column={3} style={{ marginBottom: 16 }}>
+              <Descriptions.Item label="Trace ID" span={2}><Text copyable code>{traceDetail.trace.traceId}</Text></Descriptions.Item>
+              <Descriptions.Item label="Task ID"><Text copyable>{traceDetail.trace.taskId || '-'}</Text></Descriptions.Item>
+              <Descriptions.Item label="App ID">{traceDetail.trace.appId || '-'}</Descriptions.Item>
+              <Descriptions.Item label="User ID">{traceDetail.trace.userId || '-'}</Descriptions.Item>
+              <Descriptions.Item label="版本">{traceDetail.trace.workflowVersion || '-'}</Descriptions.Item>
+              <Descriptions.Item label="Conversation ID">{traceDetail.trace.conversationId || '-'}</Descriptions.Item>
+              <Descriptions.Item label="调用来源">{traceDetail.trace.invokeSource || '-'}</Descriptions.Item>
+              <Descriptions.Item label="结束原因">{traceDetail.trace.finishReason || '-'}</Descriptions.Item>
+              <Descriptions.Item label="总耗时">{traceDuration(traceDetail.trace.durationMs)}</Descriptions.Item>
+              <Descriptions.Item label="Prompt Token">{traceDetail.trace.promptTokens ?? 0}</Descriptions.Item>
+              <Descriptions.Item label="Completion Token">{traceDetail.trace.completionTokens ?? 0}</Descriptions.Item>
+              <Descriptions.Item label="Total Token">{traceDetail.trace.totalTokens ?? 0}</Descriptions.Item>
+            </Descriptions>
+
+            <Card size="small" title="整个流程输入 / 输出" style={{ marginBottom: 14 }}
+              extra={<Button type="text" size="small" icon={traceWorkflowIOExpanded ? <UpOutlined /> : <DownOutlined />} onClick={() => setTraceWorkflowIOExpanded(value => !value)}>{traceWorkflowIOExpanded ? '收起' : '展开'}</Button>}>
+              {traceWorkflowIOExpanded && <Row gutter={[12, 12]}>
+                <Col xs={24} xl={12}><Card size="small" title="流程输入" extra={<Button type="link" size="small" onClick={() => { if (traceDetail.trace.inputData) navigator.clipboard?.writeText(traceJson(traceDetail.trace.inputData)).then(() => message.success('已复制')).catch(() => message.error('复制失败')); }}>复制</Button>}>
+                  <pre style={{ maxHeight: 220, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>{traceJson(traceDetail.trace.inputData)}</pre>
+                </Card></Col>
+                <Col xs={24} xl={12}><Card size="small" title="流程输出" extra={<Button type="link" size="small" onClick={() => { if (traceDetail.trace.outputData) navigator.clipboard?.writeText(traceJson(traceDetail.trace.outputData)).then(() => message.success('已复制')).catch(() => message.error('复制失败')); }}>复制</Button>}>
+                  <pre style={{ maxHeight: 220, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>{traceJson(traceDetail.trace.outputData)}</pre>
+                </Card></Col>
+              </Row>}
+            </Card>
+
+            <Card size="small" title="会话变量变化" style={{ marginBottom: 14 }}
+              extra={<Space><Button type="link" size="small" onClick={() => setShowUnchangedTraceVariables(value => !value)}>{showUnchangedTraceVariables ? '隐藏未变化' : '显示未变化'}</Button><Button type="text" size="small" icon={traceVariablesExpanded ? <UpOutlined /> : <DownOutlined />} onClick={() => setTraceVariablesExpanded(value => !value)}>{traceVariablesExpanded ? '收起' : '展开'}</Button></Space>}>
+              {traceVariablesExpanded && (!traceSessionSnapshot.before || !traceSessionSnapshot.after ? <Empty description="当前 Trace 未记录完整会话变量快照" /> : <>
+                <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>执行前 {Object.keys(traceSessionSnapshot.before).length} 项 · 执行后 {Object.keys(traceSessionSnapshot.after).length} 项 · 变化 {traceVariableChanges.filter(item => item.change !== '未变化').length} 项</Text>
+                <Table<TraceVariableChange> rowKey="key" size="small" pagination={false} columns={traceVariableColumns} dataSource={traceVariableChanges} scroll={{ x: 650 }} />
+                <Row gutter={12} style={{ marginTop: 10 }}>
+                  <Col xs={24} xl={12}><details><summary>执行前完整会话变量</summary><pre style={{ maxHeight: 200, overflow: 'auto', whiteSpace: 'pre-wrap' }}>{JSON.stringify(traceSessionSnapshot.before, null, 2)}</pre></details></Col>
+                  <Col xs={24} xl={12}><details><summary>执行后完整会话变量</summary><pre style={{ maxHeight: 200, overflow: 'auto', whiteSpace: 'pre-wrap' }}>{JSON.stringify(traceSessionSnapshot.after, null, 2)}</pre></details></Col>
+                </Row>
+              </>)}
+            </Card>
+
+            {traceDetail.trace.errorMessage ? <Card size="small" style={{ marginBottom: 14, borderColor: '#ffccc7', background: '#fff2f0' }}><Text type="danger">{traceDetail.trace.errorCode ? `[${traceDetail.trace.errorCode}] ` : ''}{traceDetail.trace.errorMessage}</Text></Card> : null}
+
+            <Card size="small" title={`执行链路（${traceDetail.spans?.length || 0} spans）`} style={{ marginBottom: 14 }}>
+              <Table<WorkflowSpan> rowKey="spanId" size="small" columns={traceSpanColumns} dataSource={[...(traceDetail.spans || [])].sort((a, b) => (a.sequenceNo || 0) - (b.sequenceNo || 0))} pagination={false} scroll={{ x: 700, y: 260 }} onRow={span => ({ onClick: () => setSelectedTraceSpan(span), style: { cursor: 'pointer', background: selectedTraceSpan?.spanId === span.spanId ? '#e6f4ff' : undefined } })} />
+            </Card>
+
+            <Card size="small" title="Span 详情">
+              {!selectedTraceSpan ? <Empty description="当前 Trace 没有可展示的 Span" /> : <>
+                <Descriptions bordered size="small" column={2} style={{ marginBottom: 12 }}>
+                  <Descriptions.Item label="Span ID" span={2}><Text copyable code>{selectedTraceSpan.spanId}</Text></Descriptions.Item>
+                  <Descriptions.Item label="类型">{selectedTraceSpan.spanKind || '-'}</Descriptions.Item>
+                  <Descriptions.Item label="状态">{statusTag(selectedTraceSpan.status)}</Descriptions.Item>
+                  <Descriptions.Item label="节点">{selectedTraceSpan.nodeName || selectedTraceSpan.nodeId || '-'}</Descriptions.Item>
+                  <Descriptions.Item label="节点类型">{selectedTraceSpan.nodeType || '-'}</Descriptions.Item>
+                  <Descriptions.Item label="模型">{selectedTraceSpan.modelName || selectedTraceSpan.modelId || selectedTraceSpan.provider || '-'}</Descriptions.Item>
+                  <Descriptions.Item label="耗时">{traceDuration(selectedTraceSpan.durationMs)}</Descriptions.Item>
+                  <Descriptions.Item label="Token" span={2}>{selectedTraceSpan.totalTokens == null ? '-' : `${selectedTraceSpan.promptTokens || 0} + ${selectedTraceSpan.completionTokens || 0} = ${selectedTraceSpan.totalTokens}`}</Descriptions.Item>
+                </Descriptions>
+                {selectedTraceSpan.errorMessage ? <Text type="danger">{selectedTraceSpan.errorCode ? `[${selectedTraceSpan.errorCode}] ` : ''}{selectedTraceSpan.errorMessage}</Text> : null}
+                <Row gutter={[12, 12]} style={{ marginTop: 10 }}>
+                  <Col xs={24} xl={12}><Card size="small" title="Input（节点输入）"><pre style={{ maxHeight: 240, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>{traceJson(selectedTraceSpan.inputData)}</pre></Card></Col>
+                  <Col xs={24} xl={12}><Card size="small" title="Output（节点输出）"><pre style={{ maxHeight: 240, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>{traceJson(selectedTraceSpan.outputData)}</pre></Card></Col>
+                </Row>
+                {selectedTraceSpan.spanData ? <details style={{ marginTop: 12 }}><summary>原始 Span Data（调试用）</summary><pre style={{ maxHeight: 200, overflow: 'auto', whiteSpace: 'pre-wrap' }}>{traceJson(selectedTraceSpan.spanData)}</pre></details> : null}
+              </>}
+            </Card>
+          </>}
+        </Spin>
       </Drawer>
     </div>
   );
