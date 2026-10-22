@@ -6,6 +6,15 @@
 .filterCard :global(.ant-form-item) { margin-bottom: 8px; }
 .tableCard { overflow: hidden; }
 .description { margin-bottom: 16px; }
+.workflowIOCard { margin-bottom: 16px; }
+.sessionVariablesCard { margin-bottom: 16px; }
+.sessionVariablesSummary { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.sessionVariableValue { max-width: 300px; max-height: 120px; margin: 0; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 12px; line-height: 1.45; }
+.sessionVariableSnapshots { margin-top: 8px; }
+.sessionVariablesNote { display: block; margin-top: 8px; }
+.workflowPayload { min-width: 0; overflow: hidden; border: 1px solid #f0f0f0; border-radius: 8px; }
+.payloadHeading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; background: #fafafa; border-bottom: 1px solid #f0f0f0; }
+.workflowPayload pre { max-height: 280px; margin: 0; padding: 12px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 12px; line-height: 1.55; background: #fff; }
 .errorCard { margin-bottom: 16px; border-color: #ffccc7; background: #fff2f0; }
 .detailGrid { display: grid; grid-template-columns: minmax(680px, 1.7fr) minmax(360px, 1fr); gap: 16px; align-items: start; }
 .waterfallCard, .spanDetailCard { min-height: 520px; }
@@ -24,6 +33,9 @@
 .barModel { background: #d3adf7; }
 .barFail { background: #ffccc7; }
 .errorText { margin-top: 12px; padding: 10px 12px; color: #cf1322; background: #fff2f0; border: 1px solid #ffccc7; border-radius: 6px; }
-.jsonSection { margin-top: 14px; }
-.jsonSection pre { max-height: 220px; margin: 8px 0 0; padding: 12px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 12px; line-height: 1.55; background: #f7f8fa; border: 1px solid #f0f0f0; border-radius: 6px; }
+.payloadSection { margin-top: 14px; min-width: 0; overflow: hidden; border: 1px solid #f0f0f0; border-radius: 8px; }
+.payloadSection pre, .rawDetails pre { max-height: 300px; margin: 0; padding: 12px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 12px; line-height: 1.55; background: #f7f8fa; }
+.rawDetails { margin-top: 14px; padding: 8px 10px; border: 1px dashed #d9d9d9; border-radius: 6px; color: rgba(0,0,0,.65); }
+.rawDetails summary { cursor: pointer; font-size: 12px; }
+.rawDetails pre { margin-top: 8px; border: 1px solid #f0f0f0; border-radius: 6px; }
 @media (max-width: 1200px) { .detailGrid { grid-template-columns: 1fr; } }

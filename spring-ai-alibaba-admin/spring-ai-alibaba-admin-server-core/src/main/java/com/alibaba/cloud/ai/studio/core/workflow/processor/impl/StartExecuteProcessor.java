@@ -11,6 +11,7 @@ import com.alibaba.cloud.ai.studio.core.base.manager.RedisManager;
 import com.alibaba.cloud.ai.studio.core.config.CommonConfig;
 import com.alibaba.cloud.ai.studio.core.conversation.ConversationSessionVariablesService;
 import com.alibaba.cloud.ai.studio.core.workflow.WorkflowContext;
+import com.alibaba.cloud.ai.studio.core.workflow.trace.service.WorkflowTraceManager;
 import com.alibaba.cloud.ai.studio.core.workflow.WorkflowInputValidator;
 import com.alibaba.cloud.ai.studio.core.workflow.WorkflowInnerService;
 import com.alibaba.cloud.ai.studio.core.workflow.processor.AbstractExecuteProcessor;
@@ -38,12 +39,15 @@ import static com.alibaba.cloud.ai.studio.core.base.constants.CacheConstants.WOR
 public class StartExecuteProcessor extends AbstractExecuteProcessor {
 
     private final ConversationSessionVariablesService sessionVariablesService;
+    private final WorkflowTraceManager traceManager;
 
     public StartExecuteProcessor(RedisManager redisManager, WorkflowInnerService workflowInnerService,
             ChatMemory conversationChatMemory, CommonConfig commonConfig,
-            ConversationSessionVariablesService sessionVariablesService) {
+            ConversationSessionVariablesService sessionVariablesService,
+            WorkflowTraceManager traceManager) {
         super(redisManager, workflowInnerService, conversationChatMemory, commonConfig);
         this.sessionVariablesService = sessionVariablesService;
+        this.traceManager = traceManager;
     }
 
     @Override
@@ -101,6 +105,11 @@ public class StartExecuteProcessor extends AbstractExecuteProcessor {
             context.getVariablesMap().put(ParamSourceEnum.conversation.name(), conversation);
             // Existing workflows may reference ${session.key}.
             context.getVariablesMap().put("session", conversation);
+            // Capture the effective starting state after defaults and legacy values are resolved,
+            // but before any downstream workflow node can mutate the session variables.
+            traceManager.recordSessionVariablesBefore(context, conversation);
+        } else {
+            traceManager.recordSessionVariablesBefore(context, Map.of());
         }
 
         Map<String, Object> userObj = WorkflowInputValidator.resolve(
