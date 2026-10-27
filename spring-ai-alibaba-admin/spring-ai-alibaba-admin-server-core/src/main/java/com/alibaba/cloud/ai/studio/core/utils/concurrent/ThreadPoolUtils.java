@@ -71,7 +71,7 @@ public class ThreadPoolUtils {
 
 	/** Dedicated workers let the node scheduler enforce a deadline without occupying its own pool. */
 	public static final ExecutorService timedNodeExecutorService = new RequestContextThreadPoolWrapper(
-			new ThreadPoolExecutor(0, 200, 60, TimeUnit.SECONDS, new SynchronousQueue<>(),
+			new ThreadPoolExecutor(8, 32, 5, TimeUnit.MINUTES, new SynchronousQueue<>(),
 					new ThreadFactoryBuilder().setNameFormat(NODE_EXECUTOR_NAME + "-timed-%d").setDaemon(true).build(),
 					new ThreadPoolExecutor.AbortPolicy()));
 

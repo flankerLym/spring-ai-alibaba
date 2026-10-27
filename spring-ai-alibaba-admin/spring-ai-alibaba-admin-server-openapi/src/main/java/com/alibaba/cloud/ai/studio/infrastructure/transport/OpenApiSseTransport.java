@@ -13,6 +13,7 @@ import com.alibaba.cloud.ai.studio.runtime.domain.workflow.debug.WorkflowRequest
 import com.alibaba.cloud.ai.studio.runtime.domain.workflow.debug.WorkflowResponse;
 import com.alibaba.cloud.ai.studio.runtime.utils.ExceptionUtils;
 import com.alibaba.cloud.ai.studio.runtime.utils.JsonUtils;
+import com.fasterxml.jackson.core.exc.StreamWriteException;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +28,7 @@ import reactor.core.publisher.SignalType;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 
 import static com.alibaba.cloud.ai.studio.core.utils.LogUtils.FAIL;
 import static com.alibaba.cloud.ai.studio.core.utils.LogUtils.SUCCESS;
@@ -59,15 +61,18 @@ public class OpenApiSseTransport {
         }
     }
 
-    public Object workflow(WorkflowRequest request, HttpServletResponse response) {
+    public Object workflow(WorkflowRequest request, HttpServletResponse response, Function<WorkflowResponse, Object> blockConvertor, Function<WorkflowResponse, String> streamConvertor) {
         long start = System.currentTimeMillis();
         RequestContext context = RequestContextHolder.getRequestContext();
         context.setStartTime(System.currentTimeMillis());
         LogUtils.trace(context, "startCall", SUCCESS, start, request, null);
         if (Boolean.TRUE.equals(request.getStream())) {
-            return streamWorkflow(request, response, context);
+            return streamWorkflow(request, response, context,streamConvertor);
         }
         try {
+            if(blockConvertor != null){
+                return blockConvertor.apply(completionService.workflow(request));
+            }
             String result = JsonUtils.toJson(completionService.workflow(request));
             LogUtils.monitor(context, "ChatController", "endCall", context.getStartTime(), SUCCESS, request, result);
             return result;
@@ -109,7 +114,7 @@ public class OpenApiSseTransport {
         return emitter;
     }
 
-    private SseEmitter streamWorkflow(WorkflowRequest request, HttpServletResponse response, RequestContext context) {
+    private SseEmitter streamWorkflow(WorkflowRequest request, HttpServletResponse response, RequestContext context, Function<WorkflowResponse, String> streamConvertor) {
         Flux<WorkflowResponse> source = completionService.streamWorkflow(request);
         prepareHeaders(response);
         SseEmitter emitter = new SseEmitter(0L);
@@ -125,7 +130,7 @@ public class OpenApiSseTransport {
                             .error(error).status(WorkflowStatus.FAILED).build());
                 })
                 .doOnNext(chunk -> {
-                    writeChunk(context, request, emitter, chunk, response, closed);
+                    writeChunk(context, request, emitter, chunk, response, closed,streamConvertor);
                     if (chunk.getStatus() == WorkflowStatus.COMPLETED) {
                         LogUtils.trace(context, "ChatController", "endStreamCall", context.getStartTime(), SUCCESS,
                                 request, JsonUtils.toJson(chunk));
@@ -151,9 +156,13 @@ public class OpenApiSseTransport {
     }
 
     private void writeChunk(RequestContext context, WorkflowRequest request, SseEmitter emitter,
-                            WorkflowResponse chunk, HttpServletResponse response, AtomicBoolean closed) {
+                            WorkflowResponse chunk, HttpServletResponse response, AtomicBoolean closed, Function<WorkflowResponse, String> streamConvertor) {
         if (chunk.getError() != null && !response.isCommitted()) response.setStatus(chunk.getError().getStatusCode());
-        writeJson(context, emitter, closed, JsonUtils.toJson(chunk), "workflow");
+        if(streamConvertor != null){
+            writeJson(context, emitter, closed, streamConvertor.apply(chunk), "workflow");
+        }else {
+            writeJson(context, emitter, closed, JsonUtils.toJson(chunk), "workflow");
+        }
     }
 
     private void writeJson(RequestContext context, SseEmitter emitter, AtomicBoolean closed, String json, String type) {

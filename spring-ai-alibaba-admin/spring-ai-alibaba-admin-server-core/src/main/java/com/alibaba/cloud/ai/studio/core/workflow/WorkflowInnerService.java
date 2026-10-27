@@ -187,7 +187,7 @@ public class WorkflowInnerService {
 		if (incomingEdges.isEmpty()) {
 			return true;
 		}
-// 分支节点没有选中当前节点，直接标记 skip，不进入线程池
+		// 分支节点没有选中当前节点，直接标记 skip，不进入线程池
 		if (shouldSkipByBranch(incomingEdges, nodeId, context)) {
 			Node node = nodeOptional.get();
 

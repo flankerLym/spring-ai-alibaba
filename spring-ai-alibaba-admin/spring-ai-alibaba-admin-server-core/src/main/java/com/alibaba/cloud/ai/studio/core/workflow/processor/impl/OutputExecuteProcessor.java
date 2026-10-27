@@ -103,7 +103,7 @@ public class OutputExecuteProcessor extends AbstractExecuteProcessor {
 				if (keyStartIndex >= 0) {
 					if (lastKey == null) {
 						// If it's the first variable, add text before the variable
-						contentStringBuilder.append(outputTemplate.substring(0, keyStartIndex));
+						contentStringBuilder.append(outputTemplate, 0, keyStartIndex);
 						if (streamSwitch) {
 							updateOutput(nodeResult, contentStringBuilder.toString(), context, true);
 						}

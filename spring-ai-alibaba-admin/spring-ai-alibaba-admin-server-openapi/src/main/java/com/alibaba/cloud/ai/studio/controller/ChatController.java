@@ -26,7 +26,7 @@ public class ChatController {
 
     @PostMapping("/workflow/completions")
     public Object completion(@RequestBody WorkflowRequest request, HttpServletResponse response) {
-        return transport.workflow(request, response);
+        return transport.workflow(request, response, null,null);
     }
 
     @PostMapping("/workflow/async-completions")
