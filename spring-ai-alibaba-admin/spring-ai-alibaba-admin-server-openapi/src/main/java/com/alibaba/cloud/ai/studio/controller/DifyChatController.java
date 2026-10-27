@@ -2,6 +2,7 @@ package com.alibaba.cloud.ai.studio.controller;
 
 import com.alibaba.cloud.ai.studio.core.base.service.ApiKeyService;
 import com.alibaba.cloud.ai.studio.core.context.RequestContextHolder;
+import com.alibaba.cloud.ai.studio.core.utils.common.IdGenerator;
 import com.alibaba.cloud.ai.studio.infrastructure.transport.OpenApiSseTransport;
 import com.alibaba.cloud.ai.studio.runtime.domain.RequestContext;
 import com.alibaba.cloud.ai.studio.runtime.domain.workflow.debug.WorkflowRequest;
@@ -19,7 +20,12 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Set;
 
-/** Dify-compatible Chatflow API adapter. The legacy route is intentionally preserved. */
+/**
+ * Dify-compatible Chatflow API adapter.
+ *
+ * This class only adapts the external protocol. Workflow execution remains on the
+ * existing OpenApiSseTransport -> OpenApiCompletionService -> WorkflowService path.
+ */
 @RestController
 @RequiredArgsConstructor
 @Tag(name = "chat")
@@ -84,6 +90,19 @@ public class DifyChatController {
             return DifyChatProtocolConverter.errorResponse(400, "app_unavailable",
                     "The API key is not bound to a valid application");
         }
+
+        /*
+         * Dify conversation_id is an opaque string (often a UUID), while the existing
+         * application conversation persistence expects a numeric BIGINT-compatible ID.
+         * Normalize it at this protocol boundary, before creating WorkflowRequest.
+         *
+         * A valid positive numeric ID is preserved so multi-turn conversations continue.
+         * For a missing/legacy non-numeric ID, allocate an internal ID; it is returned in
+         * the Dify response and the client should use that returned value on the next turn.
+         * No database schema or native application endpoint is changed.
+         */
+        request.setConversationId(normalizeConversationId(request.getConversationId()));
+
         DifyChatProtocolConverter converter = new DifyChatProtocolConverter(request, appId);
         WorkflowRequest workflowRequest = converter.toWorkflowRequest();
         return transport.workflowEvents(workflowRequest, response,
@@ -91,5 +110,24 @@ public class DifyChatController {
                 converter::toStreamEvents,
                 converter::onStreamComplete,
                 converter::toErrorResponse);
+    }
+
+    private static String normalizeConversationId(String conversationId) {
+        if (StringUtils.isBlank(conversationId)) {
+            return IdGenerator.idStr();
+        }
+
+        String candidate = conversationId.trim();
+        try {
+            long numericId = Long.parseLong(candidate);
+            if (numericId > 0) {
+                return Long.toString(numericId);
+            }
+        }
+        catch (NumberFormatException ignored) {
+            // Dify's opaque UUID/string IDs are not valid internal BIGINT identifiers.
+        }
+
+        return IdGenerator.idStr();
     }
 }
