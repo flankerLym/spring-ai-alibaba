@@ -1,8 +1,5 @@
 import $i18n from '@/i18n';
-import {
-  getModelParameterRules,
-  getModelSelector,
-} from '@/services/modelService';
+import { getModelParameterRules, getModelSelector } from '@/services/modelService';
 import {
   IModel,
   IModelConfigParamItem,
@@ -11,334 +8,250 @@ import {
   ISelectedModelParams,
 } from '@/types/modelService';
 import { Button, IconFont, Slider } from '@spark-ai/design';
-import { useMount, useSetState } from 'ahooks';
-import {
-  Checkbox,
-  Input,
-  InputNumber,
-  Popover,
-  Select,
-  Switch,
-  Typography,
-} from 'antd';
+import { Checkbox, Input, InputNumber, Popover, Select, Switch, Typography, message } from 'antd';
 import { memo, useEffect, useMemo, useState } from 'react';
 import styles from './index.module.less';
 
-// Get slider step value based on precision
-const getStepFromPrecision = (precision?: number): number => {
-  if (precision === undefined) return 1;
-
-  // Fix floating point precision issues
-  const step = Math.pow(0.1, precision);
-
-  // Convert to string then parse back to number to avoid floating point calculation errors
-  return Number(step.toFixed(precision));
+// These are internal execution settings, NOT arguments sent to the provider.
+const METADATA_KEY = '__model_metadata__';
+type SelectedModel = IModelSelectorItem['models'][0];
+type Param = IModelConfigParamItem;
+type Rule = IModelParameterRule;
+type OptionGroup = {
+  label: string;
+  options: { label: string; value: string; extra: SelectedModel }[];
 };
 
-type ISelectModel = IModelSelectorItem['models'][0];
+function stepFromPrecision(precision?: number) {
+  return Math.pow(10, -Math.max(0, Math.min(10, precision ?? 0)));
+}
 
-interface IModelSelectorProps {
-  value: ISelectedModelParams;
-  onSelect: (model: ISelectModel, originalModel: IModel) => void;
-  onChange: (payload: ISelectedModelParams['params']) => void;
-  modelOptions?: IModelOption[];
+function ParameterControls({
+  rules, params, disabled, onChange,
+}: {
+  rules: Rule[];
+  params: Param[];
   disabled?: boolean;
-}
+  onChange: (next: Param[]) => void;
+}) {
+  const visible = rules.filter((rule) => rule.code !== METADATA_KEY);
+  const metadata = rules.find((rule) => rule.code === METADATA_KEY)?.default_value as any;
 
-interface IModelOption {
-  label: string;
-  options: Array<{
-    label: string;
-    value: string;
-    extra: ISelectModel;
-  }>;
-}
-
-interface IModelConfigBtnProps {
-  value: Array<IModelConfigParamItem>; //
-  onChange: (params: Array<IModelConfigParamItem>) => void;
-  schemaList: IModelParameterRule[];
-  disabled?: boolean;
-}
-
-const ModelConfigBtn = memo(
-  ({ value, onChange, schemaList, disabled }: IModelConfigBtnProps) => {
-    const changeParamItem = (
-      key: string,
-      payload: Partial<IModelConfigParamItem>,
-    ) => {
-      const newParams = schemaList.map((item) => {
-        const matchedValue = value.find((vItem) => vItem.key === item.code);
-        if (item.code === key) {
-          return {
-            key: item?.code,
-            type: item.type,
-            value: item.default_value,
-            enable: matchedValue?.enable,
-            ...payload,
-          };
-        }
-        return {
-          key: item?.code,
-          type: item.type,
-          value: matchedValue?.value || item.default_value,
-          enable: matchedValue?.enable || false,
-        };
-      });
-      // @ts-ignore
-
-      onChange(newParams);
+  const update = (key: string, patch: Partial<Param>) => {
+    const current = params || [];
+    const rule = visible.find((r) => r.code === key);
+    if (!rule) return;
+    const old = current.find((r) => r.key === key);
+    const next: Param = {
+      key,
+      type: (rule.type as Param['type']),
+      value: (old?.value ?? rule.default_value ?? null) as Param['value'],
+      enable: old?.enable ?? false,
+      ...patch,
     };
-    const memoForm = useMemo(() => {
-      if (!schemaList?.length)
-        return $i18n.get({
-          id: 'main.components.ModelConfigForm.index.selectModelFirst',
-          dm: '请先选择模型',
-        });
-      return (
-        <div className="flex flex-col gap-3">
-          {schemaList.map((item) => {
-            const targetValue = value.find((vItem) => vItem.key === item.code);
+    onChange([...current.filter((item) => item.key !== key), next]);
+  };
+
+  return (
+    <Popover
+      placement="bottomLeft"
+      trigger="click"
+      content={
+        <div className="flex flex-col gap-3" style={{ minWidth: 330, maxWidth: 460 }}>
+          {metadata && (
+            <Typography.Text type={metadata.endpoint_type === 'unknown' ? 'danger' : 'secondary'}
+              style={{ fontSize: 11 }}>
+              {`协议：${metadata.protocol ?? 'unknown'} · 接口：${metadata.endpoint_type ?? 'unknown'}`}
+              {` · ${metadata.route_source ?? 'unknown'}`}
+              {metadata.endpoint_type === 'unknown' ? '（未验证，请检查模型供应商配置）' : ''}
+            </Typography.Text>
+          )}
+          {visible.length === 0 && <Typography.Text type="secondary">该模型暂无可配置的参数规则</Typography.Text>}
+          {visible.map((rule) => {
+            const value = params?.find((item) => item.key === rule.code);
+            const enabled = value?.enable ?? false;
+            const currentValue = value?.value ?? rule.default_value;
             return (
-              <div key={item.code} className="flex-justify-between gap-5">
+              <div key={rule.code} className="flex-justify-between gap-5">
                 <div className="flex items-center gap-2">
                   <Checkbox
-                    checked={!!targetValue?.enable}
+                    checked={enabled}
                     disabled={disabled}
-                    onChange={(e) =>
-                      changeParamItem(item.code, { enable: e.target.checked })
-                    }
+                    onChange={(event) => update(rule.code, { enable: event.target.checked })}
                   />
-
                   <Typography.Text
                     className={styles['model-selector-form-label']}
-                    ellipsis={{ tooltip: item.name }}
-                    style={{ width: 78 }}
-                  >
-                    {item.name}
-                  </Typography.Text>
+                    ellipsis={{ tooltip: rule.description || rule.name }}
+                    style={{ width: 96 }}
+                  >{rule.name || rule.code}</Typography.Text>
                 </div>
-                {item.type === 'Number' && (
+                {rule.type === 'Number' && (
                   <div className="flex items-center gap-3 flex-1">
-                    <Slider
-                      disabled={!targetValue?.enable || disabled}
-                      style={{ width: 236 }}
-                      onChange={(val) =>
-                        changeParamItem(item.code, { value: val })
-                      }
-                      min={item.min}
-                      max={item.max}
-                      step={getStepFromPrecision(item.precision)}
-                      value={
-                        (targetValue?.value as number) || item.default_value
-                      }
-                    />
-
+                    {rule.min != null && rule.max != null && (
+                      <Slider
+                        disabled={!enabled || disabled}
+                        style={{ width: 170 }}
+                        min={rule.min}
+                        max={rule.max}
+                        step={stepFromPrecision(rule.precision)}
+                        value={typeof currentValue === 'number' ? currentValue : undefined}
+                        onChange={(val) => update(rule.code, { value: val })}
+                      />
+                    )}
                     <InputNumber
-                      disabled={!targetValue?.enable || disabled}
-                      style={{ width: 70 }}
-                      precision={item.precision}
-                      value={
-                        (targetValue?.value as number) || item.default_value
-                      }
-                      onChange={(val) =>
-                        changeParamItem(item.code, { value: val as number })
-                      }
+                      disabled={!enabled || disabled}
+                      style={{ width: 90 }}
+                      min={rule.min ?? undefined}
+                      max={rule.max ?? undefined}
+                      precision={rule.precision ?? undefined}
+                      value={typeof currentValue === 'number' ? currentValue : null}
+                      onChange={(val) => update(rule.code, { value: val as number })}
                     />
                   </div>
                 )}
-                {item.type === 'String' &&
-                  (item.options ? (
+                {rule.type === 'String' && (
+                  rule.options?.length ? (
                     <Select
-                      value={targetValue?.value || item.options?.[0]}
-                      disabled={!targetValue?.enable || disabled}
-                      className="w-full"
-                      options={item.options.map((option) => ({
-                        label: option,
-                        value: option,
-                      }))}
-                      onSelect={(value) =>
-                        changeParamItem(item.code, { value: value })
-                      }
-                    ></Select>
+                      disabled={!enabled || disabled}
+                      style={{ flex: 1 }}
+                      value={currentValue as string}
+                      options={rule.options.map((option) => ({ label: String(option), value: String(option) }))}
+                      onChange={(val) => update(rule.code, { value: val })}
+                    />
                   ) : (
                     <Input
-                      disabled={!targetValue?.enable || disabled}
+                      disabled={!enabled || disabled}
                       className="flex-1"
-                      value={
-                        (targetValue?.value as string) || item.default_value
-                      }
-                      onChange={(e) =>
-                        changeParamItem(item.code, { value: e.target.value })
-                      }
+                      value={(currentValue ?? '') as string}
+                      onChange={(event) => update(rule.code, { value: event.target.value })}
                     />
-                  ))}
-                {item.type === 'Boolean' && (
+                  )
+                )}
+                {rule.type === 'Boolean' && (
                   <Switch
-                    disabled={!targetValue?.enable || disabled}
-                    // @ts-ignore
-                    checked={
-                      (targetValue?.value as boolean) || item.default_value
-                    }
-                    onChange={(val) =>
-                      changeParamItem(item.code, { value: val })
-                    }
+                    disabled={!enabled || disabled}
+                    checked={Boolean(currentValue ?? false)}
+                    onChange={(checked) => update(rule.code, { value: checked })}
                   />
                 )}
               </div>
             );
           })}
         </div>
-      );
-    }, [value, onChange, schemaList]);
+      }
+    >
+      <Button disabled={disabled || !rules.length} icon={<IconFont type="spark-modify-line" />} />
+    </Popover>
+  );
+}
 
-    return (
-      <Popover placement="bottomLeft" content={memoForm} trigger={['click']}>
-        <Button icon={<IconFont type="spark-modify-line" />} />
-      </Popover>
-    );
-  },
-);
-
-const ModelSelector = memo(
-  ({
-    onChange,
-    onSelect,
-    value,
-    modelOptions = [],
-    disabled,
-  }: IModelSelectorProps) => {
-    const [state, setState] = useSetState({
-      schemaList: [] as IModelParameterRule[],
-    });
-
-    const initModelParams = (modelId: string, provider?: string) => {
-      if ((!value.provider?.length && !provider?.length) || !modelId?.length)
-        return;
-      getModelParameterRules(provider || value.provider, modelId).then(
-        (res) => {
-          setState({
-            schemaList: res.data,
-          });
-        },
-      );
-    };
-
-    useMount(() => {
-      if (value.model_id) initModelParams(value.model_id);
-    });
-
-    return (
-      <div className="flex items-center gap-2">
-        <Select
-          disabled={disabled}
-          placeholder={$i18n.get({
-            id: 'main.pages.App.Workflow.nodes.ParameterExtractor.schema.selectModel',
-            dm: '请选择模型',
-          })}
-          className="flex-1 w-[240px]"
-          value={!value.model_id ? void 0 : value.model_id}
-          options={modelOptions}
-          onChange={(value, option: any) => {
-            const [provider, modelId] = value.split('@@@');
-            initModelParams(modelId, provider);
-            if (Array.isArray(option)) {
-              onSelect(
-                option[0]?.extra as ISelectModel,
-                option[0]?.extra as IModel,
-              );
-            } else {
-              onSelect(option?.extra as ISelectModel, option?.extra as IModel);
-            }
-          }}
-        />
-
-        <ModelConfigBtn
-          disabled={disabled}
-          schemaList={state.schemaList}
-          value={value.params}
-          onChange={(params) => {
-            onChange(params);
-          }}
-        />
-      </div>
-    );
-  },
-);
-
-const ModelConfigForm = ({
-  value,
-  onChange,
-  onSelectedModelChange,
-  disabled,
-}: {
+const ModelConfigForm = ({ value, onChange, onSelectedModelChange, disabled }: {
   value: ISelectedModelParams;
-  onChange: (
-    modelConfig: Partial<ISelectedModelParams>,
-    originalModel: IModel,
-  ) => void; // When model selection or parameters change, return model config and complete model config to parent component
-  onSelectedModelChange?: (model: IModel) => void; // When component initializes or model selection changes, return complete model config to parent component
+  onChange: (modelConfig: Partial<ISelectedModelParams>, originalModel: IModel) => void;
+  onSelectedModelChange?: (model: IModel) => void;
   disabled?: boolean;
 }) => {
-  const [selectedModel, setSelectedModel] = useState<IModel | null>(null);
-  const [state, setState] = useSetState({ modelOptions: [] as IModelOption[] });
+  const [groups, setGroups] = useState<OptionGroup[]>([]);
+  const [schema, setSchema] = useState<Rule[]>([]);
 
   useEffect(() => {
-    if (selectedModel) {
-      onSelectedModelChange?.(selectedModel);
-    }
-  }, [selectedModel]);
-  useMount(() => {
+    let active = true;
     getModelSelector('llm').then((res) => {
-      const modelOptions = res.data.map((item) => ({
+      if (!active) return;
+      setGroups((res.data || []).map((item) => ({
         label: item.provider.name,
         options: item.models.map((model) => ({
-          label: model.name || '',
+          label: model.name || model.model_id,
           value: `${model.provider}@@@${model.model_id}`,
           extra: model,
         })),
-      }));
-      setState({
-        modelOptions,
-      });
-      modelOptions.forEach((item) => {
-        item.options.forEach((option) => {
-          if (option.value.split('@@@')[1] === value.model_id) {
-            setSelectedModel(option.extra);
-          }
-        });
-      });
+      })));
     });
-  });
+    return () => { active = false; };
+  }, []);
+
+  const currentModel = useMemo(() => groups.flatMap((group) => group.options)
+    .find((option) => option.extra.provider === value.provider
+      && option.extra.model_id === value.model_id)?.extra,
+  [groups, value.provider, value.model_id]);
+
+  useEffect(() => {
+    if (currentModel) onSelectedModelChange?.(currentModel as IModel);
+  }, [currentModel]);
+
+  useEffect(() => {
+    if (!value.provider || !value.model_id) {
+      setSchema([]);
+      return;
+    }
+    let active = true;
+    getModelParameterRules(value.provider, value.model_id).then((response) => {
+      if (!active) return;
+      const fetched = response.data || [];
+      setSchema(fetched);
+      const systemRule = fetched.find((rule) => rule.code === METADATA_KEY);
+      if (!systemRule) return;
+      const previous = value.params || [];
+      const existing = previous.find((p) => p.key === METADATA_KEY);
+      // Preserve published workflow snapshots. Refresh it only when switching
+      // models, where parent resets params to an empty array first.
+      if (existing) return;
+      // Keep complete provider metadata only in PostgreSQL. Store a compact,
+      // immutable execution snapshot in the workflow JSON for fast inference.
+      const raw = systemRule.default_value as any;
+      const snapshot = {
+        schema_version: raw?.schema_version ?? 1,
+        provider: raw?.provider ?? value.provider,
+        model_id: raw?.model_id ?? value.model_id,
+        protocol: raw?.protocol ?? 'openai',
+        endpoint_type: raw?.endpoint_type ?? 'unknown',
+        route_source: raw?.route_source ?? 'unknown',
+      };
+      const metadataParam = {
+        key: METADATA_KEY,
+        type: 'Object',
+        value: snapshot,
+        enable: true,
+      } as unknown as Param;
+      const original = currentModel || ({ provider: value.provider, model_id: value.model_id,
+        name: value.model_id, type: 'llm' } as IModel);
+      onChange({ provider: value.provider, model_id: value.model_id,
+        params: [...previous.filter((p) => p.key !== METADATA_KEY), metadataParam] }, original as IModel);
+    }).catch((error) => {
+      if (!active) return;
+      setSchema([]);
+      message.error(error?.message || '读取供应商模型参数失败');
+    });
+    return () => { active = false; };
+    // The selected model identity is what triggers a fresh schema read.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value.provider, value.model_id]);
+
+  const updateParams = (params: Param[]) => {
+    const original = currentModel || ({ provider: value.provider, model_id: value.model_id,
+      name: value.model_id, type: 'llm' } as IModel);
+    onChange({ provider: value.provider, model_id: value.model_id, params }, original as IModel);
+  };
+
   return (
-    <>
-      <ModelSelector
+    <div className="flex items-center gap-2">
+      <Select
         disabled={disabled}
-        onSelect={(model, originalModel) => {
-          setSelectedModel(originalModel);
-          onChange(
-            {
-              model_id: model.model_id,
-              provider: model.provider,
-              params: [],
-            },
-            originalModel,
-          );
+        placeholder={$i18n.get({ id: 'main.pages.App.Workflow.nodes.ParameterExtractor.schema.selectModel', dm: '请选择模型' })}
+        className="flex-1 w-[240px]"
+        value={value.provider && value.model_id ? `${value.provider}@@@${value.model_id}` : undefined}
+        options={groups}
+        onChange={(_, option: any) => {
+          const picked: IModel = option?.extra;
+          if (!picked) return;
+          setSchema([]);
+          // The next effect loads the model-specific schema from PostgreSQL.
+          onChange({ provider: picked.provider, model_id: picked.model_id, params: [] }, picked);
         }}
-        onChange={(config) => {
-          onChange(
-            {
-              model_id: selectedModel?.model_id,
-              provider: selectedModel?.provider,
-              params: config,
-            },
-            selectedModel!,
-          );
-        }}
-        value={value}
-        modelOptions={state.modelOptions}
       />
-    </>
+      <ParameterControls rules={schema} params={value.params || []}
+        disabled={disabled} onChange={updateParams} />
+    </div>
   );
 };
 

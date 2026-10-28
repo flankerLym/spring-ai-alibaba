@@ -153,7 +153,7 @@ logging:
 workflow:
   failure-notification:
     dingtalk:
-      enabled: ${WORKFLOW_FAILURE_DINGTALK_ENABLED:true}
+      enabled: ${WORKFLOW_FAILURE_DINGTALK_ENABLED:false}
       webhook-url: "${DINGTALK_WEBHOOK_URL:https://oapi.dingtalk.com/robot/send?access_token=831f223374eba35c95c5b1e4d3352f0f5a1d8c231118d7546f23577c70e49824}"
       secret: "${DINGTALK_WEBHOOK_SECRET:}"
 
