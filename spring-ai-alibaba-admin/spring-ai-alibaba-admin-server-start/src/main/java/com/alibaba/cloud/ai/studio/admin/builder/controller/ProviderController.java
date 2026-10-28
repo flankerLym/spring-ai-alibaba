@@ -387,6 +387,7 @@ public class ProviderController {
 		// Create model configuration information
 		ModelConfigInfo modelConfigInfo = new ModelConfigInfo();
 		modelConfigInfo.setModelId(request.getModelId().trim());
+		modelConfigInfo.setEndpointId(request.getEndpointId());
 		modelConfigInfo.setName(request.getModelName());
 		modelConfigInfo.setProvider(provider);
 		modelConfigInfo.setMode(ModelConfigInfo.ModeEnum.chat.name());
@@ -429,6 +430,7 @@ public class ProviderController {
 		modelConfigInfo.setTags(tags);
 		modelConfigInfo.setIcon(request.getIcon());
 		modelConfigInfo.setEnable(request.getEnable());
+		modelConfigInfo.setEndpointId(request.getEndpointId());
 		return Result.success(modelManager.updateModel(modelConfigInfo));
 	}
 

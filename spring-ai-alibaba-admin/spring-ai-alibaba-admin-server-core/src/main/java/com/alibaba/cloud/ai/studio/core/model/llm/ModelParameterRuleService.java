@@ -66,12 +66,41 @@ public class ModelParameterRuleService {
         }
     }
 
-    /** Invoked by the existing ModelParameterRuleAspect after add/enable. */
+    /** Invoked by the existing ModelParameterRuleAspect after add/update/enable. */
     public void ensure(ModelConfigInfo model) {
-        if (model == null || Boolean.FALSE.equals(model.getEnable())
+        if (model == null || (Boolean.FALSE.equals(model.getEnable()) && model.getEndpointId() == null)
                 || !"llm".equalsIgnoreCase(model.getType())
                 || StringUtils.isAnyBlank(model.getProvider(), model.getModelId())) return;
+
         getOrCreate(model.getProvider(), model.getModelId());
+        if (model.getEndpointId() != null) {
+            persistEndpointId(model.getProvider(), model.getModelId(), model.getEndpointId());
+        }
+    }
+
+    private void persistEndpointId(String provider, String modelId, String endpointId) {
+        ModelEntity entity = findModel(provider, modelId);
+        if (entity == null || entity.getParameterRules() == null) return;
+
+        for (ParameterRule rule : entity.getParameterRules()) {
+            if (!META_KEY.equals(rule.getCode()) || !(rule.getDefaultValue() instanceof Map<?, ?> stored)) {
+                continue;
+            }
+            Map<String, Object> metadata = new LinkedHashMap<>();
+            stored.forEach((key, value) -> metadata.put(String.valueOf(key), value));
+            if (StringUtils.isBlank(endpointId)) {
+                metadata.remove("endpoint_id");
+            }
+            else {
+                metadata.put("endpoint_id", endpointId.trim());
+            }
+            rule.setDefaultValue(metadata);
+            modelMapper.updateById(entity);
+            log.info("Stored model endpoint metadata: provider={}, model={}, endpointConfigured={}",
+                    provider, modelId, StringUtils.isNotBlank(endpointId));
+            return;
+        }
+        log.warn("Model metadata rule missing while storing endpoint: provider={}, model={}", provider, modelId);
     }
 
     public List<ParameterRule> resolve(String provider, String modelId, String modelType) {

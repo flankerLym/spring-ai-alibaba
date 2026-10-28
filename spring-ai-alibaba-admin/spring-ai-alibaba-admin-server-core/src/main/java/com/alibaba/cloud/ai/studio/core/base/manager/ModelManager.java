@@ -22,6 +22,7 @@ import com.alibaba.cloud.ai.studio.runtime.domain.RequestContext;
 import com.alibaba.cloud.ai.studio.core.context.RequestContextHolder;
 import com.alibaba.cloud.ai.studio.core.base.entity.ModelEntity;
 import com.alibaba.cloud.ai.studio.core.model.llm.domain.ModelConfigInfo;
+import com.alibaba.cloud.ai.studio.core.model.llm.domain.ParameterRule;
 import com.alibaba.cloud.ai.studio.core.model.llm.domain.ProviderConfigInfo;
 import com.alibaba.cloud.ai.studio.core.base.mapper.ModelMapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
@@ -34,6 +35,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -333,7 +335,24 @@ public class ModelManager {
 		modelConfigInfo.setType(entity.getType());
 		modelConfigInfo.setSource(entity.getSource());
 		modelConfigInfo.setEnable(entity.getEnable());
+		modelConfigInfo.setEndpointId(extractEndpointId(entity));
 		return modelConfigInfo;
+	}
+
+	private String extractEndpointId(ModelEntity entity) {
+		if (entity.getParameterRules() == null) {
+			return null;
+		}
+		for (ParameterRule rule : entity.getParameterRules()) {
+			if (!"__model_metadata__".equals(rule.getCode())) {
+				continue;
+			}
+			Object value = rule.getDefaultValue();
+			if (value instanceof Map<?, ?> metadata && metadata.get("endpoint_id") != null) {
+				return String.valueOf(metadata.get("endpoint_id"));
+			}
+		}
+		return null;
 	}
 
 }

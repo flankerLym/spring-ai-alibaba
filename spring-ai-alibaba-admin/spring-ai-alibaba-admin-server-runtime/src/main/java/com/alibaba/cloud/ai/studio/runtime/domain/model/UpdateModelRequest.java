@@ -51,4 +51,8 @@ public class UpdateModelRequest {
 	 */
 	private Boolean enable;
 
+	/** Volcengine Ark endpoint ID bound to this model. */
+	@JsonProperty("endpoint_id")
+	private String endpointId;
+
 }

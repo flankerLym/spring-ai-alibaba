@@ -110,8 +110,16 @@ public class QuestionClassifierNodeSection implements NodeSection<QuestionClassi
                         ChatModel chatModel = modelRegistry.get(
                                 new NodeModelConfig(providerName, chatModelName));
 
-                        var chatOptionsBuilder = OpenAiChatOptions.builder().model(chatModelName);
                         Map<String, Object> safeParams = Optional.ofNullable(modeParams).orElse(Map.of());
+                        String requestModelName = chatModelName;
+                        Object modelMetadata = safeParams.get("__model_metadata__");
+                        if (modelMetadata instanceof Map<?, ?> metadata) {
+                            Object endpointId = metadata.get("endpoint_id");
+                            if (endpointId != null && !endpointId.toString().isBlank()) {
+                                requestModelName = endpointId.toString();
+                            }
+                        }
+                        var chatOptionsBuilder = OpenAiChatOptions.builder().model(requestModelName);
 
                         Optional.ofNullable(safeParams.get("temperature"))
                                 .filter(Number.class::isInstance)

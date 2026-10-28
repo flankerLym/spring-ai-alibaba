@@ -63,6 +63,7 @@ function ParameterControls({
               style={{ fontSize: 11 }}>
               {`协议：${metadata.protocol ?? 'unknown'} · 接口：${metadata.endpoint_type ?? 'unknown'}`}
               {` · ${metadata.route_source ?? 'unknown'}`}
+              {metadata.endpoint_id ? ` · 接入点：${metadata.endpoint_id}` : ''}
               {metadata.endpoint_type === 'unknown' ? '（未验证，请检查模型供应商配置）' : ''}
             </Typography.Text>
           )}
@@ -206,6 +207,7 @@ const ModelConfigForm = ({ value, onChange, onSelectedModelChange, disabled }: {
         protocol: raw?.protocol ?? 'openai',
         endpoint_type: raw?.endpoint_type ?? 'unknown',
         route_source: raw?.route_source ?? 'unknown',
+        endpoint_id: raw?.endpoint_id ?? null,
       };
       const metadataParam = {
         key: METADATA_KEY,

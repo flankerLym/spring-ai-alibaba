@@ -8,6 +8,7 @@ import styles from './index.module.less';
 interface ModelConfigModalProps {
   open: boolean;
   providerId: string;
+  providerProtocol?: string;
   existingModelIds: string[];
   onCancel: () => void;
   onOk: (models: ICreateModelParams[]) => Promise<void> | void;
@@ -18,6 +19,7 @@ interface ModelConfigModalProps {
 const ModelConfigModal: React.FC<ModelConfigModalProps> = ({
   open,
   providerId,
+  providerProtocol,
   existingModelIds,
   onCancel,
   onOk,
@@ -29,10 +31,13 @@ const ModelConfigModal: React.FC<ModelConfigModalProps> = ({
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [manualModelId, setManualModelId] = useState('');
   const [name, setName] = useState('');
+  const [endpointId, setEndpointId] = useState('');
+  const [endpointIds, setEndpointIds] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState('');
   const existingIds = useMemo(() => new Set(existingModelIds), [existingModelIds]);
+  const needsEndpointId = providerProtocol?.toLowerCase() === 'doubao';
 
   const fetchAvailableModels = useCallback(() => {
     if (!providerId) return;
@@ -47,6 +52,8 @@ const ModelConfigModal: React.FC<ModelConfigModalProps> = ({
   useEffect(() => {
     if (!open) return;
     setName(model?.name || '');
+    setEndpointId(model?.endpoint_id || '');
+    setEndpointIds({});
     setSelectedModels([]);
     setManualModelId('');
     if (model || !providerId) return;
@@ -56,9 +63,13 @@ const ModelConfigModal: React.FC<ModelConfigModalProps> = ({
   const handleSubmit = async () => {
     if (isEdit && model) {
       if (!name.trim()) return;
+      if (needsEndpointId && !endpointId.trim()) {
+        message.warning('请填写火山方舟接入点 ID');
+        return;
+      }
       setSaving(true);
       try {
-        await onOk([{ ...model, name: name.trim(), model_id: model.model_id, tags: model.tags || [] }]);
+        await onOk([{ ...model, name: name.trim(), model_id: model.model_id, tags: model.tags || [], endpoint_id: needsEndpointId ? endpointId.trim() : model.endpoint_id }]);
       } finally {
         setSaving(false);
       }
@@ -67,6 +78,13 @@ const ModelConfigModal: React.FC<ModelConfigModalProps> = ({
     if (!selectedModels.length) {
       message.warning('请至少选择一个模型');
       return;
+    }
+    if (needsEndpointId) {
+      const missing = selectedModels.find((id) => !endpointIds[id]?.trim());
+      if (missing) {
+        message.warning(`请填写模型 ${missing} 的接入点 ID`);
+        return;
+      }
     }
     setSaving(true);
     try {
@@ -83,6 +101,7 @@ const ModelConfigModal: React.FC<ModelConfigModalProps> = ({
           model_id: modelId,
           type,
           tags,
+          endpoint_id: needsEndpointId ? endpointIds[modelId]?.trim() : undefined,
         };
       }));
     } finally {
@@ -118,10 +137,19 @@ const ModelConfigModal: React.FC<ModelConfigModalProps> = ({
     >
       <div className={styles.container}>
         {isEdit ? (
-          <div className={styles['edit-field']}>
-            <label>模型名称</label>
-            <Input value={name} maxLength={50} onChange={(event) => setName(event.target.value)} />
-          </div>
+          <>
+            <div className={styles['edit-field']}>
+              <label>模型名称</label>
+              <Input value={name} maxLength={50} onChange={(event) => setName(event.target.value)} />
+            </div>
+            {needsEndpointId && (
+              <div className={styles['edit-field']}>
+                <label>火山方舟接入点 ID</label>
+                <Input value={endpointId} onChange={(event) => setEndpointId(event.target.value)}
+                  placeholder="输入该模型对应的 Endpoint ID" />
+              </div>
+            )}
+          </>
         ) : (
           <>
             <p className={styles.hint}>从供应商账号可用模型中勾选，模型能力将根据供应商返回信息自动设置。</p>
@@ -131,7 +159,14 @@ const ModelConfigModal: React.FC<ModelConfigModalProps> = ({
                 mode="multiple"
                 showSearch
                 value={selectedModels}
-                onChange={setSelectedModels}
+                onChange={(values) => {
+                  setSelectedModels(values);
+                  setEndpointIds((current) => {
+                    const next: Record<string, string> = {};
+                    values.forEach((id) => { next[id] = current[id] || ''; });
+                    return next;
+                  });
+                }}
                 placeholder="选择一个或多个模型"
                 options={availableModels.map((item) => ({
                   label: existingIds.has(item.model_id) ? `${item.model_id}（已添加）` : item.model_id,
@@ -143,6 +178,23 @@ const ModelConfigModal: React.FC<ModelConfigModalProps> = ({
                 style={{ width: '100%' }}
               />
             </Spin>
+            {needsEndpointId && selectedModels.length > 0 && (
+              <div className={styles['endpoint-fields']}>
+                {selectedModels.map((modelId) => (
+                  <div className={styles['endpoint-field']} key={modelId}>
+                    <label>{modelId} 的接入点 ID</label>
+                    <Input
+                      value={endpointIds[modelId] || ''}
+                      onChange={(event) => setEndpointIds((current) => ({
+                        ...current,
+                        [modelId]: event.target.value,
+                      }))}
+                      placeholder="输入该模型对应的 Endpoint ID"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
             <div className={styles['manual-model']}>
               <span>找不到模型？手动输入模型 ID</span>
               <div>

@@ -54,6 +54,7 @@ export interface IModel {
   mode?: string;
   enable?: boolean;
   source?: 'preset' | 'custom';
+  endpoint_id?: string;
 }
 
 export interface IAvailableModel {
@@ -70,6 +71,7 @@ export interface IModelConfigInfo {
   icon?: string;
   type: string;
   mode?: string;
+  endpoint_id?: string;
 }
 
 // Parameters for creating a model
@@ -81,6 +83,7 @@ export interface ICreateModelParams {
   tags?: string[];
   type?: string;
   enable?: boolean;
+  endpoint_id?: string;
 }
 
 // Parameters for updating a model
@@ -89,6 +92,7 @@ export interface IUpdateModelParams {
   icon?: string;
   tags?: string[];
   enable?: boolean;
+  endpoint_id?: string;
 }
 
 // Model input parameter rules

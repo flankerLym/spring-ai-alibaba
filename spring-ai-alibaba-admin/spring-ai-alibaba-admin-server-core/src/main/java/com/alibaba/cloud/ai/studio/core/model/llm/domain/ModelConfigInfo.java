@@ -37,6 +37,10 @@ public class ModelConfigInfo implements Serializable {
 	/** Model provider */
 	private String provider;
 
+	/** Provider-specific endpoint ID, stored in model.parameter_rules metadata. */
+	@JsonProperty("endpoint_id")
+	private String endpointId;
+
 	/** Model name */
 	private String name;
 

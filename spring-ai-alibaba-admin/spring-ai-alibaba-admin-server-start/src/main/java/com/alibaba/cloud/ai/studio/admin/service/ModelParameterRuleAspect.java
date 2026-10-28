@@ -46,7 +46,7 @@ public class ModelParameterRuleAspect {
 					+ " && args(modelConfigInfo)",
 			returning = "success")
 	public void afterEnable(ModelConfigInfo modelConfigInfo, boolean success) {
-		if (success && Boolean.TRUE.equals(modelConfigInfo.getEnable())) {
+		if (success && (Boolean.TRUE.equals(modelConfigInfo.getEnable()) || modelConfigInfo.getEndpointId() != null)) {
 			ruleService.ensure(modelConfigInfo);
 		}
 	}

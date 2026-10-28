@@ -116,6 +116,9 @@ public class LLMNodeDataConverter extends AbstractNodeDataConverter<LLMNodeData>
             public LLMNodeData parse(Map<String, Object> data) throws JsonProcessingException {
                 LLMNodeData nodeData = new LLMNodeData();
 
+                String providerName = Optional.ofNullable(MapReadUtil.getMapDeepValue(
+                        data, String.class, "config", "node_param", "model_config", "provider"))
+                        .orElse("dashscope");
                 String modeName = this.exactChatModelName(DSLDialectType.STUDIO, data);
                 Map<String, Object> modeParams = Optional
                         .ofNullable(this.exactChatModelParam(DSLDialectType.STUDIO, data))
@@ -149,7 +152,7 @@ public class LLMNodeDataConverter extends AbstractNodeDataConverter<LLMNodeData>
                     defaultOutput = MapReadUtil.getMapDeepValue(defaultOutputs.get(0), String.class, "value");
                 }
 
-                nodeData.setProviderName("dashscope");
+                nodeData.setProviderName(providerName);
                 nodeData.setChatModeName(modeName);
                 nodeData.setModeParams(modeParams);
                 nodeData.setMessageTemplates(messageTemplates);
