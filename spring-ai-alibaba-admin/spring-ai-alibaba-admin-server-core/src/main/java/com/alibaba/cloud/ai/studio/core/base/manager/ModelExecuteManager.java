@@ -50,6 +50,10 @@ public class ModelExecuteManager {
             Map<String, Object> parameterMap, List<Message> messages) {
         ChatModel chatModel = modelFactory.getChatModel(provider);
         Object snapshot = parameterMap == null ? null : parameterMap.get(META_KEY);
+        String requestModelId = modelId;
+        boolean doubao = chatModel instanceof NativeOptionsChatModel nativeModel
+                && nativeModel.usesProvider("doubao");
+
         if (snapshot instanceof Map<?, ?> m) {
             Object savedModel = m.get("model_id");
             if (savedModel != null && !modelId.equals(String.valueOf(savedModel))) {
@@ -61,8 +65,21 @@ public class ModelExecuteManager {
                         && nativeModel.usesProvider(String.valueOf(savedProtocol)))) {
                 throw new IllegalArgumentException("供应商协议已变化，请重新保存工作流中的模型配置");
             }
+
+            // Ark accepts either an endpoint ID or a model ID in the `model` field.
+            // Prefer the endpoint when configured; otherwise preserve the logical model ID.
+            if (doubao) {
+                Object savedEndpoint = m.get("endpoint_id");
+                String endpointId = savedEndpoint == null ? "" : String.valueOf(savedEndpoint).trim();
+                if (StringUtils.isNotBlank(endpointId)) {
+                    requestModelId = endpointId;
+                }
+            }
         }
-        ChatOptions options = createOptions(modelId, parameterMap);
+
+        // Older workflows may not have a metadata snapshot. In that case,
+        // requestModelId remains modelId, so endpoint_id is optional.
+        ChatOptions options = createOptions(requestModelId, parameterMap);
         Prompt prompt = new Prompt(messages, options);
         Flux<AgentResponse> stream = chatModel.stream(prompt)
                 .concatMap(response -> convertResponse(response).flux());
