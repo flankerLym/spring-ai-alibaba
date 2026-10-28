@@ -23,7 +23,6 @@ const ModelServiceProviderModal: React.FC<ModelServiceProviderModalProps> = ({
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [protocols, setProtocols] = useState<string[]>([]);
-  const protocol = Form.useWatch('protocol', form) || 'openai';
 
   useEffect(() => {
     getProviderProtocols().then((res) => {
@@ -182,7 +181,6 @@ const ModelServiceProviderModal: React.FC<ModelServiceProviderModalProps> = ({
         >
           <Input.TextArea
             rows={2}
-            disabled={protocol !== 'openai'}
             placeholder={$i18n.get({
               id: 'main.pages.Setting.ModelService.components.ModelServiceProviderModal.index.enterYourApiUrl',
               dm: '输入您的API URL，请在服务商文档获取，如 https://dashscope.aliyuncs.com/compatible-mode',

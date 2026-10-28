@@ -76,7 +76,6 @@ const ProviderInfoForm: React.FC<ProviderInfoFormProps> = ({
 }) => {
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
-  const protocol = Form.useWatch('protocol', form) || 'openai';
   const navigate = useNavigate();
   const isPreset = provider?.source === 'preset';
 
@@ -90,9 +89,7 @@ const ProviderInfoForm: React.FC<ProviderInfoFormProps> = ({
       name: provider?.name,
       protocol: providerType(provider?.protocol).value,
       apiKey: provider?.credential?.api_key || '',
-      endpoint: providerType(provider?.protocol).value === 'openai'
-        ? provider?.credential?.endpoint || ''
-        : providerType(provider?.protocol).endpoint,
+      endpoint: provider?.credential?.endpoint || providerType(provider?.protocol).endpoint,
     });
   };
 
@@ -268,7 +265,6 @@ const ProviderInfoForm: React.FC<ProviderInfoFormProps> = ({
           >
             <Input.TextArea
               rows={2}
-              disabled={protocol !== 'openai'}
               placeholder={$i18n.get({
                 id: 'main.pages.Setting.ModelService.components.ProviderInfoForm.index.enterApiUrl',
                 dm: '输入您的API URL，请在服务商文档中获取，如https://dashscope.aliyuncs.com/compatible-mode',

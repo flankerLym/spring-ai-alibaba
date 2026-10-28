@@ -123,7 +123,7 @@ public class ProviderController {
 				credential.setEndpoint(saved.getEndpoint());
 			}
 		}
-		if (!"openai".equals(protocol)) credential.setEndpoint(ModelProviderConfig.defaultEndpoint(protocol));
+		if (StringUtils.isBlank(credential.getEndpoint())) credential.setEndpoint(ModelProviderConfig.defaultEndpoint(protocol));
 		if (StringUtils.isAnyBlank(credential.getApiKey(), credential.getEndpoint())) {
 			throw new BizException(ErrorCode.INVALID_PARAMS.toError("credential_config", "api key and endpoint are required"));
 		}
@@ -175,7 +175,7 @@ public class ProviderController {
 
 		if (request.getCredentialConfig() != null) {
 			ModelCredential credential = buildCredentialConfig(request.getCredentialConfig());
-			if (!"openai".equals(protocol)) credential.setEndpoint(ModelProviderConfig.defaultEndpoint(protocol));
+			if (StringUtils.isBlank(credential.getEndpoint())) credential.setEndpoint(ModelProviderConfig.defaultEndpoint(protocol));
 			providerConfigInfo.setCredential(credential);
 		}
 
@@ -224,7 +224,7 @@ public class ProviderController {
         if (request.getCredentialConfig() != null) {
             ModelCredential credential = buildCredentialConfig(request.getCredentialConfig());
             String protocol = normalizeProtocol(request.getProtocol());
-            if (!"openai".equals(protocol)) credential.setEndpoint(ModelProviderConfig.defaultEndpoint(protocol));
+            if (StringUtils.isBlank(credential.getEndpoint())) credential.setEndpoint(ModelProviderConfig.defaultEndpoint(protocol));
             String suppliedKey = MapUtils.getString(request.getCredentialConfig(), "api_key");
             ModelCredential current = providerManager.getProviderDetail(provider, false).getCredential();
             if (current != null && (StringUtils.isBlank(suppliedKey)
