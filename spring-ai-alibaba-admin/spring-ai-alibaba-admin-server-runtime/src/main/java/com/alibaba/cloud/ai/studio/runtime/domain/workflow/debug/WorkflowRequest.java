@@ -48,6 +48,14 @@ public class WorkflowRequest implements Serializable {
     @JsonAlias("request_id")
     private String requestId;
 
+    @JsonProperty("traceId")
+    @JsonAlias("trace_id")
+    private String traceId;
+
+    @JsonProperty("autoGenerateName")
+    @JsonAlias("auto_generate_name")
+    private Boolean autoGenerateName;
+
     @JsonProperty("messages")
     private List<ChatMessage> messages;
 
@@ -65,6 +73,19 @@ public class WorkflowRequest implements Serializable {
     public WorkflowRequest(String appId, String conversationId, String requestId,
             List<ChatMessage> messages, Boolean stream, Boolean draft, List<TaskRunParam> inputParams) {
         this.appId = appId;
+        this.conversationId = conversationId;
+        this.requestId = requestId;
+        this.messages = messages;
+        this.stream = stream;
+        this.draft = draft;
+        this.inputParams = inputParams;
+    }
+
+    /** Backward-compatible constructor matching the original all-fields signature. */
+    public WorkflowRequest(String appId, String userId, String conversationId, String requestId,
+            List<ChatMessage> messages, Boolean stream, Boolean draft, List<TaskRunParam> inputParams) {
+        this.appId = appId;
+        this.userId = userId;
         this.conversationId = conversationId;
         this.requestId = requestId;
         this.messages = messages;

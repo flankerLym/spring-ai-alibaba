@@ -33,6 +33,7 @@ public final class DifyChatProtocolConverter {
     private final Set<String> startedNodes = new LinkedHashSet<>();
     private final StringBuilder answer = new StringBuilder();
     private final Map<String, StringBuilder> outputNodeContent = new LinkedHashMap<>();
+    private final Map<String, StringBuilder> nodeContent = new LinkedHashMap<>();
     private String lastOutputNodeId;
 
     private String taskId = UUID.randomUUID().toString();
@@ -52,6 +53,8 @@ public final class DifyChatProtocolConverter {
         result.setAppId(appId);
         result.setUserId(StringUtils.trimToNull(request.getUser()));
         result.setConversationId(conversationId);
+        result.setTraceId(StringUtils.trimToNull(request.getTraceId()));
+        result.setAutoGenerateName(request.getAutoGenerateName());
         result.setStream(isStreaming(request.getResponseMode()));
         result.setDraft(false);
 
@@ -135,6 +138,9 @@ public final class DifyChatProtocolConverter {
 
             String chunk = asText(response.getBusinessContent());
             String nodeType = StringUtils.defaultString(response.getNodeType()).toLowerCase();
+            if (!chunk.isEmpty()) {
+                nodeContent.computeIfAbsent(nodeId, ignored -> new StringBuilder()).append(chunk);
+            }
             if (!chunk.isEmpty() && "output".equals(nodeType)) {
                 outputNodeContent.computeIfAbsent(nodeId, ignored -> new StringBuilder()).append(chunk);
                 lastOutputNodeId = nodeId;
@@ -255,6 +261,20 @@ public final class DifyChatProtocolConverter {
         putIfNotNull(data, "title", response.getNodeName());
         data.put("index", indexFor(nodeId));
         data.put("inputs", Collections.emptyMap());
+
+        // WorkflowResponse exposes node content, not the full node variable map.
+        // Report observed content only; do not fabricate token usage or process data.
+        Map<String, Object> outputs = new LinkedHashMap<>();
+        StringBuilder nodeOutput = nodeContent.get(nodeId);
+        if (nodeOutput != null && nodeOutput.length() > 0) {
+            outputs.put("output", nodeOutput.toString());
+        }
+        data.put("outputs", outputs);
+        data.put("process_data", Collections.emptyMap());
+        if ("failed".equals(status)) {
+            putIfNotNull(data, "error", response.getBusinessErrorMessage());
+        }
+
         data.put("status", status);
         data.put("elapsed_time", Math.max(0L, now - nodeCreatedAt));
         data.put("created_at", nodeCreatedAt);
@@ -370,21 +390,25 @@ public final class DifyChatProtocolConverter {
     private static List<Map<String, Object>> normalizeFiles(List<Map<String, Object>> files) {
         List<Map<String, Object>> normalized = new ArrayList<>();
         for (Map<String, Object> file : files) {
-            if (file == null) continue;
-            Map<String, Object> value = new LinkedHashMap<>();
-            putIfNotNull(value, "type", file.get("type"));
-            putIfNotNull(value, "name", file.get("name"));
-            putIfNotNull(value, "mime_type", file.get("mime_type"));
-            putIfNotNull(value, "size", file.get("size"));
-            putIfNotNull(value, "url", file.get("url"));
-            String transferMethod = String.valueOf(file.getOrDefault("transfer_method", ""));
+            if (file == null) {
+                continue;
+            }
+
+            // Preserve the Dify file object and add aliases used by existing SAA nodes.
+            Map<String, Object> value = new LinkedHashMap<>(file);
+            Object name = file.get("name");
+            if (name == null) {
+                name = file.get("filename");
+            }
+            putIfNotNull(value, "name", name);
+
+            Object transferMethodValue = file.get("transfer_method");
+            String transferMethod = transferMethodValue == null ? "" : transferMethodValue.toString();
             if ("remote_url".equalsIgnoreCase(transferMethod)) {
                 value.put("source", "remoteUrl");
             }
             else if ("local_file".equalsIgnoreCase(transferMethod)) {
                 value.put("source", "localFile");
-                // The internal File model has no upload-file-id field. Keep the id for
-                // downstream custom nodes, but resolving it requires the upload API.
                 putIfNotNull(value, "upload_file_id", file.get("upload_file_id"));
             }
             normalized.add(value);
@@ -410,7 +434,7 @@ public final class DifyChatProtocolConverter {
     }
 
 
-    private static String difyErrorCode(String internalCode) {
+    public static String difyErrorCode(String internalCode) {
         String code = StringUtils.defaultString(internalCode).toLowerCase();
         if (code.contains("invalid_param") || code.contains("invalid_params")
                 || code.contains("missing_params")) {

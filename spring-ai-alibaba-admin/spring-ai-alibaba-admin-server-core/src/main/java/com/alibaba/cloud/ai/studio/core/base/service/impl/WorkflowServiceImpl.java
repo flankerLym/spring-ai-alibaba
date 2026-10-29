@@ -364,6 +364,10 @@ public class WorkflowServiceImpl implements WorkflowService {
 			WorkflowInputValidator.validateStart(workflowContext);
 			workflowContext.setTaskStatus(NodeStatusEnum.EXECUTING.getCode());
 			workflowContext.setRequestId(context.getRequestId());
+			if (StringUtils.isNotBlank(request.getTraceId())) {
+				workflowContext.setTraceId(request.getTraceId().trim());
+			}
+			workflowContext.setAutoGenerateConversationName(request.getAutoGenerateName());
 			workflowContext.setWorkspaceId(context.getWorkspaceId());
 			workflowContext.setConversationId(conversationId);
 			workflowContext.setInvokeSource(InvokeSourceEnum.api.getCode());

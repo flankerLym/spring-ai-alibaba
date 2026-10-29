@@ -38,6 +38,8 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /** Interceptor for API key authentication in OpenAPI requests. */
 @Component
@@ -58,20 +60,20 @@ public class ApiKeyAuthInterceptor implements HandlerInterceptor {
 
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
         if (authorization == null || !authorization.startsWith(ApiConstants.TOKEN_PREFIX)) {
-            returnAuthError(start, response, ErrorCode.INVALID_API_KEY);
+            returnAuthError(start, request, response, ErrorCode.INVALID_API_KEY);
             return false;
         }
 
         String token = authorization.replace(ApiConstants.TOKEN_PREFIX + " ", "");
         ApiKey apiKey = apiKeyService.getApiKey(token);
         if (apiKey == null) {
-            returnAuthError(start, response, ErrorCode.INVALID_API_KEY);
+            returnAuthError(start, request, response, ErrorCode.INVALID_API_KEY);
             return false;
         }
 
         Account account = accountService.getAccount(apiKey.getAccountId());
         if (account == null) {
-            returnAuthError(start, response, ErrorCode.INVALID_API_KEY);
+            returnAuthError(start, request, response, ErrorCode.INVALID_API_KEY);
             return false;
         }
 
@@ -91,13 +93,35 @@ public class ApiKeyAuthInterceptor implements HandlerInterceptor {
         return true;
     }
 
+    /** Backward-compatible entry point for existing callers. */
     public void returnAuthError(long start, HttpServletResponse response, ErrorCode errorCode) {
+        returnAuthError(start, null, response, errorCode);
+    }
+
+    public void returnAuthError(long start, HttpServletRequest request, HttpServletResponse response,
+            ErrorCode errorCode) {
         response.setContentType("application/json;charset=UTF-8");
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+
+        boolean difyCompletion = request != null && request.getRequestURI() != null
+                && request.getRequestURI().endsWith("/api/v1/dify/workflow/completions");
+        if (difyCompletion) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("status", HttpServletResponse.SC_UNAUTHORIZED);
+            result.put("code", "app_unavailable");
+            result.put("message", "A valid API key is required");
+            LogUtils.monitor("ApiAuthInterceptor", "apiKeyAuth", start, "unauthorized", "", result);
+            try {
+                response.getWriter().write(JsonUtils.toJson(result));
+            }
+            catch (IOException e) {
+                LogUtils.error("failed to write Dify auth error: {}", result, e);
+            }
+            return;
+        }
+
         OpenApiResult<String> result = OpenApiResult.error(IdGenerator.uuid(), errorCode);
-
         LogUtils.monitor("ApiAuthInterceptor", "apiKeyAuth", start, "unauthorized", "", result);
-
         try {
             response.getWriter().write(JsonUtils.toJson(result));
         }

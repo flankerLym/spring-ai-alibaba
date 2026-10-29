@@ -70,6 +70,9 @@ public class WorkflowContext extends RequestContext {
 	/** Conversation identifier */
 	private String conversationId;
 
+	/** Optional API compatibility flag; null preserves the native default. */
+	private Boolean autoGenerateConversationName;
+
 	/** Current status of the task */
 	private String taskStatus;
 

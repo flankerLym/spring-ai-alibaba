@@ -107,7 +107,9 @@ public class ConversationManager {
 		ConversationMessageEntity turn = newTurn(appId, conversationId, question,
 				context.getTraceId(), requestId, userId);
 		conversationMessageMapper.insert(turn);
-		fillConversationName(record, question);
+		if (!Boolean.FALSE.equals(context.getAutoGenerateConversationName())) {
+			fillConversationName(record, question);
+		}
 		// message_count 现在是问答轮数，写入提问时 +1，补写回答不再 +1。
 		updateConversation(record, invokeSource, userId, 1);
 	}
@@ -136,7 +138,9 @@ public class ConversationManager {
 			turn.setAnswer(answer);
 			turn.setStatus(SUCCESS);
 			conversationMessageMapper.insert(turn);
-			fillConversationName(record, turn.getQuestion());
+			if (!Boolean.FALSE.equals(context.getAutoGenerateConversationName())) {
+				fillConversationName(record, turn.getQuestion());
+			}
 			newTurns = 1;
 		}
 		else if (!SUCCESS.equals(turn.getStatus())) {

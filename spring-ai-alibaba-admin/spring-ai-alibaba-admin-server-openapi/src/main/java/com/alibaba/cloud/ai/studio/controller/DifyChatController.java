@@ -72,19 +72,35 @@ public class DifyChatController {
         String traceId = StringUtils.isNotBlank(traceIdHeader) ? traceIdHeader
                 : StringUtils.isNotBlank(traceIdQuery) ? traceIdQuery : request.getTraceId();
         if (StringUtils.isNotBlank(traceId)) {
-            context.setRequestId(traceId.trim());
+            request.setTraceId(traceId.trim());
         }
 
         Set<String> allowedAppIds = apiKeyService.getAccessibleAppIds(
                 context.getApiKeyId(), context.getWorkspaceId());
-        if (CollectionUtils.size(allowedAppIds) != 1) {
+        if (CollectionUtils.isEmpty(allowedAppIds)) {
             response.setStatus(400);
             return DifyChatProtocolConverter.errorResponse(400, "app_unavailable",
-                    "This API key must be bound to exactly one application");
+                    "The API key is not bound to an accessible application");
         }
 
-        // The app id always comes from API-key authorization, never from request JSON.
-        String appId = allowedAppIds.iterator().next();
+        String requestedWorkflowId = StringUtils.trimToNull(request.getWorkflowId());
+        String appId;
+        if (requestedWorkflowId != null && allowedAppIds.contains(requestedWorkflowId)) {
+            // workflow_id can select an app only when the API key authorizes it.
+            appId = requestedWorkflowId;
+        }
+        else if (allowedAppIds.size() == 1) {
+            // During Dify-to-SAA migration, workflow_id may still be the upstream Dify ID.
+            appId = allowedAppIds.iterator().next();
+        }
+        else {
+            response.setStatus(400);
+            return DifyChatProtocolConverter.errorResponse(400,
+                    requestedWorkflowId == null ? "app_unavailable" : "workflow_not_found",
+                    requestedWorkflowId == null
+                            ? "Bind the API key to one application or supply an accessible workflow_id"
+                            : "workflow_id does not identify an application accessible to this API key");
+        }
         if (StringUtils.isBlank(appId)) {
             response.setStatus(400);
             return DifyChatProtocolConverter.errorResponse(400, "app_unavailable",
