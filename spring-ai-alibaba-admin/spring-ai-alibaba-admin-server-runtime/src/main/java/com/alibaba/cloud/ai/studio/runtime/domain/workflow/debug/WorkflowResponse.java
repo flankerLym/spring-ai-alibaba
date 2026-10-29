@@ -70,6 +70,10 @@ public class WorkflowResponse implements Serializable {
 	@JsonIgnore
 	private Boolean nodeIsCompleted;
 
+	/** Selected final answer source for Dify streaming; internal only. */
+	@JsonIgnore
+	private Boolean finalAnswerNode;
+
 	/** Business workflow status. */
 	private WorkflowStatus status;
 

@@ -131,8 +131,12 @@ public class WorkflowContext extends RequestContext {
 	/** API key identifier */
 	private String apikeyId;
 
-	/** Flag indicating if streaming is enabled */
+	/** Flag indicating if streaming is enabled internally by the workflow engine. */
 	private boolean stream;
+
+	/** Whether the current HTTP request explicitly requested streaming output. */
+	@JsonIgnore
+	private boolean clientStreamingResponse;
 
 	/** End time of the workflow */
 	private long endTime;

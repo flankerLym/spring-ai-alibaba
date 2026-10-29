@@ -17,6 +17,8 @@
 package com.alibaba.cloud.ai.studio.core.base.service.impl;
 
 import com.alibaba.cloud.ai.studio.runtime.domain.app.ApplicationVersion;
+import com.alibaba.cloud.ai.studio.runtime.domain.workflow.Edge;
+import com.alibaba.cloud.ai.studio.runtime.domain.workflow.Node;
 import com.alibaba.cloud.ai.studio.runtime.domain.workflow.InvokeSourceEnum;
 import com.alibaba.cloud.ai.studio.runtime.domain.workflow.NodeResult;
 import com.alibaba.cloud.ai.studio.runtime.domain.workflow.NodeStatusEnum;
@@ -186,7 +188,10 @@ public class WorkflowServiceImpl implements WorkflowService {
 		WorkflowContext context = BeanCopierUtils.copy(requestContext, WorkflowContext.class);
 		context.setStream(true);
 
-		return requestFlux.doOnNext(request -> checkAndInitContext(context, request))
+		return requestFlux.doOnNext(request -> {
+			checkAndInitContext(context, request);
+			context.setClientStreamingResponse(Boolean.TRUE.equals(request.getStream()));
+		})
 			// request model
 			.flatMap(request -> streamExecute(context, request))
 			// read timeout
@@ -490,7 +495,8 @@ public class WorkflowServiceImpl implements WorkflowService {
 			AtomicInteger sequence = recmsgSeqIdMap.computeIfAbsent(nodeResult.getNodeId(),
 					key -> new AtomicInteger(0));
 			if (sendNodeMessage(sink, nodeResult, context.getRequestId(), context.getTaskId(),
-					context.getConversationId(), sequence.incrementAndGet(), incrementalContent)) {
+					context.getConversationId(), sequence.incrementAndGet(), incrementalContent,
+					isFinalAnswerNode(context, nodeResult))) {
 				markFirstResponse(context, firstResponse);
 			}
 		}
@@ -595,6 +601,51 @@ public class WorkflowServiceImpl implements WorkflowService {
 		return supportedType && supportedStatus;
 	}
 
+	/**
+	 * Select the answer source using the same precedence as blocking workflow calls:
+	 * explicit End nodes take priority; otherwise stream a unique terminal Output node.
+	 * Ambiguous Output graphs remain buffered and use the completion fallback.
+	 */
+	private Boolean isFinalAnswerNode(WorkflowContext context, NodeResult nodeResult) {
+		if (context == null || nodeResult == null) {
+			return null;
+		}
+
+		WorkflowConfig config = context.getWorkflowConfig();
+		if (config == null || CollectionUtils.isEmpty(config.getNodes())) {
+			return null;
+		}
+
+		boolean hasExplicitEndNode = config.getNodes().stream()
+			.filter(Objects::nonNull)
+			.anyMatch(node -> NodeTypeEnum.END.getCode().equalsIgnoreCase(node.getType()));
+		if (hasExplicitEndNode) {
+			if (NodeTypeEnum.END.getCode().equalsIgnoreCase(nodeResult.getNodeType())) {
+				return true;
+			}
+			if (NodeTypeEnum.OUTPUT.getCode().equalsIgnoreCase(nodeResult.getNodeType())) {
+				return false;
+			}
+			return null;
+		}
+
+		if (!NodeTypeEnum.OUTPUT.getCode().equalsIgnoreCase(nodeResult.getNodeType())) {
+			return null;
+		}
+
+		List<Node> terminalOutputNodes = config.getNodes().stream()
+			.filter(Objects::nonNull)
+			.filter(node -> NodeTypeEnum.OUTPUT.getCode().equalsIgnoreCase(node.getType()))
+			.filter(node -> CollectionUtils.isEmpty(config.getEdges()) || config.getEdges().stream()
+					.filter(Objects::nonNull)
+					.noneMatch(edge -> Objects.equals(edge.getSource(), node.getId())))
+			.collect(Collectors.toList());
+		if (terminalOutputNodes.size() != 1) {
+			return null;
+		}
+		return Objects.equals(terminalOutputNodes.get(0).getId(), nodeResult.getNodeId());
+	}
+
 	private void markFirstResponse(WorkflowContext context, AtomicBoolean firstResponse) {
 		if (firstResponse.compareAndSet(true, false)) {
 			context.setFirstResponseTime(System.currentTimeMillis());
@@ -694,6 +745,11 @@ public class WorkflowServiceImpl implements WorkflowService {
 
 	private boolean sendNodeMessage(Sinks.Many<WorkflowResponse> sink, NodeResult nodeResult, String requestId,
 			String taskId, String conversationId, int msgSeqId, String content) {
+		return sendNodeMessage(sink, nodeResult, requestId, taskId, conversationId, msgSeqId, content, null);
+	}
+
+	private boolean sendNodeMessage(Sinks.Many<WorkflowResponse> sink, NodeResult nodeResult, String requestId,
+			String taskId, String conversationId, int msgSeqId, String content, Boolean finalAnswerNode) {
 		WorkflowResponse response = new WorkflowResponse();
 		response.setRequestId(requestId);
 		response.setTaskId(taskId);
@@ -706,6 +762,7 @@ public class WorkflowServiceImpl implements WorkflowService {
 		response.setNodeStatus(nodeResult.getNodeStatus());
 		response.setStatus(WorkflowStatus.IN_PROGRESS);
 		response.setNodeIsCompleted(nodeResult.getNodeStatus().equals(NodeStatusEnum.SUCCESS.getCode()));
+		response.setFinalAnswerNode(finalAnswerNode);
 		response.setNodeMsgSeqId(msgSeqId);
 		return tryEmitNext(sink, response);
 	}

@@ -72,7 +72,8 @@ public class OutputExecuteProcessor extends AbstractExecuteProcessor {
 		NodeParam config = JsonUtils.fromMap(node.getConfig().getNodeParam(), NodeParam.class);
 
 		String textTemplate = config.getOutput();
-		boolean streamSwitch = config.getStreamSwitch() != null && config.getStreamSwitch();
+		boolean streamSwitch = (config.getStreamSwitch() != null && config.getStreamSwitch())
+				|| context.isClientStreamingResponse();
 		handleTextTemplate(graph, textTemplate, streamSwitch, nodeResult, context);
 		return nodeResult;
 	}

@@ -137,7 +137,8 @@ public class EndExecuteProcessor extends AbstractExecuteProcessor {
 			String result;
 			if (OutputType.TEXT.equals(type)) {
 				outputExecuteProcessor.handleTextTemplate(graph, nodeParam.getTextTemplate(),
-						BooleanUtils.isTrue(nodeParam.getStreamSwitch()), endNodeResult, context);
+						BooleanUtils.isTrue(nodeParam.getStreamSwitch()) || context.isClientStreamingResponse(),
+						endNodeResult, context);
 			}
 			else {
 				// JSON output type

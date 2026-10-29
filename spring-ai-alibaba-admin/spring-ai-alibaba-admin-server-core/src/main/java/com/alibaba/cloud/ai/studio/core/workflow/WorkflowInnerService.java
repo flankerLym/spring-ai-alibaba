@@ -210,7 +210,8 @@ public class WorkflowInnerService {
 			OutputExecuteProcessor.NodeParam config = JsonUtils.fromMap(node.getConfig().getNodeParam(),
 					OutputExecuteProcessor.NodeParam.class);
 
-			boolean streamSwitch = config.getStreamSwitch() == null ? false : config.getStreamSwitch();
+			boolean streamSwitch = (config.getStreamSwitch() != null && config.getStreamSwitch())
+				|| context.isClientStreamingResponse();
 			if (streamSwitch) {
 				Set<String> keys = VariableUtils.identifyVariableSetFromText(config.getOutput());
 				if (CollectionUtils.isNotEmpty(keys)) {
@@ -231,7 +232,8 @@ public class WorkflowInnerService {
 					EndExecuteProcessor.NodeParam.class);
 			String outputType = config.getOutputType();
 			if ("text".equals(outputType)) {
-				boolean streamSwitch = config.getStreamSwitch() != null && config.getStreamSwitch();
+				boolean streamSwitch = (config.getStreamSwitch() != null && config.getStreamSwitch())
+						|| context.isClientStreamingResponse();
 				if (streamSwitch) {
 					Set<String> keys = VariableUtils.identifyVariableSetFromText(config.getTextTemplate());
 					if (CollectionUtils.isNotEmpty(keys)) {

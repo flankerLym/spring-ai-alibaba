@@ -244,7 +244,7 @@ public class OpenApiSseTransport {
                     if (payloads != null) {
                         for (String payload : payloads) {
                             if (payload != null && !payload.isBlank()) {
-                                writeJson(context, emitter, closed, payload, "dify-workflow");
+                                writeJson(context, emitter, closed, " "+payload, "dify-workflow");
                             }
                         }
                     }

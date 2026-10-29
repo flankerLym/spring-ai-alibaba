@@ -35,6 +35,8 @@ public final class DifyChatProtocolConverter {
     private final Map<String, StringBuilder> outputNodeContent = new LinkedHashMap<>();
     private final Map<String, StringBuilder> nodeContent = new LinkedHashMap<>();
     private String lastOutputNodeId;
+    private String finalOutputNodeId;
+    private boolean finalEndNodeSeen;
 
     private String taskId = UUID.randomUUID().toString();
     private boolean workflowStartedSent;
@@ -105,6 +107,10 @@ public final class DifyChatProtocolConverter {
     public synchronized List<String> toStreamEvents(WorkflowResponse response) {
         List<Map<String, Object>> events = new ArrayList<>();
         refreshIdentifiers(response);
+        if (response != null && "end".equalsIgnoreCase(response.getNodeType())
+                && Boolean.TRUE.equals(response.getFinalAnswerNode())) {
+            finalEndNodeSeen = true;
+        }
 
         if (!workflowStartedSent) {
             events.add(workflowStartedEvent());
@@ -141,13 +147,24 @@ public final class DifyChatProtocolConverter {
             if (!chunk.isEmpty()) {
                 nodeContent.computeIfAbsent(nodeId, ignored -> new StringBuilder()).append(chunk);
             }
-            if (!chunk.isEmpty() && "output".equals(nodeType)) {
-                outputNodeContent.computeIfAbsent(nodeId, ignored -> new StringBuilder()).append(chunk);
-                lastOutputNodeId = nodeId;
+            if ("output".equals(nodeType)) {
+                if (Boolean.TRUE.equals(response.getFinalAnswerNode())) {
+                    finalOutputNodeId = nodeId;
+                }
+                if (!chunk.isEmpty()) {
+                    outputNodeContent.computeIfAbsent(nodeId, ignored -> new StringBuilder()).append(chunk);
+                    lastOutputNodeId = nodeId;
+                    if (Boolean.TRUE.equals(response.getFinalAnswerNode())) {
+                        answer.append(chunk);
+                        events.add(messageEvent(chunk));
+                    }
+                }
             }
             else if (!chunk.isEmpty() && "end".equals(nodeType)) {
-                answer.append(chunk);
-                events.add(messageEvent(chunk));
+                if (response.getFinalAnswerNode() == null || Boolean.TRUE.equals(response.getFinalAnswerNode())) {
+                    answer.append(chunk);
+                    events.add(messageEvent(chunk));
+                }
             }
             else if (!chunk.isEmpty() && !"input".equals(nodeType)) {
                 // Preserve user-visible content for node types that are not part of the
@@ -176,11 +193,14 @@ public final class DifyChatProtocolConverter {
             // The internal blocking aggregator prefers End-node content, otherwise the
             // last Output node. Buffer Output-node deltas until completion so a workflow
             // containing both Output and End nodes cannot duplicate the answer stream.
-            if (answer.length() == 0 && lastOutputNodeId != null) {
-                String fallbackAnswer = outputNodeContent.getOrDefault(lastOutputNodeId, new StringBuilder()).toString();
-                if (!fallbackAnswer.isEmpty()) {
-                    answer.append(fallbackAnswer);
-                    events.add(messageEvent(fallbackAnswer));
+            if (answer.length() == 0 && !finalEndNodeSeen) {
+                String fallbackNodeId = finalOutputNodeId != null ? finalOutputNodeId : lastOutputNodeId;
+                if (fallbackNodeId != null) {
+                    String fallbackAnswer = outputNodeContent.getOrDefault(fallbackNodeId, new StringBuilder()).toString();
+                    if (!fallbackAnswer.isEmpty()) {
+                        answer.append(fallbackAnswer);
+                        events.add(messageEvent(fallbackAnswer));
+                    }
                 }
             }
             events.add(workflowFinishedEvent("succeeded", null));
