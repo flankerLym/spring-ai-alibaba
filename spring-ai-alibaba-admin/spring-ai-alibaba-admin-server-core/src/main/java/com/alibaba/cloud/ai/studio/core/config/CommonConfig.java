@@ -107,6 +107,6 @@ public class CommonConfig {
 	private Set<String> tryCatchSupportNodeTypeSet = Sets.newHashSet(SCRIPT.getCode(), API.getCode(), PLUGIN.getCode(),
 			MCP.getCode());
 
-	private String workflowRefreshInterval = "{\"console\":3000,\"async\":5000}}";
+	private String workflowRefreshInterval = "{\"api\":3000,\"console\":3000,\"async\":5000}}";
 
 }

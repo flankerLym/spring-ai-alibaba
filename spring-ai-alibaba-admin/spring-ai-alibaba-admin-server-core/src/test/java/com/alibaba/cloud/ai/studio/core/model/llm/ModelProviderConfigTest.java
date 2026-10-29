@@ -44,6 +44,16 @@ class ModelProviderConfigTest {
     }
 
     @Test
+    void dashScopeNativeBaseUrlAcceptsWorkspaceApiRoot() {
+        String workspaceRoot = "https://ws.example.cn-beijing.maas.aliyuncs.com";
+        assertEquals(workspaceRoot, ModelFactory.dashScopeBaseUrl(workspaceRoot + "/api/v1"));
+        assertEquals(workspaceRoot, ModelFactory.dashScopeBaseUrl(workspaceRoot + "/api/v1/"));
+        assertEquals("https://dashscope.aliyuncs.com",
+                ModelFactory.dashScopeBaseUrl("https://dashscope.aliyuncs.com/compatible-mode"));
+        assertEquals("https://dashscope.aliyuncs.com", ModelFactory.dashScopeBaseUrl(null));
+    }
+
+    @Test
     void providerDefaultsAndLegacyAliases() {
         assertEquals("openai", ModelProviderConfig.normalize(null));
         assertEquals("openai", ModelProviderConfig.normalize(""));

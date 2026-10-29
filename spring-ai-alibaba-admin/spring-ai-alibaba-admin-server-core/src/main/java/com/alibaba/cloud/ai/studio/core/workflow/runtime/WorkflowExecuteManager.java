@@ -316,7 +316,7 @@ public class WorkflowExecuteManager {
 					int currentThreads = executor.getActiveCount();
 					long taskCount = executor.getTaskCount();
 					long completedTaskCount = executor.getCompletedTaskCount();
-					log.info("ThreadId:{} taskId:{} activeCount:{} taskCount:{} completedTaskCount:{} ",
+					log.debug("ThreadId:{} taskId:{} activeCount:{} taskCount:{} completedTaskCount:{} ",
 							Thread.currentThread().getId(), context.getTaskId(), currentThreads, taskCount,
 							completedTaskCount);
 				}
@@ -380,7 +380,7 @@ public class WorkflowExecuteManager {
 			for (String node : graph.vertexSet()) {
 				boolean b = workflowInnerService.canExecute(graph, node, context);
 				if (b && !taskSet.contains(node)) {
-					log.info("nodeAnalysis canExecute:{}  taskID:{}  result:{}", node, context.getTaskId(), b);
+					log.debug("nodeAnalysis canExecute:{}  taskID:{}  result:{}", node, context.getTaskId(), b);
 					taskQueue.add(node);
 					taskSet.add(node);
 				}
@@ -751,7 +751,7 @@ public class WorkflowExecuteManager {
 				context.getLock().unlock();
 			}
 
-			log.info("ThreadId:{} requestId:{} taskId:{} executeNodeWork monitor nodeId :{} NodeResultMap:{}",
+			log.debug("ThreadId:{} requestId:{} taskId:{} executeNodeWork monitor nodeId :{} NodeResultMap:{}",
 					Thread.currentThread().getId(), context.getRequestId(), context.getTaskId(), nodeId,
 					context.getNodeResultMap());
 

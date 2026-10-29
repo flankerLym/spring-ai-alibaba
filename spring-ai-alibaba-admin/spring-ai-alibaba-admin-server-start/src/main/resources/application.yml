@@ -3,7 +3,8 @@ server:
     enabled: true
     mime-types: text/html,text/xml,text/plain,text/css,text/javascript
     min-response-size: 2048
-  port: ${SAA_SERVER_PORT:18999}
+  port: ${SAA_SERVER_PORT:8080}
+#  port: ${SAA_SERVER_PORT:18999}
 nacos:
   # 支持通过环境变量 NACOS_SERVER_ADDR 覆盖，默认值在各个 profile 中定义
   server-addr: ${SAA_NACOS_SERVER_ADDR}
@@ -11,6 +12,9 @@ management:
   tracing:
     sampling:
       probability: 1.0
+  metrics:
+    enable:
+      reactor.netty.connection.provider: true
   otlp:
     tracing:
       export:
@@ -149,6 +153,24 @@ logging:
 workflow:
   failure-notification:
     dingtalk:
-      enabled: ${WORKFLOW_FAILURE_DINGTALK_ENABLED:true}
+      enabled: ${WORKFLOW_FAILURE_DINGTALK_ENABLED:false}
       webhook-url: "${DINGTALK_WEBHOOK_URL:https://oapi.dingtalk.com/robot/send?access_token=831f223374eba35c95c5b1e4d3352f0f5a1d8c231118d7546f23577c70e49824}"
       secret: "${DINGTALK_WEBHOOK_SECRET:}"
+
+app:
+  dashscope:
+    http-client:
+      pool:
+        max-connections: 200          # 最大连接数，根据并发量调整
+        max-idle-time: 20s            # 空闲连接最大存活时间 (必须 < DashScope/SLB 的 keep-alive 超时，通常为 30-60s)
+        max-life-time: 60s            # 连接最大生命周期，防止长期复用被服务端 RST
+        evict-interval: 10s           # 后台定期扫描并清除无效连接的间隔
+        acquire-timeout: 5s           # 从连接池获取连接的超时时间
+      timeout:
+        connect: 5s                   # TCP 握手超时
+        response: 120s                # 响应超时 (大模型生成较慢，需设置较长)
+      retry:
+        max-attempts: 3               # 最大重试次数
+        backoff-delay: 500ms          # 初始退避延迟
+        backoff-multiplier: 2.0       # 退避乘数
+

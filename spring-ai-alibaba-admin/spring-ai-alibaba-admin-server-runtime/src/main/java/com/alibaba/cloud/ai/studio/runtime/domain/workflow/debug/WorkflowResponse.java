@@ -53,19 +53,18 @@ public class WorkflowResponse implements Serializable {
 	private String taskId;
 
 	/** Internal node diagnostics. */
-	@JsonIgnore
 	private String nodeId;
 
-	@JsonIgnore
+
 	private String nodeName;
 
-	@JsonIgnore
+
 	private String nodeType;
 
-	@JsonIgnore
+
 	private String nodeStatus;
 
-	@JsonIgnore
+
 	private Integer nodeMsgSeqId;
 
 	@JsonIgnore

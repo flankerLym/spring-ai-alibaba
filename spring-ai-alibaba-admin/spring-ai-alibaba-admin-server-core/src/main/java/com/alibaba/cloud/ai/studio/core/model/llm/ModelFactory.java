@@ -451,7 +451,9 @@ public class ModelFactory {
 
     /** Migrate the previously saved compatible-mode URL to the native DashScope root. */
     public static String dashScopeBaseUrl(String endpoint) {
-        String value = endpoint.replaceAll("/+$", "");
-        return value.replaceFirst("/compatible-mode(?:/v1)?$", "");
+        String value = StringUtils.defaultIfBlank(endpoint, ModelProviderConfig.defaultEndpoint("dashscope"))
+                .trim().replaceAll("/+$", "");
+        value = value.replaceFirst("/compatible-mode(?:/v1)?$", "");
+        return value.replaceFirst("/api/v1$", "");
     }
 }

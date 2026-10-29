@@ -152,17 +152,14 @@ public abstract class AbstractExecuteProcessor implements ExecuteProcessor {
 			catch (Exception e) {
 				nodeResult = NodeResult.error(node, e.getMessage());
 			}
-			if (context.isNodeTimedOut(node.getId())) return;
 			// Handle retry on failure
 			nodeResult = handleRetry(graph, node, context, nodeResult);
-			if (context.isNodeTimedOut(node.getId())) return;
 			// Handle exception handling
 			nodeResult = handleTryCatch(graph, node, context, nodeResult);
-			if (context.isNodeTimedOut(node.getId())) return;
 			handleVariables(graph, node, context, nodeResult);
 			handleNodeResult(graph, node, context, nodeResult, start);
 			// Handle node's short-term memory at child node dimension
-			if (!context.isNodeTimedOut(node.getId())) handleSelfShortTermMemory(node, context, nodeResult);
+			handleSelfShortTermMemory(node, context, nodeResult);
 		}
 		catch (Exception e) {
 			// Node execution error, save execution result and record error information

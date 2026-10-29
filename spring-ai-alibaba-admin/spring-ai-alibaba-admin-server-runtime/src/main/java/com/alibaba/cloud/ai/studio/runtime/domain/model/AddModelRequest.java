@@ -51,4 +51,8 @@ public class AddModelRequest {
 	 */
 	private String icon;
 
+	/** Volcengine Ark endpoint ID bound to this model. */
+	@JsonProperty("endpoint_id")
+	private String endpointId;
+
 }

@@ -448,6 +448,7 @@ const ModelServiceDetail: React.FC = () => {
       <ModelConfigModal
         open={isModelConfigModalVisible}
         providerId={id || ''}
+        providerProtocol={provider?.protocol}
         existingModelIds={models.map((item) => item.model_id)}
         onCancel={() => setIsModelConfigModalVisible(false)}
         onOk={handleModelConfigSubmit}

@@ -163,7 +163,7 @@ public class LLMExecuteProcessor extends AbstractExecuteProcessor {
 		inputObj.put("params", paramMap);
 		String inputJson = JsonUtils.toJson(decorateInput(inputObj));
 
-		log.info(
+		log.debug(
 				context.getRequestId() + " LLMExecuteProcessor requestMessages : " + JsonUtils.toJson(requestMessages));
 		ModelTmpResponseContent tmpResponseContent = new ModelTmpResponseContent();
 		Flux<AgentResponse> stream = modelExecuteManager.stream(modelConfig.getProvider(), modelConfig.getModelId(),
