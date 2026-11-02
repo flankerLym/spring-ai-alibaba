@@ -6,10 +6,11 @@ import type { IProviderConfigInfo } from '@/types/modelService';
 import { AlertDialog, Button, Form, Input, message } from '@spark-ai/design';
 import React, { useEffect, useState } from 'react';
 import { Radio, Space } from 'antd';
-import { PROVIDER_TYPES, providerType } from '../../providerTypes';
+import { PROVIDER_TYPES } from '../../providerTypes';
 import { useNavigate } from 'react-router-dom';
 import { ProviderAvatar } from '../ProviderAvatar';
 import styles from './index.module.less';
+
 interface ProviderInfoFormProps {
   provider: IProviderConfigInfo | null;
   providerId: string;
@@ -78,6 +79,11 @@ const ProviderInfoForm: React.FC<ProviderInfoFormProps> = ({
   const [saving, setSaving] = useState(false);
   const navigate = useNavigate();
   const isPreset = provider?.source === 'preset';
+  const currentProtocol = (provider?.protocol || '').trim().toLowerCase();
+  const currentProviderType = PROVIDER_TYPES.find(
+    (item) => item.value === currentProtocol,
+  );
+  const hasCurrentProtocol = !!currentProviderType;
 
   useEffect(() => {
     initForm();
@@ -86,10 +92,14 @@ const ProviderInfoForm: React.FC<ProviderInfoFormProps> = ({
   const initForm = () => {
     if (!provider) return;
     form.setFieldsValue({
-      name: provider?.name,
-      protocol: providerType(provider?.protocol).value,
-      apiKey: provider?.credential?.api_key || '',
-      endpoint: provider?.credential?.endpoint || providerType(provider?.protocol).endpoint,
+      name: provider.name,
+      // Use the provider's saved protocol directly so the edit form always
+      // displays the persisted type instead of silently falling back to OpenAI.
+      protocol: (provider.protocol || '').trim().toLowerCase(),
+      apiKey: provider.credential?.api_key || '',
+      endpoint:
+        provider.credential?.endpoint ||
+        currentProviderType?.endpoint || '',
     });
   };
 
@@ -98,16 +108,20 @@ const ProviderInfoForm: React.FC<ProviderInfoFormProps> = ({
       const values = await form.validateFields();
       if (!providerId || !provider) return;
       setSaving(true);
+
       const params = {
         ...provider,
         name: values.name,
-        protocol: values.protocol,
+        // Provider type is immutable after creation. Always submit the
+        // persisted value; never trust a form value to change it.
+        protocol: provider.protocol,
         credential_config: {
           ...provider.credential,
           api_key: values.apiKey,
           endpoint: values.endpoint,
         },
       };
+
       await testProvider({ ...params, provider_id: providerId });
       const response = await updateProvider(providerId, params);
       if (response) {
@@ -120,7 +134,10 @@ const ProviderInfoForm: React.FC<ProviderInfoFormProps> = ({
         onRefresh?.();
       }
     } catch (error: any) {
-      message.error(error?.response?.data?.message || 'API-KEY 或 API URL 验证失败，请检查后重新输入');
+      message.error(
+        error?.response?.data?.message ||
+          'API-KEY 或 API URL 验证失败，请检查后重新输入',
+      );
     } finally {
       setSaving(false);
     }
@@ -216,17 +233,28 @@ const ProviderInfoForm: React.FC<ProviderInfoFormProps> = ({
               />
             </Form.Item>
           </div>
-          <Form.Item name="protocol" label="服务商类型" rules={[{ required: true }]}>
-            <Radio.Group onChange={(event) => {
-              form.setFieldValue('endpoint', providerType(event.target.value).endpoint);
-            }}>
+
+          <Form.Item
+            name="protocol"
+            label="服务商类型"
+            rules={[{ required: true }]}
+          >
+            <Radio.Group disabled>
               <Space wrap>
                 {PROVIDER_TYPES.map((item) => (
-                  <Radio key={item.value} value={item.value}>{item.label}</Radio>
+                  <Radio key={item.value} value={item.value}>
+                    {item.label}
+                  </Radio>
                 ))}
+                {currentProtocol && !hasCurrentProtocol && (
+                  <Radio value={currentProtocol}>
+                    {provider?.protocol}
+                  </Radio>
+                )}
               </Space>
             </Radio.Group>
           </Form.Item>
+
           <Form.Item
             name="apiKey"
             label="API-KEY"

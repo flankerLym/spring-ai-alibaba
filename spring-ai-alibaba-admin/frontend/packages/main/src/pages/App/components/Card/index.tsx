@@ -94,14 +94,18 @@ const AppCard: React.FC<AppCardProps> = ({
           content: app_id,
         },
       ]}
-      onClick={() => onClickAction('click')}
+      // The card surface is intentionally not clickable. Only the explicit
+      // Edit button below navigates to the application editor.
       footerDescNode={<Tag color="mauve">{typeLabelMap[type]}</Tag>}
       footerOperateNode={
         <>
           <Button
             type="primary"
             className="flex-1"
-            onClick={() => onClickAction('edit')}
+            onClick={(event) => {
+              event.stopPropagation();
+              onClickAction('edit');
+            }}
           >
             {$i18n.get({
               id: 'main.pages.App.components.Card.index.edit',
@@ -117,7 +121,9 @@ const AppCard: React.FC<AppCardProps> = ({
               items: menuItems || defaultMenuItems,
             }}
           >
-            <IconButton shape="default" icon="spark-more-line" />
+            <div onClick={(event) => event.stopPropagation()}>
+              <IconButton shape="default" icon="spark-more-line" />
+            </div>
           </Dropdown>
         </>
       }
