@@ -113,7 +113,9 @@ const AppCard: React.FC<AppCardProps> = ({
             })}
           </Button>
           <Dropdown
-            getPopupContainer={(ele) => ele}
+            trigger={['click']}
+            placement="bottomRight"
+            getPopupContainer={() => document.body}
             menu={{
               onClick: (e) => {
                 onClickAction(e.key);

@@ -2,16 +2,6 @@
  * Copyright 2024-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
 package com.alibaba.cloud.ai.studio.core.base.manager;
 
@@ -40,30 +30,24 @@ import org.springframework.util.CollectionUtils;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Model execution manager for handling chat model interactions.
- */
 @Slf4j
 @Component
 public class ModelExecuteManager {
 
-    @Resource
-    private ModelFactory modelFactory;
+    @Resource private ModelFactory modelFactory;
 
     @WorkflowModelCall
     public Flux<AgentResponse> stream(String provider, String modelId, Map<String, Object> parameterMap,
                                       List<Message> messages) {
         ChatModel chatModel = modelFactory.getChatModel(provider);
 
-        // DashScope/Qwen: select the API route from the model metadata snapshot
-        // saved with this workflow, never from a hard-coded model-name list.
-        // All non-DashScope providers continue through the original path below.
         if (chatModel instanceof NativeOptionsChatModel nativeModel
-                && nativeModel.usesProvider("dashscope")
-                && parameterMap != null) {
+                && nativeModel.usesProvider("dashscope") && parameterMap != null) {
             Object rawMetadata = parameterMap.get("__model_metadata__");
             if (rawMetadata instanceof Map<?, ?> metadata
                     && "dashscope".equalsIgnoreCase(String.valueOf(metadata.get("protocol")))) {
@@ -81,8 +65,6 @@ public class ModelExecuteManager {
             }
         }
 
-        // Doubao only: use the endpoint ID saved in this workflow's model metadata.
-        // All other providers keep the original model ID and parameter assembly path.
         String requestModelId = modelId;
         if (chatModel instanceof NativeOptionsChatModel nativeModel
                 && nativeModel.usesProvider("doubao") && parameterMap != null) {
@@ -91,77 +73,80 @@ public class ModelExecuteManager {
                 Object savedModelId = metadata.get("model_id");
                 Object savedEndpointId = metadata.get("endpoint_id");
                 boolean sameModel = savedModelId == null || modelId.equals(String.valueOf(savedModelId));
-                if (sameModel && savedEndpointId != null
-                        && StringUtils.isNotBlank(String.valueOf(savedEndpointId))) {
+                if (sameModel && savedEndpointId != null && StringUtils.isNotBlank(String.valueOf(savedEndpointId))) {
                     requestModelId = String.valueOf(savedEndpointId).trim();
                 }
             }
         }
 
-        OpenAiChatOptions.Builder chatOptionsBuilder = OpenAiChatOptions.builder().model(requestModelId);
-        if (parameterMap != null) {
-            if (parameterMap.get("temperate") != null && parameterMap.get("temperate") instanceof Double) {
-                chatOptionsBuilder.temperature((Double) parameterMap.get("temperate"));
-            }
-            if (parameterMap.get("max_tokens") != null && parameterMap.get("max_tokens") instanceof Integer) {
-                chatOptionsBuilder.maxTokens((Integer) parameterMap.get("max_tokens"));
-            }
-            if (parameterMap.get("top_p") != null && parameterMap.get("top_p") instanceof Double) {
-                chatOptionsBuilder.topP((Double) parameterMap.get("top_p"));
-            }
-            if (parameterMap.get("presence_penalty") != null
-                    && parameterMap.get("presence_penalty") instanceof Double) {
-                chatOptionsBuilder.presencePenalty((Double) parameterMap.get("presence_penalty"));
-            }
-            if (parameterMap.get("frequency_penalty") != null
-                    && parameterMap.get("frequency_penalty") instanceof Double) {
-                chatOptionsBuilder.frequencyPenalty((Double) parameterMap.get("frequency_penalty"));
-            }
-            if (parameterMap.get("max_tokens") != null && parameterMap.get("max_tokens") instanceof Integer) {
-                chatOptionsBuilder.maxTokens((Integer) parameterMap.get("max_tokens"));
-            }
-            if (parameterMap.get("seed") != null && parameterMap.get("seed") instanceof Integer) {
-                chatOptionsBuilder.seed((Integer) parameterMap.get("seed"));
-            }
-            if (parameterMap.get("response_format") != null
-                    && parameterMap.get("response_format") instanceof String) {
-                chatOptionsBuilder.responseFormat(ResponseFormat.builder()
-                        .type(ResponseFormat.Type.valueOf(
-                                parameterMap.get("response_format").toString().toUpperCase()))
+        Map<String, Object> params = parameterMap == null ? Map.of() : parameterMap;
+        OpenAiChatOptions.Builder builder = OpenAiChatOptions.builder().model(requestModelId);
+
+        Number temperature = numberParam(params, "temperature");
+        if (temperature == null) temperature = numberParam(params, "temperate"); // legacy typo compatibility
+        if (temperature != null) builder.temperature(temperature.doubleValue());
+
+        Number maxTokens = numberParam(params, "max_tokens");
+        if (maxTokens != null) builder.maxTokens(maxTokens.intValue());
+
+        Number topP = numberParam(params, "top_p");
+        if (topP != null) builder.topP(topP.doubleValue());
+
+        Number presencePenalty = numberParam(params, "presence_penalty");
+        if (presencePenalty != null) builder.presencePenalty(presencePenalty.doubleValue());
+
+        Number frequencyPenalty = numberParam(params, "frequency_penalty");
+        if (frequencyPenalty != null) builder.frequencyPenalty(frequencyPenalty.doubleValue());
+
+        Number seed = numberParam(params, "seed");
+        if (seed != null) builder.seed(seed.intValue());
+
+
+        Object responseFormat = params.get("response_format");
+        if (responseFormat != null) {
+            String format = responseFormat instanceof Map<?, ?> map
+                    ? String.valueOf(map.get("type") == null ? "text" : map.get("type")) : String.valueOf(responseFormat);
+            if ("json".equalsIgnoreCase(format)) format = "json_object";
+            if ("text".equalsIgnoreCase(format) || "json_object".equalsIgnoreCase(format)) {
+                builder.responseFormat(ResponseFormat.builder()
+                        .type(ResponseFormat.Type.valueOf(format.toUpperCase()))
                         .build());
             }
         }
-        chatOptionsBuilder.streamUsage(true);
 
-        ChatOptions chatOptions = chatOptionsBuilder.build();
-        Prompt prompt = new Prompt(messages, chatOptions);
-        // Keep the original streaming/fallback behavior for all existing providers.
+        // Model-specific fields not represented by the portable ChatOptions API
+        // are forwarded through Spring AI's OpenAI-compatible extra_body mechanism.
+        // The DashScope native route returned above and does not use this branch.
+        Map<String, Object> extraBody = new LinkedHashMap<>();
+        List<String> standardKeys = List.of("temperature", "temperate", "max_tokens", "top_p",
+                "presence_penalty", "frequency_penalty", "seed", "stop", "response_format",
+                "__model_metadata__");
+        params.forEach((key, value) -> {
+            if (!standardKeys.contains(key) && !key.startsWith("__") && value != null) {
+                extraBody.put(key, value);
+            }
+        });
+        if (!extraBody.isEmpty()) builder.extraBody(extraBody);
+
+        builder.streamUsage(true);
+        Prompt prompt = new Prompt(messages, builder.build());
         Flux<AgentResponse> stream = chatModel.stream(prompt)
                 .concatMap(response -> convertResponse(response).flux());
-
         return stream.switchIfEmpty(Flux.defer(() -> convertResponse(chatModel.call(prompt))
                 .switchIfEmpty(Mono.error(new IllegalStateException("模型未返回有效回复")))
                 .flux()));
     }
 
-    /**
-     * Uses the endpoint type stored in the selected DashScope model's metadata. The
-     * native options are isolated to DashScope and do not alter other providers.
-     */
     private Flux<AgentResponse> streamDashScopeByEndpoint(ChatModel chatModel, String modelId,
-                                                        Map<String, Object> parameterMap,
-                                                        List<Message> messages, String endpointType) {
+                                                           Map<String, Object> parameterMap,
+                                                           List<Message> messages, String endpointType) {
         Map<String, Object> params = parameterMap == null ? Map.of() : parameterMap;
         DashScopeChatOptions.DashscopeChatOptionsBuilder builder = DashScopeChatOptions.builder()
-                .withModel(modelId)
-                .withStream(true)
-                .withIncrementalOutput(true)
+                .withModel(modelId).withStream(true).withIncrementalOutput(true)
                 .withMultiModel("multimodal-generation".equalsIgnoreCase(endpointType));
 
         Number temperature = numberParam(params, "temperature");
-        if (temperature == null) {
-            temperature = numberParam(params, "temperate"); // Keep compatibility with the legacy key.
-        }
+        if (temperature == null) temperature = numberParam(params, "temperate");
         if (temperature != null) builder.withTemperature(temperature.doubleValue());
 
         Number maxTokens = numberParam(params, "max_tokens");
@@ -194,51 +179,44 @@ public class ModelExecuteManager {
         Object value = params.get(key);
         if (value instanceof Number number) return number;
         if (value instanceof String text && !text.isBlank()) {
-            try {
-                return Double.valueOf(text);
-            }
-            catch (NumberFormatException ignored) {
-                return null;
-            }
+            try { return Double.valueOf(text); }
+            catch (NumberFormatException ignored) { return null; }
         }
         return null;
     }
 
-    protected Mono<AgentResponse> convertResponse(ChatResponse chatResponse) {
-        if (chatResponse == null) {
-            return Mono.empty();
+    private List<String> stringList(Object value) {
+        List<String> result = new ArrayList<>();
+        if (value instanceof Iterable<?> values) {
+            for (Object item : values) if (item != null && !String.valueOf(item).isBlank())
+                result.add(String.valueOf(item));
+        } else if (value instanceof String text && !text.isBlank()) {
+            for (String item : text.split("[,\\n]")) if (!item.isBlank()) result.add(item.trim());
         }
+        return result;
+    }
+
+    protected Mono<AgentResponse> convertResponse(ChatResponse chatResponse) {
+        if (chatResponse == null) return Mono.empty();
 
         org.springframework.ai.chat.metadata.Usage usage = chatResponse.getMetadata().getUsage();
-
         AgentResponse.AgentResponseBuilder responseBuilder = AgentResponse.builder()
                 .model(chatResponse.getMetadata().getModel())
                 .providerResponseId(chatResponse.getMetadata().getId())
-                .usage(Usage.builder()
-                        .promptTokens(usage.getPromptTokens())
-                        .completionTokens(usage.getCompletionTokens())
-                        .totalTokens(usage.getTotalTokens())
-                        .build());
+                .usage(Usage.builder().promptTokens(usage.getPromptTokens())
+                        .completionTokens(usage.getCompletionTokens()).totalTokens(usage.getTotalTokens()).build());
 
         if (!CollectionUtils.isEmpty(chatResponse.getResults())) {
             Generation generation = chatResponse.getResults().get(0);
             String finishReason = generation.getMetadata().getFinishReason();
             AgentStatus status = AgentStatus.toAgentStatus(finishReason);
-
             Object reasoningContentObj = generation.getOutput().getMetadata().get("reasoningContent");
             String reasoningContent = reasoningContentObj == null ? null : String.valueOf(reasoningContentObj);
             reasoningContent = StringUtils.isBlank(reasoningContent) ? null : reasoningContent;
-
-            ChatMessage.ChatMessageBuilder messageBuilder = ChatMessage.builder()
-                    .role(MessageRole.ASSISTANT)
-                    .content(generation.getOutput().getText())
-                    .reasoningContent(reasoningContent);
-
-            responseBuilder.status(status).message(messageBuilder.build());
-        }
-        else {
-            return Mono.empty();
-        }
+            ChatMessage message = ChatMessage.builder().role(MessageRole.ASSISTANT)
+                    .content(generation.getOutput().getText()).reasoningContent(reasoningContent).build();
+            responseBuilder.status(status).message(message);
+        } else return Mono.empty();
 
         return Mono.just(responseBuilder.build());
     }

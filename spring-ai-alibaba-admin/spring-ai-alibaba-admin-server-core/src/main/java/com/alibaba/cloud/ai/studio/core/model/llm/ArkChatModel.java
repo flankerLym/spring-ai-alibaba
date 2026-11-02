@@ -2,16 +2,6 @@
  * Copyright 2024-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
 package com.alibaba.cloud.ai.studio.core.model.llm;
 
@@ -118,7 +108,6 @@ public final class ArkChatModel implements ChatModel {
                 new DefaultChatModelObservationConvention(), () -> context, registry);
     }
 
-    //转换层
     ChatCompletionRequest request(Prompt prompt, boolean stream) {
         ChatOptions options = prompt.getOptions();
         if (options == null || options.getModel() == null || options.getModel().isBlank()) {
@@ -142,9 +131,11 @@ public final class ArkChatModel implements ChatModel {
                 throw new IllegalArgumentException("Ark adapter requires n=1");
             }
             if (legacy.getExtraBody() != null) {
-                for (String key : List.of("thinking", "reasoning_effort", "repetition_penalty")) {
-                    if (!"thinking".equals(key)) put(body, key, legacy.getExtraBody().get(key));
-                }
+                // Forward model-specific parameters from the selected model's saved
+                // parameter schema, not only a hard-coded list of vendor options.
+                legacy.getExtraBody().forEach((key, value) -> {
+                    if (!"thinking".equals(key)) put(body, key, value);
+                });
             }
         }
         if (options instanceof ToolCallingChatOptions toolOptions) {
@@ -267,17 +258,15 @@ public final class ArkChatModel implements ChatModel {
             generations.add(new Generation(output, ChatGenerationMetadata.builder()
                     .finishReason(choice.path("finish_reason").asText("")).build()));
         }
-        // Usage-only SDK chunks still reach the existing token/trace conversion path.
         if (generations.isEmpty()) generations.add(new Generation(new AssistantMessage("")));
         JsonNode usage = root.path("usage");
         ChatResponseMetadata metadata = ChatResponseMetadata.builder().id(root.path("id").asText(""))
-                .model(root.path("model").asText(""))
+                .model(root.path("model").asText())
                 .usage(new DefaultUsage(usage.path("prompt_tokens").asInt(),
                         usage.path("completion_tokens").asInt(), usage.path("total_tokens").asInt())).build();
         return new ChatResponse(generations, metadata);
     }
 
-    /** Each subscription owns its accumulator. Tool arguments may span many SDK chunks. */
     private static final class StreamState {
         private final StringBuilder text = new StringBuilder();
         private final StringBuilder reasoning = new StringBuilder();
@@ -303,7 +292,6 @@ public final class ArkChatModel implements ChatModel {
                     append(parts, "arguments", tool.path("function").path("arguments"));
                 }
             }
-            // Partial tool JSON must not be executed or emitted as complete calls.
             JsonNode clean = chunk.deepCopy();
             for (JsonNode choice : clean.path("choices")) {
                 JsonNode message = choice.has("message") ? choice.path("message") : choice.path("delta");

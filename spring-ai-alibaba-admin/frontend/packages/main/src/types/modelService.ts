@@ -1,6 +1,5 @@
 import $i18n from '@/i18n';
 
-// Basic provider information interface
 export interface IProvider {
   name: string;
   provider: string;
@@ -15,7 +14,6 @@ export interface IProvider {
   gmt_modified?: string;
 }
 
-// Parameters for creating a provider
 export interface ICreateProviderParams {
   name: string;
   description?: string;
@@ -25,12 +23,10 @@ export interface ICreateProviderParams {
   credential_config?: Record<string, any>;
 }
 
-// Parameters for querying provider list
 export interface IListProvidersParams {
   name?: string;
 }
 
-// Provider configuration information
 export interface IProviderConfigInfo {
   name: string;
   provider: string;
@@ -43,7 +39,6 @@ export interface IProviderConfigInfo {
   source?: 'preset' | 'custom';
 }
 
-// Basic model information
 export interface IModel {
   model_id: string;
   name: string;
@@ -62,7 +57,6 @@ export interface IAvailableModel {
   tags: string[];
 }
 
-// Model configuration information
 export interface IModelConfigInfo {
   model_id: string;
   tags?: string[];
@@ -74,7 +68,6 @@ export interface IModelConfigInfo {
   endpoint_id?: string;
 }
 
-// Parameters for creating a model
 export interface ICreateModelParams {
   model_id?: string;
   name: string;
@@ -86,7 +79,6 @@ export interface ICreateModelParams {
   endpoint_id?: string;
 }
 
-// Parameters for updating a model
 export interface IUpdateModelParams {
   name: string;
   icon?: string;
@@ -95,31 +87,6 @@ export interface IUpdateModelParams {
   endpoint_id?: string;
 }
 
-// Model input parameter rules
-export interface IModelParameterRule {
-  code: string; // Parameter code
-  name: string; // Parameter name
-  description: string; // Parameter description
-  type: TValueType; // Parameter type
-  min: number; // Minimum value
-  max: number; // Maximum value
-  precision: number; // Decimal precision
-  required: boolean; // Whether required
-  help: {
-    zh_Hans: string; // Chinese help text
-    en_US: string; // English help text
-  };
-  default_value: number; // Default value
-  options?: string[]; // Available options
-}
-
-export interface ISelectedModelParams {
-  model_id: string;
-  provider: string;
-  params: Array<IModelConfigParamItem>;
-}
-
-// Value type definition
 export type TValueType =
   | 'Array<Object>'
   | 'Array<File>'
@@ -132,45 +99,42 @@ export type TValueType =
   | 'Number'
   | 'Boolean';
 
-// Model configuration parameter item
+export interface IModelParameterRule {
+  code: string;
+  name: string;
+  description?: string;
+  type: TValueType;
+  min?: number;
+  max?: number;
+  precision?: number;
+  required?: boolean;
+  help?: Record<string, string>;
+  default_value?: any;
+  options?: any[];
+}
+
 export interface IModelConfigParamItem {
   key: string;
   type: TValueType;
-  value: number | string | boolean;
+  value: any;
   enable: boolean;
 }
 
-/**
- * Model selector item interface
- * Combines provider information and model list under that provider
- */
+export interface ISelectedModelParams {
+  model_id: string;
+  provider: string;
+  params: Array<IModelConfigParamItem>;
+}
+
 export interface IModelSelectorItem {
-  /** Provider information */
   provider: IProviderConfigInfo;
-  /** Model list under this provider */
   models: IModelConfigInfo[];
 }
 
-// Model tags mapping
 export const MODEL_TAGS = {
-  vision: $i18n.get({
-    id: 'main.types.modelService.visual',
-    dm: '视觉',
-  }),
-  web_search: $i18n.get({
-    id: 'main.types.modelService.connected',
-    dm: '联网',
-  }),
-  embedding: $i18n.get({
-    id: 'main.types.modelService.embedded',
-    dm: '嵌入',
-  }),
-  reasoning: $i18n.get({
-    id: 'main.types.modelService.inference',
-    dm: '推理',
-  }),
-  function_call: $i18n.get({
-    id: 'main.types.modelService.tool',
-    dm: '工具',
-  }),
+  vision: $i18n.get({ id: 'main.types.modelService.visual', dm: '视觉' }),
+  web_search: $i18n.get({ id: 'main.types.modelService.connected', dm: '联网' }),
+  embedding: $i18n.get({ id: 'main.types.modelService.embedded', dm: '嵌入' }),
+  reasoning: $i18n.get({ id: 'main.types.modelService.inference', dm: '推理' }),
+  function_call: $i18n.get({ id: 'main.types.modelService.tool', dm: '工具' }),
 };
