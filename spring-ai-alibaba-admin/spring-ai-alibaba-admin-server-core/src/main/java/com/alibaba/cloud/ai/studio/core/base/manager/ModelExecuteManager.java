@@ -101,15 +101,20 @@ public class ModelExecuteManager {
         Number seed = numberParam(params, "seed");
         if (seed != null) builder.seed(seed.intValue());
 
-
+        // response_format is not universally supported by Ark/Doubao models.
+        // Do not serialize it for the Doubao adapter; old workflow snapshots may
+        // still contain response_format=json_object, so guard it at runtime too.
+        boolean arkProvider = chatModel instanceof NativeOptionsChatModel nativeModel
+                && nativeModel.usesProvider("doubao");
         Object responseFormat = params.get("response_format");
-        if (responseFormat != null) {
+        if (!arkProvider && responseFormat != null) {
             String format = responseFormat instanceof Map<?, ?> map
-                    ? String.valueOf(map.get("type") == null ? "text" : map.get("type")) : String.valueOf(responseFormat);
+                    ? String.valueOf(map.get("type") == null ? "text" : map.get("type"))
+                    : String.valueOf(responseFormat);
             if ("json".equalsIgnoreCase(format)) format = "json_object";
-            if ("text".equalsIgnoreCase(format) || "json_object".equalsIgnoreCase(format)) {
+            if ("json_object".equalsIgnoreCase(format)) {
                 builder.responseFormat(ResponseFormat.builder()
-                        .type(ResponseFormat.Type.valueOf(format.toUpperCase()))
+                        .type(ResponseFormat.Type.JSON_OBJECT)
                         .build());
             }
         }
