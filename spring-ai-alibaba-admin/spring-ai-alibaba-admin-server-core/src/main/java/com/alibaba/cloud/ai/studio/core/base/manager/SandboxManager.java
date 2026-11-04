@@ -20,110 +20,102 @@ import com.alibaba.cloud.ai.studio.runtime.domain.Result;
 import com.alibaba.cloud.ai.studio.runtime.utils.JsonUtils;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Value;
-import org.openjdk.nashorn.api.scripting.NashornScriptEngineFactory;
 import org.springframework.stereotype.Component;
 
-import javax.script.Bindings;
-import javax.script.ScriptContext;
-import javax.script.ScriptEngine;
-import javax.script.ScriptEngineManager;
-import javax.script.ScriptException;
-import javax.script.SimpleScriptContext;
-import java.io.PrintWriter;
-import java.io.StringWriter;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 import static com.alibaba.cloud.ai.studio.core.base.manager.AppComponentManager.OUTPUT_DECORATE_PARAM_KEY;
 
 /**
  * Sandbox manager for secure script execution. Supports Python and JavaScript script
- * types. Implements isolated execution environment to prevent runtime crashes.
+ * types. Each execution uses an independent GraalVM Polyglot Context.
  */
 @Slf4j
 @Component
 public class SandboxManager {
 
-    /** Nashorn engine name constant */
-    private static final String ENGINE_NAME_NASHORN = "nashorn";
-
-    /** Script engine manager */
-    @Resource
-    private ScriptEngineManager engineManager;
-
-    /** Cache for ScriptEngine instances to avoid repeated creation */
-    private final Map<String, ScriptEngine> engineCache = new ConcurrentHashMap<>();
+    private static final String JS_INPUT_BINDING_NAME = "__SAA_WORKFLOW_INPUT_JSON__";
 
     /**
-     * Executes a script
-     * @param scriptContent Script content
-     * @param localVariableMap Map of variable values
-     * @param requestId Request ID
-     * @return Execution result
+     * Executes JavaScript with an isolated GraalVM JavaScript context.
+     *
+     * Input values are transferred as JSON and materialized as native JavaScript objects.
+     * This avoids exposing Java Map/List instances to JavaScript as host objects and keeps
+     * the existing workflow conventions such as params.foo and direct input variables.
+     *
+     * @param scriptContent JavaScript source
+     * @param localVariableMap workflow variables
+     * @param requestId request ID
+     * @return normalized execution result
      */
     public Result<String> executeScript(String scriptContent, Map<String, Object> localVariableMap, String requestId) {
         if (StringUtils.isBlank(scriptContent)) {
-            log.error("Script content cannot be empty");
+            log.error("JavaScript content cannot be empty");
             return Result.error(requestId, ErrorCode.INVALID_PARAMS);
         }
 
-        try {
-            ScriptEngine engine = getScriptEngine(ENGINE_NAME_NASHORN);
-            if (engine == null) {
-                return Result.error(requestId, ErrorCode.SYSTEM_ERROR);
-            }
+        try (Context context = Context.newBuilder("js")
+                .allowAllAccess(true)
+                .build()) {
 
-            ScriptContext context = new SimpleScriptContext();
-            Bindings bindings = engine.createBindings();
-            if (localVariableMap != null) {
-                bindings.putAll(localVariableMap);
-            }
-            context.setBindings(bindings, ScriptContext.ENGINE_SCOPE);
+            Map<String, Object> variables = localVariableMap == null ? Maps.newHashMap() : localVariableMap;
+            context.getBindings("js").putMember(JS_INPUT_BINDING_NAME, JsonUtils.toJson(variables));
 
-            Object result;
-            try {
-                result = engine.eval(scriptContent, context);
+            // Materialize workflow inputs as plain JavaScript values, not Java host objects.
+            context.eval("js", """
+                    Object.assign(globalThis, JSON.parse(__SAA_WORKFLOW_INPUT_JSON__ || '{}'));
+                    delete globalThis.__SAA_WORKFLOW_INPUT_JSON__;
+                    """);
+
+            Value result = context.eval("js", scriptContent);
+            Object javaResult = convertJavaScriptValue(result);
+
+            // Keep the same output contract as the Python executor:
+            // object -> its fields; scalar/array/null -> { "output": value }.
+            Map<String, Object> output = Maps.newLinkedHashMap();
+            if (javaResult instanceof Map<?, ?> resultMap) {
+                resultMap.forEach((key, value) -> output.put(String.valueOf(key), value));
             }
-            catch (ScriptException e) {
-                log.error("Script execution error: {}", e.getMessage());
-                Map<String, Object> errorResult = Maps.newHashMap();
-                errorResult.put("success", false);
-                errorResult.put("message", e.getMessage());
-                errorResult.put("code", "SCRIPT_ERROR");
-                return Result.success(requestId, JsonUtils.toJson(errorResult));
+            else {
+                output.put(OUTPUT_DECORATE_PARAM_KEY, javaResult);
             }
 
             Map<String, Object> resultMap = Maps.newHashMap();
             resultMap.put("success", true);
-            resultMap.put("data", result);
+            resultMap.put("data", output);
             return Result.success(requestId, JsonUtils.toJson(resultMap));
         }
         catch (Exception e) {
-            log.error("Script execution exception", e);
-            StringWriter sw = new StringWriter();
-            e.printStackTrace(new PrintWriter(sw));
-            return Result.error(requestId, ErrorCode.SYSTEM_ERROR);
+            String detail = rootCauseMessage(e);
+            log.error("GraalVM JavaScript script execution exception: {}", detail, e);
+            return Result.<String>builder()
+                    .requestId(requestId)
+                    .success(false)
+                    .code(ErrorCode.SYSTEM_ERROR.getStatusCode())
+                    .message("GraalVM JavaScript execution failed: " + detail)
+                    .build();
         }
     }
 
     /**
-     * Executes Python3 script using GraalVM Python
+     * Executes Python3 script using GraalVM Python.
+     *
      * @param scriptContent Python script content
-     * @param variables Script variable mapping
-     * @param requestId Request ID
-     * @return Execution result
+     * @param variables script variable mapping
+     * @param requestId request ID
+     * @return execution result
      */
     public Result<String> executePython3Script(String scriptContent, Map<String, Object> variables, String requestId) {
         try {
             Context.Builder contextBuilder = Context.newBuilder("python")
-                .allowAllAccess(true)
-                .option("python.ForceImportSite", "true");
+                    .allowAllAccess(true)
+                    .option("python.ForceImportSite", "true");
 
             try (Context context = contextBuilder.build()) {
                 if (variables != null && !variables.isEmpty()) {
@@ -166,12 +158,72 @@ public class SandboxManager {
             String detail = rootCauseMessage(e);
             log.error("GraalVM Python script execution exception: {}", detail, e);
             return Result.<String>builder()
-                .requestId(requestId)
-                .success(false)
-                .code(ErrorCode.SYSTEM_ERROR.getStatusCode())
-                .message("GraalVM Python execution failed: " + detail)
-                .build();
+                    .requestId(requestId)
+                    .success(false)
+                    .code(ErrorCode.SYSTEM_ERROR.getStatusCode())
+                    .message("GraalVM Python execution failed: " + detail)
+                    .build();
         }
+    }
+
+    /**
+     * Converts a GraalVM JavaScript value into ordinary Java values so the result can be
+     * serialized by the workflow JSON layer.
+     */
+    private Object convertJavaScriptValue(Value value) {
+        if (value == null || value.isNull()) {
+            return null;
+        }
+        if (value.isString()) {
+            return value.asString();
+        }
+        if (value.isBoolean()) {
+            return value.asBoolean();
+        }
+        if (value.isNumber()) {
+            return value.asDouble();
+        }
+        if (value.hasArrayElements()) {
+            List<Object> values = Lists.newArrayList();
+            for (long i = 0; i < value.getArraySize(); i++) {
+                values.add(convertJavaScriptValue(value.getArrayElement(i)));
+            }
+            return values;
+        }
+        if (value.hasMembers()) {
+            Map<String, Object> values = new LinkedHashMap<>();
+            for (String key : value.getMemberKeys()) {
+                Value member = value.getMember(key);
+                // Function-valued properties are executable code, not workflow output data.
+                if (member != null && member.canExecute()) {
+                    continue;
+                }
+                values.put(key, convertJavaScriptValue(member));
+            }
+            return values;
+        }
+        if (value.isHostObject()) {
+            return convertHostObject(value.asHostObject());
+        }
+
+        String text = value.toString();
+        return "undefined".equals(text) ? null : text;
+    }
+
+    private Object convertHostObject(Object value) {
+        if (value instanceof Map<?, ?> source) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            source.forEach((key, item) -> result.put(String.valueOf(key), convertHostObject(item)));
+            return result;
+        }
+        if (value instanceof Iterable<?> source) {
+            List<Object> result = Lists.newArrayList();
+            for (Object item : source) {
+                result.add(convertHostObject(item));
+            }
+            return result;
+        }
+        return value;
     }
 
     private String rootCauseMessage(Throwable error) {
@@ -181,39 +233,5 @@ public class SandboxManager {
         }
         String message = StringUtils.defaultIfBlank(root.getMessage(), root.getClass().getSimpleName());
         return root.getClass().getSimpleName() + ": " + message;
-    }
-
-    /**
-     * Gets or creates a script engine instance
-     * @param engineName Name of the script engine
-     * @return ScriptEngine instance
-     */
-    private synchronized ScriptEngine getScriptEngine(String engineName) {
-        ScriptEngine engine = engineCache.get(engineName);
-        if (engine == null) {
-            if (ENGINE_NAME_NASHORN.equals(engineName)) {
-                try {
-                    engine = new NashornScriptEngineFactory().getScriptEngine("--language=es6");
-                    log.info("Successfully created Nashorn script engine (ES6 mode): {}", engine.getClass().getName());
-                }
-                catch (Exception e) {
-                    log.error("Failed to create Nashorn engine, trying standard engine", e);
-                    engine = engineManager.getEngineByName(engineName);
-                }
-            }
-            else {
-                engine = engineManager.getEngineByName(engineName);
-            }
-
-            if (engine != null) {
-                engineCache.put(engineName, engine);
-                log.info("Successfully created script engine: {}, implementation class: {}", engineName,
-                        engine.getClass().getName());
-            }
-            else {
-                log.error("Unsupported script engine: {}", engineName);
-            }
-        }
-        return engine;
     }
 }
