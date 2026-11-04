@@ -20,11 +20,7 @@ public class DashScopeRequestAdapter implements ModelRequestAdapter {
     @Override
     public Prompt buildPrompt(String modelId, Map<String, Object> raw, List<Message> messages) {
         Map<String, Object> params = ModelParameterValues.safeParameters(raw);
-        String endpointType = endpointType(params);
-        if (!"text-generation".equals(endpointType) && !"multimodal-generation".equals(endpointType)) {
-            throw new IllegalStateException(
-                    "DashScope模型接口类型尚未确认，请刷新供应商模型元数据并重新保存工作流");
-        }
+        String endpointType = endpointType(params, modelId);
 
         DashScopeChatOptions.DashscopeChatOptionsBuilder builder = DashScopeChatOptions.builder()
                 .withModel(modelId).withStream(true).withIncrementalOutput(true)
@@ -60,12 +56,32 @@ public class DashScopeRequestAdapter implements ModelRequestAdapter {
         return new Prompt(messages, options);
     }
 
-    private String endpointType(Map<String, Object> params) {
+    private String endpointType(Map<String, Object> params, String modelId) {
         Object raw = params.get(ModelParameterRuleService.META_KEY);
-        // Workflows saved before protocol metadata existed used DashScope's
-        // standard text generation route. Preserve that compatibility.
-        if (!(raw instanceof Map<?, ?> metadata)) return "text-generation";
+        if (!(raw instanceof Map<?, ?> metadata)) {
+            throw new IllegalStateException("DashScope 模型 " + modelId
+                    + " 缺少 __model_metadata__，无法确定推理接口；已阻止使用默认接口。");
+        }
+
+        Object metadataModelId = metadata.get("model_id");
+        if (metadataModelId != null && !modelId.equals(String.valueOf(metadataModelId))) {
+            throw new IllegalStateException("DashScope 模型元数据与当前模型不匹配: " + modelId);
+        }
+
+        Object protocol = metadata.get("protocol");
+        if (protocol != null && !"dashscope".equalsIgnoreCase(String.valueOf(protocol))) {
+            throw new IllegalStateException("DashScope 模型协议元数据不匹配: " + modelId);
+        }
+
         Object value = metadata.get("endpoint_type");
-        return value == null ? "text-generation" : String.valueOf(value);
+        String endpointType = value == null ? "" : String.valueOf(value);
+        if (!"text-generation".equals(endpointType)
+                && !"multimodal-generation".equals(endpointType)) {
+            throw new IllegalStateException("DashScope 模型 " + modelId
+                    + " 的 endpoint_type 尚未确认，当前值为: "
+                    + (endpointType.isBlank() ? "missing" : endpointType)
+                    + "；请检查模型管理中的模型参数规则后重试。");
+        }
+        return endpointType;
     }
 }
