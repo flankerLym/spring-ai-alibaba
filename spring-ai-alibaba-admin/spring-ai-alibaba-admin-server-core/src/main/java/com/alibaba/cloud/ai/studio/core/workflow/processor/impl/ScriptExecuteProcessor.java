@@ -137,7 +137,6 @@ public class ScriptExecuteProcessor extends AbstractExecuteProcessor {
 		}
 		else {
 			scriptContent += mainCall;
-			// Execute JavaScript script using traditional method
 			executeResult = sandboxManager.executeScript(scriptContent, variableMap, context.getRequestId());
 		}
 
@@ -185,8 +184,9 @@ public class ScriptExecuteProcessor extends AbstractExecuteProcessor {
 
 	/**
 	 * Builds main(...) invocation using the resolved script inputs.
-	 * Python: main(query=query, foo=foo)
-	 * JavaScript: main({query: query, foo: foo})
+	 * Python uses keyword arguments. JavaScript receives a JSON-parsed object so arbitrary
+	 * input keys and values (including strings containing JSON) are passed without generating
+	 * executable source from user-provided key names.
 	 */
 	private String buildMainCall(String scriptType, Map<String, Object> variables) {
 		if (variables == null || variables.isEmpty()) {
@@ -201,11 +201,9 @@ public class ScriptExecuteProcessor extends AbstractExecuteProcessor {
 			return "\nmain(" + args + ")";
 		}
 
-		String args = variables.keySet()
-				.stream()
-				.map(key -> key + ": " + key)
-				.collect(Collectors.joining(", "));
-		return "\nmain({" + args + "})";
+		String argsJson = JsonUtils.toJson(variables);
+		// JsonUtils.toJson(String) produces a correctly escaped JavaScript string literal.
+		return "\nmain(JSON.parse(" + JsonUtils.toJson(argsJson) + "))";
 	}
 
 	/**
@@ -270,7 +268,7 @@ public class ScriptExecuteProcessor extends AbstractExecuteProcessor {
 	/**
 	 * Validates the script node parameters
 	 * @param graph The workflow graph
-	 * @param node The script node to validate
+	 * @param node The script node
 	 * @return CheckNodeParamResult containing validation results
 	 */
 	@Override

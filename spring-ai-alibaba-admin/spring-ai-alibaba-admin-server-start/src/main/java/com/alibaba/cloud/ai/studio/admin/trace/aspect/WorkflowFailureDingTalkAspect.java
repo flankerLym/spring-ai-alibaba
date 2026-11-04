@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.annotation.AfterReturning;
 import org.aspectj.lang.annotation.Aspect;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /** Sends one notification after the workflow lifecycle has finalized a failed status. */
@@ -14,6 +15,8 @@ import org.springframework.stereotype.Component;
 @Aspect
 @Component
 @RequiredArgsConstructor
+@ConditionalOnProperty(prefix = "workflow.failure-notification.dingtalk", name = "enabled",
+        havingValue = "true", matchIfMissing = false)
 public class WorkflowFailureDingTalkAspect {
 
     private final DingTalkWorkflowFailureNotifier notifier;

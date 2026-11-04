@@ -23,12 +23,19 @@ import com.google.common.collect.Maps;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.graalvm.polyglot.Context;
+import org.graalvm.polyglot.HostAccess;
 import org.graalvm.polyglot.Value;
+import org.graalvm.polyglot.proxy.ProxyExecutable;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.ServiceConfigurationError;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static com.alibaba.cloud.ai.studio.core.base.manager.AppComponentManager.OUTPUT_DECORATE_PARAM_KEY;
 
@@ -41,13 +48,14 @@ import static com.alibaba.cloud.ai.studio.core.base.manager.AppComponentManager.
 public class SandboxManager {
 
     private static final String JS_INPUT_BINDING_NAME = "__SAA_WORKFLOW_INPUT_JSON__";
+    private static final long JS_PROMISE_TIMEOUT_SECONDS = 10L;
 
     /**
      * Executes JavaScript with an isolated GraalVM JavaScript context.
      *
-     * Input values are transferred as JSON and materialized as native JavaScript objects.
-     * This avoids exposing Java Map/List instances to JavaScript as host objects and keeps
-     * the existing workflow conventions such as params.foo and direct input variables.
+     * Workflow values are transferred as JSON and materialized as native JavaScript
+     * values. Java host classes, file access, native access and thread creation are
+     * disabled; the script only receives the workflow input data.
      *
      * @param scriptContent JavaScript source
      * @param localVariableMap workflow variables
@@ -61,7 +69,11 @@ public class SandboxManager {
         }
 
         try (Context context = Context.newBuilder("js")
-                .allowAllAccess(true)
+                .allowHostAccess(HostAccess.ALL)
+                .allowHostClassLookup(className -> false)
+                .allowIO(false)
+                .allowCreateThread(false)
+                .allowNativeAccess(false)
                 .build()) {
 
             Map<String, Object> variables = localVariableMap == null ? Maps.newHashMap() : localVariableMap;
@@ -74,7 +86,7 @@ public class SandboxManager {
                     """);
 
             Value result = context.eval("js", scriptContent);
-            Object javaResult = convertJavaScriptValue(result);
+            Object javaResult = resolveJavaScriptResult(context, result);
 
             // Keep the same output contract as the Python executor:
             // object -> its fields; scalar/array/null -> { "output": value }.
@@ -91,6 +103,16 @@ public class SandboxManager {
             resultMap.put("data", output);
             return Result.success(requestId, JsonUtils.toJson(resultMap));
         }
+        catch (LinkageError | ServiceConfigurationError e) {
+            String detail = rootCauseMessage(e);
+            log.error("GraalVM JavaScript runtime linkage error: {}", detail, e);
+            return Result.<String>builder()
+                    .requestId(requestId)
+                    .success(false)
+                    .code(ErrorCode.SYSTEM_ERROR.getStatusCode())
+                    .message("GraalVM JavaScript runtime initialization failed: " + detail)
+                    .build();
+        }
         catch (Exception e) {
             String detail = rootCauseMessage(e);
             log.error("GraalVM JavaScript script execution exception: {}", detail, e);
@@ -100,6 +122,54 @@ public class SandboxManager {
                     .code(ErrorCode.SYSTEM_ERROR.getStatusCode())
                     .message("GraalVM JavaScript execution failed: " + detail)
                     .build();
+        }
+    }
+
+    /**
+     * Resolves async Dify Code-node main() results before converting them to Java values.
+     * Dify commonly generates `async function main(...)`; evaluating that call returns a
+     * JavaScript Promise rather than the final output object.
+     */
+    private Object resolveJavaScriptResult(Context context, Value result) throws Exception {
+        if (result == null || result.isNull() || !result.hasMembers()) {
+            return convertJavaScriptValue(result);
+        }
+
+        Value then = result.getMember("then");
+        if (then == null || then.isNull() || !then.canExecute()) {
+            return convertJavaScriptValue(result);
+        }
+
+        CompletableFuture<Value> completed = new CompletableFuture<>();
+        ProxyExecutable onResolved = arguments -> {
+            completed.complete(arguments.length == 0 ? null : arguments[0]);
+            return null;
+        };
+        ProxyExecutable onRejected = arguments -> {
+            String reason = arguments.length == 0 ? "unknown rejection" : String.valueOf(arguments[0]);
+            completed.completeExceptionally(new IllegalStateException(reason));
+            return null;
+        };
+
+        result.invokeMember("then", onResolved, onRejected);
+        // Enter the guest context once more to drain the Promise microtask queue.
+        context.eval("js", "void 0");
+
+        try {
+            Value resolved = completed.get(JS_PROMISE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            return convertJavaScriptValue(resolved);
+        }
+        catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw e;
+        }
+        catch (ExecutionException e) {
+            Throwable cause = e.getCause() == null ? e : e.getCause();
+            throw new IllegalStateException("JavaScript async main() rejected: " + rootCauseMessage(cause), cause);
+        }
+        catch (TimeoutException e) {
+            throw new IllegalStateException("JavaScript async main() did not settle within "
+                    + JS_PROMISE_TIMEOUT_SECONDS + " seconds", e);
         }
     }
 
@@ -181,7 +251,7 @@ public class SandboxManager {
             return value.asBoolean();
         }
         if (value.isNumber()) {
-            return value.asDouble();
+            return value.fitsInLong() ? value.asLong() : value.asDouble();
         }
         if (value.hasArrayElements()) {
             List<Object> values = Lists.newArrayList();

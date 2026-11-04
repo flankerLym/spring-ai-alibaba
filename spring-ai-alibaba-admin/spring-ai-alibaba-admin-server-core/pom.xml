@@ -58,8 +58,16 @@
         <dependency><groupId>org.ow2.asm</groupId><artifactId>asm-commons</artifactId></dependency>
         <dependency><groupId>org.ow2.asm</groupId><artifactId>asm-tree</artifactId></dependency>
         <dependency><groupId>org.ow2.asm</groupId><artifactId>asm-util</artifactId></dependency>
-        <dependency><groupId>org.graalvm.js</groupId><artifactId>js</artifactId></dependency>
-        <dependency><groupId>org.graalvm.js</groupId><artifactId>js-scriptengine</artifactId></dependency>
+
+        <!-- GraalJS 24.2.1 must use the Polyglot artifact coordinates; the old
+             org.graalvm.js:js 22.3.1 runtime is binary-incompatible with Polyglot 24.2.1. -->
+        <dependency>
+            <groupId>org.graalvm.polyglot</groupId>
+            <artifactId>js</artifactId>
+            <version>${graalvm-polyglot.version}</version>
+            <type>pom</type>
+        </dependency>
+
         <!-- Include GraalPy language plus its standard-library resources. -->
         <dependency>
             <groupId>org.graalvm.polyglot</groupId>

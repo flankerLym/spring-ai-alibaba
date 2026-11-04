@@ -7,6 +7,7 @@ import com.alibaba.cloud.ai.studio.runtime.utils.JsonUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.Mac;
@@ -25,6 +26,8 @@ import java.util.Map;
 /** Sends failed workflow details to a DingTalk custom robot webhook. */
 @Slf4j
 @Component
+@ConditionalOnProperty(prefix = "workflow.failure-notification.dingtalk", name = "enabled",
+        havingValue = "true", matchIfMissing = false)
 public class DingTalkWorkflowFailureNotifier {
 
     private static final String TITLE = "[agent] 工作流执行失败告警";
@@ -38,10 +41,10 @@ public class DingTalkWorkflowFailureNotifier {
     @Value("${workflow.failure-notification.dingtalk.enabled:false}")
     private boolean enabled;
 
-    @Value("${workflow.failure-notification.dingtalk.webhook-url:}")
+    @Value("${DINGTALK_WEBHOOK_URL:}")
     private String webhookUrl;
 
-    @Value("${workflow.failure-notification.dingtalk.secret:}")
+    @Value("${DINGTALK_WEBHOOK_SECRET:}")
     private String secret;
 
     public void notifyFailure(WorkflowContext context) {
