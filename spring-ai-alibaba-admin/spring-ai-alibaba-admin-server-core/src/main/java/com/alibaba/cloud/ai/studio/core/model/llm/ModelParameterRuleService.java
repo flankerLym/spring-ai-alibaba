@@ -81,6 +81,93 @@ public class ModelParameterRuleService {
         }
     }
 
+
+    /**
+     * Refresh every registered LLM model for a provider after its configuration
+     * has been saved. Each model is isolated so one failure does not stop the rest.
+     */
+    public Map<String, Object> refreshProviderModels(String provider) {
+        if (StringUtils.isBlank(provider)) {
+            return Map.of("provider", StringUtils.defaultString(provider), "total_models", 0, "updated", 0,
+                    "failed", 0, "skipped_non_llm", 0);
+        }
+
+        QueryWrapper<ModelEntity> wrapper = new QueryWrapper<>();
+        wrapper.eq("provider", provider);
+        var context = RequestContextHolder.getRequestContext();
+        if (context != null && StringUtils.isNotBlank(context.getWorkspaceId())) {
+            wrapper.eq("workspace_id", context.getWorkspaceId());
+        }
+
+        List<ModelEntity> models = modelMapper.selectList(wrapper);
+        int updated = 0;
+        int failed = 0;
+        int skippedNonLlm = 0;
+        int skippedInvalid = 0;
+        List<Map<String, Object>> details = new ArrayList<>();
+
+        for (ModelEntity entity : models) {
+            String modelId = entity.getModelId();
+            Map<String, Object> detail = new LinkedHashMap<>();
+            detail.put("model_id", modelId);
+
+            if (!"llm".equalsIgnoreCase(entity.getType())) {
+                skippedNonLlm++;
+                detail.put("status", "skipped_non_llm");
+                details.add(detail);
+                continue;
+            }
+            if (StringUtils.isBlank(modelId)) {
+                skippedInvalid++;
+                detail.put("status", "skipped_invalid_model_id");
+                details.add(detail);
+                continue;
+            }
+
+            try {
+                List<ParameterRule> previousRules = entity.getParameterRules() == null
+                        ? List.of() : new ArrayList<>(entity.getParameterRules());
+
+                // Do not send generation requests just to discover endpoint modality.
+                List<ParameterRule> refreshedRules = resolve(
+                        provider, modelId, entity.getType(), entity.getTags(), false);
+
+                preserveEndpointId(previousRules, refreshedRules);
+                preserveEndpointTypeIfUnknown(previousRules, refreshedRules);
+                entity.setParameterRules(refreshedRules);
+                refreshTagsFromMetadata(entity, refreshedRules);
+
+                if (modelMapper.updateById(entity) <= 0) {
+                    throw new IllegalStateException("模型参数规则写入数据库失败");
+                }
+
+                updated++;
+                detail.put("status", "updated");
+                detail.put("parameter_count", refreshedRules.size());
+            }
+            catch (Exception error) {
+                failed++;
+                detail.put("status", "failed");
+                detail.put("error", StringUtils.defaultString(
+                        error.getMessage(), error.getClass().getSimpleName()));
+                log.error("Refresh model parameter rules failed: provider={}, model={}",
+                        provider, modelId, error);
+            }
+            details.add(detail);
+        }
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("provider", provider);
+        summary.put("total_models", models.size());
+        summary.put("updated", updated);
+        summary.put("failed", failed);
+        summary.put("skipped_non_llm", skippedNonLlm);
+        summary.put("skipped_invalid_model_id", skippedInvalid);
+        summary.put("details", details);
+        log.info("Provider model parameter refresh completed: {}", summary);
+        return summary;
+    }
+
     private void persistEndpointId(String provider, String modelId, String endpointId) {
         ModelEntity entity = findModel(provider, modelId);
         if (entity == null || entity.getParameterRules() == null) return;
@@ -100,6 +187,10 @@ public class ModelParameterRuleService {
     }
 
     private List<ParameterRule> resolve(String provider, String modelId, String modelType, String tags) {
+        return resolve(provider, modelId, modelType, tags, true);
+    }
+
+    private List<ParameterRule> resolve(String provider, String modelId, String modelType, String tags, boolean allowEndpointProbe) {
         if (!"llm".equalsIgnoreCase(modelType)) return new ArrayList<>();
 
         ProviderConfigInfo detail = providerManager.getProviderDetail(provider, false);
@@ -137,7 +228,7 @@ public class ModelParameterRuleService {
 
         String endpoint = endpointType(protocol, remote);
         String routeSource = remote.isEmpty() ? "unverified" : "provider_catalog_modality";
-        if ("dashscope".equals(protocol) && "unknown".equals(endpoint)) {
+        if (allowEndpointProbe && "dashscope".equals(protocol) && "unknown".equals(endpoint)) {
             String probed = probeDashScopeEndpoint(credential, modelId);
             if (!"unknown".equals(probed)) {
                 endpoint = probed;
@@ -408,6 +499,46 @@ public class ModelParameterRuleService {
             Map<String, Object> metadata = copyMap(newMetadata);
             metadata.putIfAbsent("endpoint_id", oldMetadata.get("endpoint_id"));
             rule.setDefaultValue(metadata);
+            return;
+        }
+    }
+
+
+    /**
+     * Preserve the last known endpoint route when the refreshed catalog has no
+     * modality information for the same provider protocol.
+     */
+    private void preserveEndpointTypeIfUnknown(
+            List<ParameterRule> previousRules, List<ParameterRule> nextRules) {
+        if (previousRules == null || nextRules == null) return;
+
+        Object previousValue = previousRules.stream()
+                .filter(rule -> META_KEY.equals(rule.getCode()))
+                .map(ParameterRule::getDefaultValue)
+                .filter(Map.class::isInstance)
+                .findFirst().orElse(null);
+        if (!(previousValue instanceof Map<?, ?> previousMetadata)) return;
+
+        for (ParameterRule rule : nextRules) {
+            if (!META_KEY.equals(rule.getCode())
+                    || !(rule.getDefaultValue() instanceof Map<?, ?> nextMetadata)) {
+                continue;
+            }
+
+            Map<String, Object> metadata = copyMap(nextMetadata);
+            boolean sameProtocol = StringUtils.equals(
+                    String.valueOf(previousMetadata.get("protocol")),
+                    String.valueOf(metadata.get("protocol")));
+            String currentEndpoint = String.valueOf(metadata.get("endpoint_type"));
+            Object previousEndpoint = previousMetadata.get("endpoint_type");
+
+            if (sameProtocol && "unknown".equals(currentEndpoint)
+                    && previousEndpoint != null
+                    && !"unknown".equalsIgnoreCase(String.valueOf(previousEndpoint))) {
+                metadata.put("endpoint_type", previousEndpoint);
+                metadata.put("route_source", "preserved_previous_metadata");
+                rule.setDefaultValue(metadata);
+            }
             return;
         }
     }
