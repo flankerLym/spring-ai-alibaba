@@ -14,7 +14,7 @@
   ~ See the License for the specific language governing permissions and
   ~ limitations under the License.
 -->
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.alibaba.cloud.ai</groupId>
@@ -106,8 +106,8 @@
         <!-- ASM -->
         <asm.version>9.5</asm.version>
 
-        <!-- GraalVM -->
-        <graalvm-js.version>22.3.1</graalvm-js.version>
+        <!-- GraalVM: keep JS, Polyglot, Truffle and Python on the same release. -->
+        <graalvm-js.version>24.2.1</graalvm-js.version>
         <graalvm-python.version>24.2.1</graalvm-python.version>
         <graalvm-truffle.version>24.2.1</graalvm-truffle.version>
         <graalvm-sdk.version>24.2.1</graalvm-sdk.version>

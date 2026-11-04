@@ -35,6 +35,7 @@ import com.alibaba.cloud.ai.studio.core.workflow.processor.AbstractExecuteProces
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.Maps;
 import lombok.Data;
+import lombok.extern.slf4j.Slf4j;
 import lombok.experimental.Accessors;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -62,6 +63,7 @@ import java.util.stream.Collectors;
  * @author Spring AI Alibaba Team
  * @version 1.0.0-M1
  */
+@Slf4j
 @Component("ScriptExecuteProcessor")
 public class ScriptExecuteProcessor extends AbstractExecuteProcessor {
 
@@ -92,6 +94,23 @@ public class ScriptExecuteProcessor extends AbstractExecuteProcessor {
 	 */
 	@Override
 	public NodeResult innerExecute(DirectedAcyclicGraph<String, Edge> graph, Node node, WorkflowContext context) {
+		try {
+			NodeResult result = executeScriptNode(graph, node, context);
+			if (result != null && NodeStatusEnum.FAIL.getCode().equals(result.getNodeStatus())) {
+				log.error("Workflow script node failed. requestId={}, nodeId={}, nodeName={}, errorCode={}, errorInfo={}",
+						context.getRequestId(), node.getId(), node.getName(), result.getErrorCode(), result.getErrorInfo());
+			}
+			return result;
+		}
+		catch (Exception e) {
+			log.error("Unexpected exception while executing workflow script node. requestId={}, nodeId={}, nodeName={}",
+					context.getRequestId(), node.getId(), node.getName(), e);
+			throw new IllegalStateException("Script node execution failed: "
+						+ StringUtils.defaultIfBlank(e.getMessage(), e.getClass().getSimpleName()), e);
+		}
+	}
+
+	private NodeResult executeScriptNode(DirectedAcyclicGraph<String, Edge> graph, Node node, WorkflowContext context) {
 		NodeResult nodeResult = new NodeResult();
 		nodeResult.setNodeId(node.getId());
 		nodeResult.setNodeName(node.getName());
