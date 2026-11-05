@@ -23,6 +23,8 @@ import {
   zh as promptsZh,
 } from './legacy-locales/prompts';
 
+import { zh as modelParametersZh, en as modelParametersEn } from './legacy-locales/model-parameters';
+
 const multiLangMap = {
   zh: {
     ...cnLangMap,
@@ -30,6 +32,7 @@ const multiLangMap = {
     ...experimentTracingZh,
     ...playgroundSharedZh,
     ...promptsZh,
+    ...modelParametersZh,
   },
   en: {
     ...enLangMap,
@@ -37,6 +40,7 @@ const multiLangMap = {
     ...experimentTracingEn,
     ...playgroundSharedEn,
     ...promptsEn,
+    ...modelParametersEn,
   },
   ja: {
     ...jaLangMap,
@@ -44,6 +48,7 @@ const multiLangMap = {
     ...experimentTracingJa,
     ...playgroundSharedJa,
     ...promptsJa,
+    ...modelParametersEn,
   },
 };
 

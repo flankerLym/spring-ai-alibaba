@@ -25,12 +25,39 @@ function stepFromPrecision(precision?: number) {
   return Math.pow(10, -Math.max(0, Math.min(10, precision ?? 0)));
 }
 
+const text = (key: string) => $i18n.get(`modelParams.${key}`);
+const translated = (key: string) => {
+  const value = text(key);
+  return value === `modelParams.${key}` ? undefined : value;
+};
+const isChinese = () => $i18n.getCurrentLanguage().toLowerCase().startsWith('zh');
+const hasChinese = (value: string) => /[\u3400-\u9fff]/.test(value);
+
+function parameterName(rule: Rule) {
+  return translated(`name.${rule.code}`)
+    || (!isChinese() && hasChinese(rule.name || '') ? rule.code : rule.name || rule.code);
+}
+
+function parameterDescription(rule: Rule) {
+  const help = rule.help || {};
+  const localized = isChinese() ? help.zh || help['zh-cn'] || help.zh_Hans || help.zh_CN
+    : help.en || help['en-us'] || help.en_US;
+  return localized || translated(`description.${rule.code}`)
+    || (rule.description && (isChinese() || !hasChinese(rule.description)) ? rule.description : text('genericDescription'));
+}
+
+function metadataText(value?: string) {
+  return translated(`meta.${value || 'unknown'}`) || value || text('unknown');
+}
+
 function normalizeOptions(options?: any[]) {
   return (options || []).map((option) => {
     if (option && typeof option === 'object' && 'value' in option) {
-      return { label: String(option.label ?? option.value), value: option.value };
+      const label = String(option.label ?? option.value);
+      return { label: translated(`option.${option.value}`)
+        || (!isChinese() && hasChinese(label) ? String(option.value) : label), value: option.value };
     }
-    return { label: String(option), value: option };
+    return { label: translated(`option.${option}`) || String(option), value: option };
   });
 }
 
@@ -49,7 +76,7 @@ function JsonParameterEditor({ value, disabled, onChange }: {
         try { const parsed = JSON.parse(text); setError(false); onChange(parsed); }
         catch { setError(true); }
       }} />
-    {error && <Typography.Text type="danger">JSON 格式无效，当前输入尚未保存</Typography.Text>}
+    {error && <Typography.Text type="danger">{text('invalidJson')}</Typography.Text>}
   </div>;
 }
 
@@ -95,14 +122,14 @@ function ParameterControls({
               type={metadata.endpoint_type === 'unknown' ? 'danger' : 'secondary'}
               style={{ fontSize: 11 }}
             >
-              {`协议：${metadata.protocol ?? 'unknown'} · 接口：${metadata.endpoint_type ?? 'unknown'}`}
-              {` · 参数来源：${metadata.parameter_source ?? 'unknown'}`}
-              {metadata.endpoint_id ? ` · 接入点：${metadata.endpoint_id}` : ''}
-              {metadata.endpoint_type === 'unknown' ? '（接口类型未验证）' : ''}
+              {`${text('protocol')}: ${metadata.protocol ?? text('unknown')} · ${text('endpoint')}: ${metadataText(metadata.endpoint_type)}`}
+              {` · ${text('source')}: ${metadataText(metadata.parameter_source)}`}
+              {metadata.endpoint_id ? ` · ${text('endpointId')}: ${metadata.endpoint_id}` : ''}
+              {metadata.endpoint_type === 'unknown' ? text('unverified') : ''}
             </Typography.Text>
           )}
           {!visible.length && (
-            <Typography.Text type="secondary">该模型暂无可配置的参数规则</Typography.Text>
+            <Typography.Text type="secondary">{text('empty')}</Typography.Text>
           )}
           {visible.map((rule) => {
             const item = params?.find((param) => param.key === rule.code);
@@ -122,10 +149,10 @@ function ParameterControls({
                   />
                   <Typography.Text
                     className={styles['model-selector-form-label']}
-                    ellipsis={{ tooltip: rule.description || rule.name }}
+                    ellipsis={{ tooltip: `${rule.code}: ${parameterDescription(rule)}` }}
                     style={{ width: 112 }}
                   >
-                    {rule.name || rule.code}
+                    {parameterName(rule)}
                   </Typography.Text>
                 </div>
 
@@ -185,20 +212,20 @@ function ParameterControls({
             );
           })}
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            仅勾选的参数参与请求；协议字段不代表每个模型都支持。复杂参数填写完整 JSON。
+            {text('hint')}
           </Typography.Text>
           <div className="flex gap-2">
-            <Input disabled={disabled} placeholder="扩展参数名称" value={newKey}
+            <Input disabled={disabled} placeholder={text('extensionName')} value={newKey}
               onChange={(event) => setNewKey(event.target.value)} />
             <Button disabled={disabled} onClick={() => {
               const key = newKey.trim();
               if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(key) || visible.some((rule) => rule.code === key)
                   || ['model', 'messages', 'stream', 'input', 'result_format', 'incremental_output', 'multi_model'].includes(key)) {
-                message.error('参数名无效、已存在或由执行链路管理'); return;
+                message.error(text('invalidName')); return;
               }
               onChange([...params, { key, type: 'Object', value: {}, enable: false }]);
               setNewKey('');
-            }}>添加</Button>
+            }}>{text('add')}</Button>
           </div>
         </div>
       }
@@ -230,7 +257,7 @@ const ModelConfigForm = ({ value, onChange, onSelectedModelChange, disabled }: {
         })),
       })));
     }).catch((error) => {
-      if (active) message.error(error?.message || '读取模型列表失败');
+      if (active) message.error(text('loadModelsFailed'));
     });
     return () => { active = false; };
   }, []);
@@ -282,7 +309,7 @@ const ModelConfigForm = ({ value, onChange, onSelectedModelChange, disabled }: {
     }).catch((error) => {
       if (!active) return;
       setSchema([]);
-      message.error(error?.message || '读取供应商模型参数失败');
+      message.error(text('loadRulesFailed'));
     });
     return () => { active = false; };
     // The selected model identity is what triggers a fresh schema read.
