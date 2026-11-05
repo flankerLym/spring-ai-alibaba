@@ -34,6 +34,25 @@ function normalizeOptions(options?: any[]) {
   });
 }
 
+function JsonParameterEditor({ value, disabled, onChange }: {
+  value: any; disabled?: boolean; onChange: (value: any) => void;
+}) {
+  const [draft, setDraft] = useState(JSON.stringify(value ?? {}, null, 2));
+  const [error, setError] = useState(false);
+  useEffect(() => { setDraft(JSON.stringify(value ?? {}, null, 2)); setError(false); }, [value]);
+  return <div style={{ width: '100%' }}>
+    <Input.TextArea disabled={disabled} autoSize={{ minRows: 2, maxRows: 10 }}
+      status={error ? 'error' : undefined} value={draft}
+      onChange={(event) => {
+        const text = event.target.value;
+        setDraft(text);
+        try { const parsed = JSON.parse(text); setError(false); onChange(parsed); }
+        catch { setError(true); }
+      }} />
+    {error && <Typography.Text type="danger">JSON 格式无效，当前输入尚未保存</Typography.Text>}
+  </div>;
+}
+
 function ParameterControls({
   rules, params, disabled, onChange,
 }: {
@@ -42,7 +61,12 @@ function ParameterControls({
   disabled?: boolean;
   onChange: (next: Param[]) => void;
 }) {
-  const visible = rules.filter((rule) => rule.code !== METADATA_KEY);
+  const visible = [
+    ...rules.filter((rule) => !rule.code.startsWith('__') && !['model', 'messages', 'stream', 'input', 'result_format', 'incremental_output', 'multi_model'].includes(rule.code)),
+    ...params.filter((param) => !param.key.startsWith('__') && !rules.some((rule) => rule.code === param.key))
+      .map((param) => ({ code: param.key, name: param.key, type: param.type } as Rule)),
+  ];
+  const [newKey, setNewKey] = useState('');
   const metadata = rules.find((rule) => rule.code === METADATA_KEY)?.default_value as any;
 
   const update = (key: string, patch: Partial<Param>) => {
@@ -65,7 +89,7 @@ function ParameterControls({
       placement="bottomLeft"
       trigger="click"
       content={
-        <div className="flex flex-col gap-3" style={{ minWidth: 340, maxWidth: 480 }}>
+        <div className="flex flex-col gap-3" style={{ minWidth: 340, maxWidth: 600, maxHeight: '70vh', overflowY: 'auto' }}>
           {metadata && (
             <Typography.Text
               type={metadata.endpoint_type === 'unknown' ? 'danger' : 'secondary'}
@@ -85,14 +109,15 @@ function ParameterControls({
             const enabled = item?.enable ?? Boolean(rule.required);
             const currentValue = item?.value ?? rule.default_value;
             const options = normalizeOptions(rule.options);
-            const hasOptions = options.length > 0;
+            const hasOptions = options.length > 0 && !['Object', 'Boolean'].includes(rule.type)
+              && !rule.type.startsWith('Array<');
 
             return (
               <div key={rule.code} className="flex-justify-between gap-4">
                 <div className="flex items-center gap-2">
                   <Checkbox
                     checked={enabled}
-                    disabled={disabled}
+                    disabled={disabled || Boolean(rule.required)}
                     onChange={(event) => update(rule.code, { enable: event.target.checked })}
                   />
                   <Typography.Text
@@ -142,26 +167,11 @@ function ParameterControls({
                       checked={Boolean(currentValue ?? false)}
                       onChange={(value) => update(rule.code, { value })}
                     />
-                  ) : rule.type === 'Array<String>' ? (
-                    <Input
+                  ) : rule.type === 'Object' || rule.type.startsWith('Array<') ? (
+                    <JsonParameterEditor
                       disabled={!enabled || disabled}
-                      value={Array.isArray(currentValue) ? currentValue.join(', ') : String(currentValue ?? '')}
-                      placeholder="多个值用逗号分隔"
-                      onChange={(event) => update(rule.code, {
-                        value: event.target.value.split(',').map((value) => value.trim()).filter(Boolean),
-                      })}
-                    />
-                  ) : rule.type === 'Object' ? (
-                    <Input
-                      disabled={!enabled || disabled}
-                      value={typeof currentValue === 'string'
-                        ? currentValue
-                        : JSON.stringify(currentValue ?? {}, null, 0)}
-                      onChange={(event) => {
-                        const raw = event.target.value;
-                        try { update(rule.code, { value: JSON.parse(raw) }); }
-                        catch { update(rule.code, { value: raw }); }
-                      }}
+                      value={currentValue ?? (rule.type.startsWith('Array<') ? [] : {})}
+                      onChange={(value) => update(rule.code, { value })}
                     />
                   ) : (
                     <Input
@@ -174,6 +184,22 @@ function ParameterControls({
               </div>
             );
           })}
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            仅勾选的参数参与请求；协议字段不代表每个模型都支持。复杂参数填写完整 JSON。
+          </Typography.Text>
+          <div className="flex gap-2">
+            <Input disabled={disabled} placeholder="扩展参数名称" value={newKey}
+              onChange={(event) => setNewKey(event.target.value)} />
+            <Button disabled={disabled} onClick={() => {
+              const key = newKey.trim();
+              if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(key) || visible.some((rule) => rule.code === key)
+                  || ['model', 'messages', 'stream', 'input', 'result_format', 'incremental_output', 'multi_model'].includes(key)) {
+                message.error('参数名无效、已存在或由执行链路管理'); return;
+              }
+              onChange([...params, { key, type: 'Object', value: {}, enable: false }]);
+              setNewKey('');
+            }}>添加</Button>
+          </div>
         </div>
       }
     >
@@ -232,19 +258,12 @@ const ModelConfigForm = ({ value, onChange, onSelectedModelChange, disabled }: {
       if (!systemRule) return;
 
       const previous = value.params || [];
-      if (previous.some((param) => param.key === METADATA_KEY)) return;
+
 
       const raw = systemRule.default_value as any;
-      const snapshot = {
-        schema_version: raw?.schema_version ?? 2,
-        provider: raw?.provider ?? value.provider,
-        model_id: raw?.model_id ?? value.model_id,
-        protocol: raw?.protocol ?? 'openai',
-        endpoint_type: raw?.endpoint_type ?? 'unknown',
-        route_source: raw?.route_source ?? 'unknown',
-        parameter_source: raw?.parameter_source ?? 'unknown',
-        endpoint_id: raw?.endpoint_id ?? null,
-      };
+      const snapshot = { ...raw, raw_metadata: undefined };
+      const previousMetadata = previous.find((param) => param.key === METADATA_KEY)?.value;
+      if (JSON.stringify(previousMetadata) === JSON.stringify(snapshot)) return;
       const metadataParam = {
         key: METADATA_KEY,
         type: 'Object',

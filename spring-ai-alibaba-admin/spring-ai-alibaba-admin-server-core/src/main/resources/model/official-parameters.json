@@ -1,0 +1,758 @@
+{
+  "openai": {
+    "reference": "https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create",
+    "reviewed_at": "2026-11-05",
+    "rules": [
+      {
+        "code": "temperature",
+        "name": "temperature",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 2
+      },
+      {
+        "code": "top_p",
+        "name": "top_p",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 2
+      },
+      {
+        "code": "max_tokens",
+        "name": "max_tokens",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 0
+      },
+      {
+        "code": "max_completion_tokens",
+        "name": "max_completion_tokens",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 0
+      },
+      {
+        "code": "frequency_penalty",
+        "name": "frequency_penalty",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 2
+      },
+      {
+        "code": "presence_penalty",
+        "name": "presence_penalty",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 2
+      },
+      {
+        "code": "seed",
+        "name": "seed",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 0
+      },
+      {
+        "code": "n",
+        "name": "n",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 0
+      },
+      {
+        "code": "top_logprobs",
+        "name": "top_logprobs",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 0
+      },
+      {
+        "code": "logprobs",
+        "name": "logprobs",
+        "type": "Boolean",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "parallel_tool_calls",
+        "name": "parallel_tool_calls",
+        "type": "Boolean",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "store",
+        "name": "store",
+        "type": "Boolean",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "response_format",
+        "name": "response_format",
+        "type": "Object",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "default_value": {
+          "type": "text"
+        }
+      },
+      {
+        "code": "logit_bias",
+        "name": "logit_bias",
+        "type": "Object",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "stream_options",
+        "name": "stream_options",
+        "type": "Object",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "prediction",
+        "name": "prediction",
+        "type": "Object",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "audio",
+        "name": "audio",
+        "type": "Object",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "web_search_options",
+        "name": "web_search_options",
+        "type": "Object",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "metadata",
+        "name": "metadata",
+        "type": "Object",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "function_call",
+        "name": "function_call",
+        "type": "Object",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "tool_choice",
+        "name": "tool_choice",
+        "type": "Object",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "prompt_cache_options",
+        "name": "prompt_cache_options",
+        "type": "Object",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "tools",
+        "name": "tools",
+        "type": "Array<Object>",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "functions",
+        "name": "functions",
+        "type": "Array<Object>",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "stop",
+        "name": "stop",
+        "type": "Array<String>",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "modalities",
+        "name": "modalities",
+        "type": "Array<String>",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "reasoning_effort",
+        "name": "reasoning_effort",
+        "type": "String",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "verbosity",
+        "name": "verbosity",
+        "type": "String",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "service_tier",
+        "name": "service_tier",
+        "type": "String",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "user",
+        "name": "user",
+        "type": "String",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "safety_identifier",
+        "name": "safety_identifier",
+        "type": "String",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "prompt_cache_key",
+        "name": "prompt_cache_key",
+        "type": "String",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "prompt_cache_retention",
+        "name": "prompt_cache_retention",
+        "type": "String",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "moderation",
+        "name": "moderation",
+        "type": "Object",
+        "required": false,
+        "description": "可选官方请求字段；以当前模型文档为准。"
+      }
+    ]
+  },
+  "dashscope": {
+    "reference": "https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-dashscope",
+    "reviewed_at": "2026-11-05",
+    "rules": [
+      {
+        "code": "temperature",
+        "name": "temperature",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 2
+      },
+      {
+        "code": "top_p",
+        "name": "top_p",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 2
+      },
+      {
+        "code": "top_k",
+        "name": "top_k",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 0
+      },
+      {
+        "code": "max_tokens",
+        "name": "max_tokens",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 0
+      },
+      {
+        "code": "seed",
+        "name": "seed",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 0
+      },
+      {
+        "code": "repetition_penalty",
+        "name": "repetition_penalty",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 2
+      },
+      {
+        "code": "presence_penalty",
+        "name": "presence_penalty",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 2
+      },
+      {
+        "code": "thinking_budget",
+        "name": "thinking_budget",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 0
+      },
+      {
+        "code": "top_logprobs",
+        "name": "top_logprobs",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 0
+      },
+      {
+        "code": "enable_search",
+        "name": "enable_search",
+        "type": "Boolean",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "enable_thinking",
+        "name": "enable_thinking",
+        "type": "Boolean",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "parallel_tool_calls",
+        "name": "parallel_tool_calls",
+        "type": "Boolean",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "logprobs",
+        "name": "logprobs",
+        "type": "Boolean",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "vl_high_resolution_images",
+        "name": "vl_high_resolution_images",
+        "type": "Boolean",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "tool_stream",
+        "name": "tool_stream",
+        "type": "Boolean",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "enable_code_interpreter",
+        "name": "enable_code_interpreter",
+        "type": "Boolean",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "response_format",
+        "name": "response_format",
+        "type": "Object",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "default_value": {
+          "type": "text"
+        }
+      },
+      {
+        "code": "search_options",
+        "name": "search_options",
+        "type": "Object",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "tool_choice",
+        "name": "tool_choice",
+        "type": "Object",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "tools",
+        "name": "tools",
+        "type": "Array<Object>",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "stop",
+        "name": "stop",
+        "type": "Array<Object>",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "default_value": []
+      },
+      {
+        "code": "reasoning_effort",
+        "name": "reasoning_effort",
+        "type": "String",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "clear_thinking",
+        "name": "clear_thinking",
+        "type": "Boolean",
+        "required": false,
+        "description": "可选官方请求字段；以当前模型文档为准。"
+      },
+      {
+        "code": "vl_enable_image_hw_output",
+        "name": "vl_enable_image_hw_output",
+        "type": "Boolean",
+        "required": false,
+        "description": "可选官方请求字段；以当前模型文档为准。"
+      },
+      {
+        "code": "max_completion_tokens",
+        "name": "max_completion_tokens",
+        "type": "Number",
+        "precision": 0,
+        "required": false,
+        "description": "完整输出 token 上限；与 max_tokens 只启用一个，支持情况按模型文档。"
+      }
+    ]
+  },
+  "deepseek": {
+    "reference": "https://api-docs.deepseek.com/api/create-chat-completion",
+    "reviewed_at": "2026-11-05",
+    "rules": [
+      {
+        "code": "temperature",
+        "name": "temperature",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 2
+      },
+      {
+        "code": "top_p",
+        "name": "top_p",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 2
+      },
+      {
+        "code": "max_tokens",
+        "name": "max_tokens",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 0
+      },
+      {
+        "code": "frequency_penalty",
+        "name": "frequency_penalty",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 2
+      },
+      {
+        "code": "presence_penalty",
+        "name": "presence_penalty",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 2
+      },
+      {
+        "code": "top_logprobs",
+        "name": "top_logprobs",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 0
+      },
+      {
+        "code": "logprobs",
+        "name": "logprobs",
+        "type": "Boolean",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "parallel_tool_calls",
+        "name": "parallel_tool_calls",
+        "type": "Boolean",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "thinking",
+        "name": "thinking",
+        "type": "Object",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "default_value": {
+          "type": "disabled"
+        }
+      },
+      {
+        "code": "response_format",
+        "name": "response_format",
+        "type": "Object",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "default_value": {
+          "type": "text"
+        }
+      },
+      {
+        "code": "tool_choice",
+        "name": "tool_choice",
+        "type": "Object",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "stream_options",
+        "name": "stream_options",
+        "type": "Object",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "tools",
+        "name": "tools",
+        "type": "Array<Object>",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "stop",
+        "name": "stop",
+        "type": "Array<String>",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "reasoning_effort",
+        "name": "reasoning_effort",
+        "type": "String",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "user_id",
+        "name": "user_id",
+        "type": "String",
+        "required": false,
+        "description": "可选官方请求字段；以当前模型文档为准。"
+      }
+    ]
+  },
+  "doubao": {
+    "reference": "https://www.volcengine.com/docs/82379/1494384",
+    "reviewed_at": "2026-11-05",
+    "rules": [
+      {
+        "code": "temperature",
+        "name": "temperature",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 2
+      },
+      {
+        "code": "top_p",
+        "name": "top_p",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 2
+      },
+      {
+        "code": "max_tokens",
+        "name": "max_tokens",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 0
+      },
+      {
+        "code": "max_completion_tokens",
+        "name": "max_completion_tokens",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 0
+      },
+      {
+        "code": "frequency_penalty",
+        "name": "frequency_penalty",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 2
+      },
+      {
+        "code": "presence_penalty",
+        "name": "presence_penalty",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 2
+      },
+      {
+        "code": "repetition_penalty",
+        "name": "repetition_penalty",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 2
+      },
+      {
+        "code": "seed",
+        "name": "seed",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 0
+      },
+      {
+        "code": "top_logprobs",
+        "name": "top_logprobs",
+        "type": "Number",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "precision": 0
+      },
+      {
+        "code": "logprobs",
+        "name": "logprobs",
+        "type": "Boolean",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "parallel_tool_calls",
+        "name": "parallel_tool_calls",
+        "type": "Boolean",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "thinking",
+        "name": "thinking",
+        "type": "Object",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "default_value": {
+          "type": "disabled"
+        }
+      },
+      {
+        "code": "response_format",
+        "name": "response_format",
+        "type": "Object",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。",
+        "default_value": {
+          "type": "text"
+        }
+      },
+      {
+        "code": "tool_choice",
+        "name": "tool_choice",
+        "type": "Object",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "logit_bias",
+        "name": "logit_bias",
+        "type": "Object",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "stream_options",
+        "name": "stream_options",
+        "type": "Object",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "tools",
+        "name": "tools",
+        "type": "Array<Object>",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "stop",
+        "name": "stop",
+        "type": "Array<String>",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "reasoning_effort",
+        "name": "reasoning_effort",
+        "type": "String",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "service_tier",
+        "name": "service_tier",
+        "type": "String",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "user",
+        "name": "user",
+        "type": "String",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      },
+      {
+        "code": "prompt_cache_key",
+        "name": "prompt_cache_key",
+        "type": "String",
+        "required": false,
+        "description": "可选官方请求字段；请根据当前模型支持情况启用。嵌套字段按完整 JSON 保存。"
+      }
+    ]
+  }
+}

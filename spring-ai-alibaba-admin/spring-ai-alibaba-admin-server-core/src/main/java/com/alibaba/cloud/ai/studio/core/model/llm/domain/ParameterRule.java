@@ -59,12 +59,12 @@ public class ParameterRule implements Serializable {
 	/**
 	 * Minimum value (for numeric parameters)
 	 */
-	private Integer min;
+	private Number min;
 
 	/**
 	 * Maximum value (for numeric parameters)
 	 */
-	private Integer max;
+	private Number max;
 
 	/**
 	 * Precision
@@ -85,5 +85,8 @@ public class ParameterRule implements Serializable {
 	 * Help text
 	 */
 	private Map<String, String> help;
+
+	/** Full provider schema, including nested constraints and vendor extensions. */
+	private Map<String, Object> schema;
 
 }

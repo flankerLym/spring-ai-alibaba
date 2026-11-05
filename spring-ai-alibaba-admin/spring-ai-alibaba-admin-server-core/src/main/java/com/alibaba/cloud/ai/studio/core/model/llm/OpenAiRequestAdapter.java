@@ -3,7 +3,6 @@ package com.alibaba.cloud.ai.studio.core.model.llm;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.openai.OpenAiChatOptions;
-import org.springframework.ai.openai.api.ResponseFormat;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -51,18 +50,9 @@ public class OpenAiRequestAdapter implements ModelRequestAdapter {
         List<String> stop = ModelParameterValues.strings(params.get("stop"));
         if (!stop.isEmpty()) builder.stop(stop);
 
-        Object responseFormat = params.get("response_format");
-        if (responseFormat != null) {
-            String format = responseFormat instanceof Map<?, ?> map
-                    ? String.valueOf(map.get("type") == null ? "text" : map.get("type")) : String.valueOf(responseFormat);
-            if ("json".equalsIgnoreCase(format)) format = "json_object";
-            if ("json_object".equalsIgnoreCase(format)) {
-                builder.responseFormat(ResponseFormat.builder()
-                        .type(ResponseFormat.Type.JSON_OBJECT).build());
-            }
-        }
-
         Map<String, Object> extra = ModelParameterValues.extraParameters(params, STANDARD);
+        Object format = ModelWireParameters.clean(params).get("response_format");
+        if (format != null) extra.put("response_format", format);
         if (!extra.isEmpty()) builder.extraBody(extra);
         return new Prompt(messages, builder.build());
     }

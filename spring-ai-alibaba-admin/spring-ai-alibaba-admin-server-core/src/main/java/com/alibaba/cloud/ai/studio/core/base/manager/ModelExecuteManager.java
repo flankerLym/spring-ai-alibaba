@@ -7,6 +7,7 @@ package com.alibaba.cloud.ai.studio.core.base.manager;
 
 import com.alibaba.cloud.ai.studio.core.workflow.trace.annotation.WorkflowModelCall;
 import com.alibaba.cloud.ai.studio.core.model.llm.ModelFactory;
+import com.alibaba.cloud.ai.studio.core.model.llm.ModelWireParameters;
 import com.alibaba.cloud.ai.studio.core.model.llm.ModelParameterRuleService;
 import com.alibaba.cloud.ai.studio.core.model.llm.ModelRequestAdapter;
 import com.alibaba.cloud.ai.studio.core.model.llm.NativeOptionsChatModel;
@@ -63,12 +64,13 @@ public class ModelExecuteManager {
             ensureDashScopeMetadata(provider, modelId, effectiveParameters);
         }
 
+        ModelWireParameters wire = new ModelWireParameters(protocol, effectiveParameters);
         Prompt prompt = adapter.buildPrompt(modelId, effectiveParameters, messages);
         Flux<AgentResponse> stream = chatModel.stream(prompt)
                 .concatMap(response -> convertResponse(response).flux());
-        return stream.switchIfEmpty(Flux.defer(() -> convertResponse(chatModel.call(prompt))
+        return stream.switchIfEmpty(Flux.defer(() -> convertResponse(wire.call(() -> chatModel.call(prompt)))
                 .switchIfEmpty(Mono.error(new IllegalStateException("模型未返回有效回复")))
-                .flux()));
+                .flux())).contextWrite(context -> context.put(ModelWireParameters.CONTEXT_KEY, wire));
     }
 
     /**

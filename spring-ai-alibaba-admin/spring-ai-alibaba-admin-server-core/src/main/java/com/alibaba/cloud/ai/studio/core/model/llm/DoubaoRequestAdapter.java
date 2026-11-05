@@ -50,10 +50,8 @@ public class DoubaoRequestAdapter implements ModelRequestAdapter {
         List<String> stop = ModelParameterValues.strings(params.get("stop"));
         if (!stop.isEmpty()) builder.stop(stop);
 
-        // Ark JSON mode is model/endpoint dependent. Do not forward an old
-        // workflow's response_format unless capability discovery explicitly exists.
-        Map<String, Object> extra = ModelParameterValues.extraParameters(params, STANDARD);
-        if (!extra.isEmpty()) builder.extraBody(extra);
+        // Retain complete nested fields for the native Ark serializer, including response_format.
+        builder.extraBody(ModelWireParameters.clean(params));
         return new Prompt(messages, builder.build());
     }
 

@@ -134,7 +134,7 @@ public final class ArkChatModel implements ChatModel {
                 // Forward model-specific parameters from the selected model's saved
                 // parameter schema, not only a hard-coded list of vendor options.
                 legacy.getExtraBody().forEach((key, value) -> {
-                    if (!"thinking".equals(key)) put(body, key, value);
+                    put(body, key, value);
                 });
             }
         }
@@ -185,18 +185,17 @@ public final class ArkChatModel implements ChatModel {
             messages.add(item);
         }
         body.put("messages", messages);
-        ChatCompletionRequest request = JSON.convertValue(body, ChatCompletionRequest.class);
-        if (stream) request.setStreamOptions(ChatCompletionRequest.ChatCompletionRequestStreamOptions.of(true));
-        if (options instanceof OpenAiChatOptions legacy) {
-            if (legacy.getResponseFormat() != null) request.setResponseFormat(responseFormat(legacy.getResponseFormat()));
-            Object thinking = legacy.getExtraBody() == null ? null : legacy.getExtraBody().get("thinking");
-            if (thinking != null) {
-                JsonNode value = JSON.valueToTree(thinking);
-                String type = value.isTextual() ? value.asText() : value.path("type").asText(null);
-                if (type != null) request.setThinking(new ChatCompletionRequest.ChatCompletionRequestThinking(type));
-            }
+        if (options instanceof OpenAiChatOptions legacy && legacy.getExtraBody() != null) {
+            body.putAll(ModelWireParameters.clean(legacy.getExtraBody()));
         }
-        return request;
+        if (body.containsKey("max_completion_tokens")) body.remove("max_tokens");
+        if (stream) body.putIfAbsent("stream_options", Map.of("include_usage", true));
+        else body.remove("stream_options");
+        body.put("model", options.getModel());
+        body.put("stream", stream);
+        body.put("messages", messages);
+        return new LosslessArkRequest(body);
+
     }
 
     private static ChatCompletionRequest.ChatCompletionRequestResponseFormat responseFormat(Object value) {

@@ -223,6 +223,8 @@ public class ModelFactory {
 	private OpenAiApi buildOpenAiApi(ModelCredential credential) {
 		OpenAiApi.Builder openAiApiBuilder = OpenAiApi.builder()
 				.apiKey(credential.getApiKey())
+                .restClientBuilder(ModelWireParameters.rest(RestClient.builder()))
+                .webClientBuilder(ModelWireParameters.web(WebClient.builder()))
 				.responseErrorHandler(ErrorHandlerUtils.OPENAI_RESPONSE_ERROR_HANDLER)
 				.headers(ApiUtils.getBaseHeaders());
 
@@ -243,8 +245,8 @@ public class ModelFactory {
         switch (type) {
             case "dashscope" -> {
                 DashScopeChatModel nativeModel = DashScopeChatModel.builder()
-                        .dashScopeApi(DashScopeApi.builder().apiKey(credential.getApiKey()).restClientBuilder(dashScopeRestClientBuilder)
-                                .webClientBuilder(dashScopeWebClientBuilder)
+                        .dashScopeApi(DashScopeApi.builder().apiKey(credential.getApiKey()).restClientBuilder(ModelWireParameters.rest(dashScopeRestClientBuilder))
+                                .webClientBuilder(ModelWireParameters.web(dashScopeWebClientBuilder))
                                 .baseUrl(dashScopeBaseUrl(credential.getEndpoint())).build())
                         .toolCallingManager(toolCallingManager).observationRegistry(observationRegistry).build();
                 nativeModel.setObservationConvention(customChatModelObservationConvention);
@@ -254,19 +256,33 @@ public class ModelFactory {
                 DeepSeekChatModel nativeModel = DeepSeekChatModel.builder()
                         .deepSeekApi(DeepSeekApi.builder().apiKey(credential.getApiKey())
                                 .baseUrl(credential.getEndpoint())
-                                .webClientBuilder(deepSeekWebClientBuilder)
-                                .restClientBuilder(deepSeekRestClientBuilder)
+                                .webClientBuilder(ModelWireParameters.web(deepSeekWebClientBuilder))
+                                .restClientBuilder(ModelWireParameters.rest(deepSeekRestClientBuilder))
                                 .completionsPath(credential.getCompletionsPath()).build())
                         .toolCallingManager(toolCallingManager).observationRegistry(observationRegistry).build();
                 nativeModel.setObservationConvention(customChatModelObservationConvention);
                 model = nativeModel;
             }
-            case "doubao" -> model = new ArkChatModel(() -> ArkService.builder().connectionPool(arkConnectionPool)
-                    .apiKey(credential.getApiKey()).baseUrl(credential.getEndpoint())
-                    .timeout(Duration.ofMinutes(15)).build(), toolCallingManager, observationRegistry, customChatModelObservationConvention);
+            case "doubao" -> model = new ArkChatModel(() -> createArkService(credential),
+                    toolCallingManager, observationRegistry, customChatModelObservationConvention);
             default -> throw new IllegalArgumentException("Not a native vendor: " + provider);
         }
         return new NativeOptionsChatModel(type, model);
+    }
+
+    private ArkService createArkService(ModelCredential credential) {
+        // Same official SDK interceptors and lifecycle; only the request serializer is extended.
+        okhttp3.OkHttpClient client = new okhttp3.OkHttpClient.Builder()
+                .addInterceptor(new com.volcengine.ark.runtime.interceptor.AuthenticationInterceptor(credential.getApiKey()))
+                .addInterceptor(new com.volcengine.ark.runtime.interceptor.EncryptionInterceptor(credential.getApiKey(), credential.getEndpoint()))
+                .addInterceptor(new com.volcengine.ark.runtime.interceptor.RequestIdInterceptor())
+                .addInterceptor(new com.volcengine.ark.runtime.interceptor.RetryInterceptor(2))
+                .addInterceptor(new com.volcengine.ark.runtime.interceptor.BatchInterceptor())
+                .connectionPool(arkConnectionPool).readTimeout(Duration.ofMinutes(15))
+                .callTimeout(Duration.ofMinutes(15)).connectTimeout(Duration.ofMinutes(1)).build();
+        var retrofit = ArkService.defaultRetrofit(client, LosslessArkRequest.mapper(), credential.getEndpoint(), null);
+        return new ArkService(retrofit.create(com.volcengine.ark.runtime.service.ArkApi.class),
+                client.dispatcher().executorService());
     }
 
     /** Checks the provider's authenticated model-catalog endpoint without invoking a model. */

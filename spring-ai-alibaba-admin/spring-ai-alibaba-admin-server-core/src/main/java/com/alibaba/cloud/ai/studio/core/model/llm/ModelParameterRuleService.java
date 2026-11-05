@@ -60,10 +60,13 @@ public class ModelParameterRuleService {
 
             List<ParameterRule> previousRules = rules == null ? List.of() : new ArrayList<>(rules);
             rules = resolve(provider, modelId, entity.getType(), entity.getTags());
+            preserveSavedRules(previousRules, rules);
+            preserveEndpointTypeIfUnknown(previousRules, rules);
             preserveEndpointId(previousRules, rules);
             entity.setParameterRules(rules);
             refreshTagsFromMetadata(entity, rules);
-            modelMapper.updateById(entity);
+            if (modelMapper.updateById(entity) <= 0)
+                throw new IllegalStateException("模型参数规则写入数据库失败");
             return rules;
         }
     }
@@ -71,7 +74,6 @@ public class ModelParameterRuleService {
     /** Invoked by ModelParameterRuleAspect after add/update/enable. */
     public void ensure(com.alibaba.cloud.ai.studio.core.model.llm.domain.ModelConfigInfo model) {
         if (model == null
-                || (Boolean.FALSE.equals(model.getEnable()) && model.getEndpointId() == null)
                 || !"llm".equalsIgnoreCase(model.getType())
                 || StringUtils.isAnyBlank(model.getProvider(), model.getModelId())) return;
 
@@ -132,6 +134,7 @@ public class ModelParameterRuleService {
                 List<ParameterRule> refreshedRules = resolve(
                         provider, modelId, entity.getType(), entity.getTags(), false);
 
+                preserveSavedRules(previousRules, refreshedRules);
                 preserveEndpointId(previousRules, refreshedRules);
                 preserveEndpointTypeIfUnknown(previousRules, refreshedRules);
                 entity.setParameterRules(refreshedRules);
@@ -208,15 +211,14 @@ public class ModelParameterRuleService {
             parameterSource = "provider_protocol_defaults";
         }
 
-        // These are the parameters that the corresponding runtime adapter can carry.
-        // DashScope uses its own native options object, so only expose parameters
-        // explicitly supported by that adapter. OpenAI-compatible transports can
-        // forward model-specific fields through extra_body.
-        if ("dashscope".equals(protocol)) {
-            Set<String> supported = Set.of("temperature", "top_p", "max_tokens", "top_k", "seed",
-                    "repetition_penalty", "enable_thinking", "enable_search");
-            rules.removeIf(rule -> !supported.contains(rule.getCode()));
-        }
+        // Catalog schemas override protocol definitions; never trim returned fields to SDK support.
+        Map<String, ParameterRule> merged = new LinkedHashMap<>();
+        protocolDefaults(protocol, tags).forEach(rule -> merged.put(rule.getCode(), rule));
+        rules.forEach(rule -> {
+            if (rule.getSchema() != null && !rule.getSchema().isEmpty() || !merged.containsKey(rule.getCode()))
+                merged.put(rule.getCode(), rule);
+        });
+        rules = new ArrayList<>(merged.values());
 
         Object info = remote.get("model_info");
         if (info instanceof Map<?, ?> bounds && bounds.get("max_output_tokens") instanceof Number max) {
@@ -237,7 +239,7 @@ public class ModelParameterRuleService {
         }
 
         Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put("schema_version", 2);
+        metadata.put("schema_version", 3);
         metadata.put("provider", provider);
         metadata.put("model_id", modelId);
         metadata.put("protocol", protocol);
@@ -247,6 +249,9 @@ public class ModelParameterRuleService {
         metadata.put("catalog_status", remote.isEmpty() ? "unavailable" : "found");
         metadata.put("captured_at", Instant.now().toString());
         metadata.put("raw_metadata", remote);
+        metadata.put("official_reference", OfficialModelParameters.reference(protocol));
+        metadata.put("schema_scope", "protocol_request_fields_model_support_must_be_verified");
+        metadata.put("managed_fields", List.of("model", "messages", "stream", "input"));
 
         List<ParameterRule> result = new ArrayList<>(rules);
         result.removeIf(rule -> META_KEY.equals(rule.getCode()));
@@ -307,7 +312,33 @@ public class ModelParameterRuleService {
                 stringList(rules, "stop", "停止生成标记，多个值用逗号分隔");
             }
         }
+        OfficialModelParameters.supplement(protocol, rules);
         return rules;
+    }
+
+    private void preserveSavedRules(List<ParameterRule> previous, List<ParameterRule> next) {
+        Object oldMetadata = previous.stream().filter(rule -> META_KEY.equals(rule.getCode()))
+                .map(ParameterRule::getDefaultValue).findFirst().orElse(null);
+        for (ParameterRule rule : next) {
+            if (!META_KEY.equals(rule.getCode()) || !(rule.getDefaultValue() instanceof Map<?, ?> current)) continue;
+            if (oldMetadata instanceof Map<?, ?> old
+                    && current.get("raw_metadata") instanceof Map<?, ?> raw && raw.isEmpty()
+                    && old.get("raw_metadata") instanceof Map<?, ?> saved && !saved.isEmpty()) {
+                Map<String, Object> metadata = copyMap(current);
+                metadata.put("raw_metadata", saved);
+                metadata.put("parameter_source", "preserved_previous_schema_with_protocol_fields");
+                rule.setDefaultValue(metadata);
+                for (ParameterRule prior : previous) {
+                    if (prior.getSchema() != null && !prior.getSchema().isEmpty())
+                        next.replaceAll(candidate -> candidate.getCode().equals(prior.getCode()) ? prior : candidate);
+                }
+            }
+            break;
+        }
+        Set<String> codes = new LinkedHashSet<>();
+        next.forEach(rule -> codes.add(rule.getCode()));
+        previous.stream().filter(rule -> !META_KEY.equals(rule.getCode()) && !codes.contains(rule.getCode()))
+                .forEach(next::add);
     }
 
     private void number(List<ParameterRule> rules, String code, Number value, int min, int max,
@@ -334,47 +365,7 @@ public class ModelParameterRuleService {
     }
 
     private List<ParameterRule> remoteParameterRules(Map<String, Object> remote) {
-        Object source = remote.get("parameter_rules");
-        if (!(source instanceof Collection<?>)) source = remote.get("parameters");
-        if (!(source instanceof Collection<?>)) source = remote.get("supported_parameters");
-        if (!(source instanceof Collection<?> list)) return new ArrayList<>();
-
-        List<ParameterRule> result = new ArrayList<>();
-        for (Object item : list) {
-            if (!(item instanceof Map<?, ?> m)) continue;
-            String key = firstString(m, "code", "name", "key", "parameter");
-            if (key.isBlank() || key.startsWith("__")) continue;
-
-            Object rawOptions = firstValue(m, "options", "choices", "enum");
-            List<Object> options = new ArrayList<>();
-            if (rawOptions instanceof Collection<?> values) options.addAll(values);
-
-            String rawType = firstString(m, "type", "value_type").toLowerCase(Locale.ROOT);
-            String type;
-            if (!options.isEmpty()) type = "String";
-            else type = switch (rawType) {
-                case "bool", "boolean" -> "Boolean";
-                case "int", "integer", "float", "double", "number", "numeric" -> "Number";
-                case "array", "list", "string_list" -> "Array<String>";
-                case "object", "dict", "map" -> "Object";
-                default -> "String";
-            };
-
-            Object defaultValue = firstValue(m, "default_value", "defaultValue", "default");
-            ParameterRule rule = new ParameterRule().setCode(key)
-                    .setName(firstString(m, "label", "display_name", "name").isBlank()
-                            ? key : firstString(m, "label", "display_name", "name"))
-                    .setType(type)
-                    .setRequired(Boolean.TRUE.equals(firstValue(m, "required", "is_required")))
-                    .setDescription(firstString(m, "description", "help", "desc"))
-                    .setDefaultValue(defaultValue);
-            if (!options.isEmpty()) rule.setOptions(options);
-            if (firstValue(m, "min", "minimum") instanceof Number n) rule.setMin(n.intValue());
-            if (firstValue(m, "max", "maximum") instanceof Number n) rule.setMax(n.intValue());
-            if (firstValue(m, "precision", "decimal_places") instanceof Number n) rule.setPrecision(n.intValue());
-            result.add(rule);
-        }
-        return result;
+        return OfficialModelParameters.remoteRules(remote);
     }
 
     private String endpointType(String protocol, Map<String, Object> remote) {
@@ -485,7 +476,7 @@ public class ModelParameterRuleService {
                 return false;
             }
             Object version = metadata.get("schema_version");
-            return version instanceof Number number && number.intValue() >= 2;
+            return version instanceof Number number && number.intValue() >= 3;
         });
     }
 
