@@ -22,6 +22,7 @@ import com.alibaba.cloud.ai.studio.runtime.domain.RequestContext;
 import com.alibaba.cloud.ai.studio.core.context.RequestContextHolder;
 import com.alibaba.cloud.ai.studio.core.base.entity.ModelEntity;
 import com.alibaba.cloud.ai.studio.core.model.llm.domain.ModelConfigInfo;
+import com.alibaba.cloud.ai.studio.core.model.llm.ClasspathModelYamlService;
 import com.alibaba.cloud.ai.studio.core.model.llm.domain.ParameterRule;
 import com.alibaba.cloud.ai.studio.core.model.llm.domain.ProviderConfigInfo;
 import com.alibaba.cloud.ai.studio.core.base.mapper.ModelMapper;
@@ -50,6 +51,9 @@ public class ModelManager {
 
 	@Resource
 	private ModelMapper modelMapper;
+
+	@Resource
+	private ClasspathModelYamlService classpathModelYamlService;
 
 	/**
 	 * Add a new model
@@ -87,6 +91,7 @@ public class ModelManager {
 		modelEntity.setType(modelConfigInfo.getType());
 		modelEntity.setModelId(modelConfigInfo.getModelId());
 		modelEntity.setTags(modelConfigInfo.getTags().stream().collect(Collectors.joining(",")));
+		classpathModelYamlService.configure(modelEntity, providerDetail.getProtocol());
 		int insert = modelMapper.insert(modelEntity);
 		return insert > 0;
 	}

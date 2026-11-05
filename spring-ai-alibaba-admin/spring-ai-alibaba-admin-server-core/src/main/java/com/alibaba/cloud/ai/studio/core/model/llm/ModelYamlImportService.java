@@ -67,33 +67,39 @@ public class ModelYamlImportService {
                 entity.setMode("chat");
                 entity.setTags(String.join(",", tags(definition.document())));
             }
-            if (definition.document().get("features") instanceof Collection<?>)
-                entity.setTags(String.join(",", tags(definition.document())));
-            if (definition.document().get("model_properties") instanceof Map<?, ?> properties
-                    && Set.of("chat", "completion").contains(Objects.toString(properties.get("mode"), "")))
-                entity.setMode(String.valueOf(properties.get("mode")));
-            Map<String, Object> metadata = new LinkedHashMap<>(metadata(entity.getParameterRules()));
-            metadata.put("schema_version", 3); metadata.put("provider", provider); metadata.put("model_id", definition.modelId());
-            metadata.put("protocol", protocol); metadata.put("parameter_source", SOURCE);
-            metadata.put("raw_metadata", definition.document()); metadata.put("raw_yaml", definition.yaml());
-            metadata.put("import_file", definition.filename()); metadata.put("yaml_sha256", definition.sha256());
-            metadata.put("captured_at", Instant.now().toString());
-            if ("dashscope".equals(protocol)) {
-                Object endpoint = definition.document().get("endpoint_type");
-                if (endpoint == null && !Set.of("text-generation", "multimodal-generation").contains(Objects.toString(metadata.get("endpoint_type"), "")))
-                    endpoint = tags(definition.document()).contains("vision") ? "multimodal-generation" : "text-generation";
-                if (endpoint != null) { metadata.put("endpoint_type", endpoint); metadata.put("route_source", "yaml_definition"); }
-            }
-            else metadata.put("endpoint_type", "chat-completions");
-            List<ParameterRule> rules = new ArrayList<>(definition.rules());
-            rules.add(new ParameterRule().setCode(ModelParameterRuleService.META_KEY).setName("Model YAML snapshot")
-                    .setType("Object").setDefaultValue(metadata));
-            entity.setParameterRules(rules); entity.setGmtModified(new Date());
+            applyDefinition(entity, definition, provider, protocol);
             if ((create ? modelMapper.insert(entity) : modelMapper.updateById(entity)) <= 0)
                 throw new IllegalStateException("模型 YAML 写入失败，整批回滚: " + definition.modelId());
         }
         return Map.of("provider", provider, "dry_run", dryRun, "total_models", rows.size(), "details", rows,
                 "ignored_files", parsed.ignoredFiles());
+    }
+
+    /** Shared by uploads and classpath YAML loading; retains the complete source snapshot. */
+    public static void applyDefinition(ModelEntity entity, ModelYamlParser.Definition definition,
+            String provider, String protocol) {
+        if (definition.document().get("features") instanceof Collection<?>)
+            entity.setTags(String.join(",", tags(definition.document())));
+        if (definition.document().get("model_properties") instanceof Map<?, ?> properties
+                && Set.of("chat", "completion").contains(Objects.toString(properties.get("mode"), "")))
+            entity.setMode(String.valueOf(properties.get("mode")));
+        Map<String, Object> metadata = new LinkedHashMap<>(metadata(entity.getParameterRules()));
+        metadata.put("schema_version", 3); metadata.put("provider", provider); metadata.put("model_id", definition.modelId());
+        metadata.put("protocol", protocol); metadata.put("parameter_source", SOURCE);
+        metadata.put("raw_metadata", definition.document()); metadata.put("raw_yaml", definition.yaml());
+        metadata.put("import_file", definition.filename()); metadata.put("yaml_sha256", definition.sha256());
+        metadata.put("captured_at", Instant.now().toString());
+        if ("dashscope".equals(protocol)) {
+            Object endpoint = definition.document().get("endpoint_type");
+            if (endpoint == null && !Set.of("text-generation", "multimodal-generation").contains(Objects.toString(metadata.get("endpoint_type"), "")))
+                endpoint = tags(definition.document()).contains("vision") ? "multimodal-generation" : "text-generation";
+            if (endpoint != null) { metadata.put("endpoint_type", endpoint); metadata.put("route_source", "yaml_definition"); }
+        }
+        else metadata.put("endpoint_type", "chat-completions");
+        List<ParameterRule> rules = new ArrayList<>(definition.rules());
+        rules.add(new ParameterRule().setCode(ModelParameterRuleService.META_KEY).setName("Model YAML snapshot")
+                .setType("Object").setDefaultValue(metadata));
+        entity.setParameterRules(rules); entity.setGmtModified(new Date());
     }
 
     public static Map<String, Object> metadata(List<ParameterRule> rules) {
