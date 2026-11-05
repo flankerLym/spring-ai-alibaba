@@ -271,3 +271,49 @@ export const en: Record<string, string> = {
   "modelParams.meta.preserved_previous_schema_with_protocol_fields": "Preserved schema and protocol fields"
 };
 
+
+Object.assign(zh, {
+  "modelParams.meta.uploaded_yaml": "导入的 YAML",
+  "modelParams.yamlHint": "当前仅展示此模型 YAML 定义的参数；保存并发布工作流后生效。未定义的旧参数已移除。",
+  "modelParams.importTitle": "批量导入模型 YAML",
+  "modelParams.selectFiles": "选择 YAML / ZIP 文件",
+  "modelParams.preview": "预览校验",
+  "modelParams.import": "导入",
+  "modelParams.overwrite": "覆盖已有模型的参数定义",
+  "modelParams.importHint": "支持多个 YAML 或 ZIP（最多 200 个模型，总计 10 MiB）。ZIP 中非 YAML 文件会忽略，不执行 Python。整批校验通过后写入。",
+  "modelParams.file": "文件",
+  "modelParams.model": "模型",
+  "modelParams.action": "操作",
+  "modelParams.create": "新增",
+  "modelParams.update": "更新参数",
+  "modelParams.parameterCount": "参数数",
+  "modelParams.ignored": "忽略的文件",
+  "modelParams.importSuccess": "导入成功",
+  "modelParams.importFailed": "导入失败",
+  "modelParams.chooseFiles": "请先选择 YAML 或 ZIP 文件",
+  "modelParams.invalidImportResponse": "未收到有效的导入结果",
+  "modelParams.previewHint": "请先预览校验，再确认导入。已有模型的启用状态和名称保持不变。"
+});
+
+Object.assign(en, {
+  "modelParams.meta.uploaded_yaml": "Imported YAML",
+  "modelParams.yamlHint": "Only parameters defined in this model’s YAML are shown. Save and publish the workflow to apply them. Undefined old parameters have been removed.",
+  "modelParams.importTitle": "Batch import model YAML",
+  "modelParams.selectFiles": "Select YAML / ZIP files",
+  "modelParams.preview": "Validate preview",
+  "modelParams.import": "Import",
+  "modelParams.overwrite": "Replace parameter definitions for existing models",
+  "modelParams.importHint": "Upload multiple YAML files or ZIPs (up to 200 models, 10 MiB total). Non-YAML ZIP entries are ignored; Python is never executed. The whole batch is validated before writing.",
+  "modelParams.file": "File",
+  "modelParams.model": "Model",
+  "modelParams.action": "Action",
+  "modelParams.create": "Create",
+  "modelParams.update": "Update parameters",
+  "modelParams.parameterCount": "Parameters",
+  "modelParams.ignored": "Ignored files",
+  "modelParams.importSuccess": "Import completed",
+  "modelParams.importFailed": "Import failed",
+  "modelParams.chooseFiles": "Select YAML or ZIP files first",
+  "modelParams.invalidImportResponse": "No valid import result was returned",
+  "modelParams.previewHint": "Validate the preview before importing. Existing model names and enabled states are preserved."
+});

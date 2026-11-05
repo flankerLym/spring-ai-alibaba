@@ -100,6 +100,7 @@ export type TValueType =
   | 'Boolean';
 
 export interface IModelParameterRule {
+  schema?: Record<string, any>;
   code: string;
   name: string;
   description?: string;
@@ -138,3 +139,11 @@ export const MODEL_TAGS = {
   reasoning: $i18n.get({ id: 'main.types.modelService.inference', dm: '推理' }),
   function_call: $i18n.get({ id: 'main.types.modelService.tool', dm: '工具' }),
 };
+
+export interface IModelYamlImportResult {
+  provider: string;
+  dry_run: boolean;
+  total_models: number;
+  ignored_files: string[];
+  details: { model_id: string; file: string; action: 'create' | 'update'; parameter_count: number; parameters: IModelParameterRule[] }[];
+}

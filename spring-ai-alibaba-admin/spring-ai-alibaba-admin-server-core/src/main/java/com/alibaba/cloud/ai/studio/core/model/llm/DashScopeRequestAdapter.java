@@ -22,8 +22,13 @@ public class DashScopeRequestAdapter implements ModelRequestAdapter {
         Map<String, Object> params = ModelParameterValues.safeParameters(raw);
         String endpointType = endpointType(params, modelId);
 
+        String requestModel = modelId;
+        if (params.get(ModelParameterRuleService.META_KEY) instanceof Map<?, ?> metadata
+                && ModelYamlImportService.SOURCE.equals(metadata.get("parameter_source"))
+                && List.of("qwen-plus-chat", "qwen-turbo-chat").contains(modelId))
+            requestModel = modelId.substring(0, modelId.length() - "-chat".length());
         DashScopeChatOptions.DashscopeChatOptionsBuilder builder = DashScopeChatOptions.builder()
-                .withModel(modelId).withStream(true).withIncrementalOutput(true)
+                .withModel(requestModel).withStream(true).withIncrementalOutput(true)
                 .withMultiModel("multimodal-generation".equals(endpointType));
 
         Number temperature = ModelParameterValues.number(params, "temperature");

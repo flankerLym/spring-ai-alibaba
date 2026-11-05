@@ -27,6 +27,7 @@ import { useNavigate, useParams } from 'umi';
 import styles from './Detail.module.less';
 import ModelConfigModal from './components/ModelConfigModal';
 import ProviderInfoForm from './components/ProviderInfoForm';
+import ModelYamlImportModal from './components/ModelYamlImportModal';
 
 const ModelServiceDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -36,6 +37,7 @@ const ModelServiceDetail: React.FC = () => {
   const [currentModel, setCurrentModel] = useState<IModel | undefined>(
     undefined,
   );
+  const [yamlImportOpen, setYamlImportOpen] = useState(false);
   const [provider, setProvider] = useState<IProviderConfigInfo | null>(null);
   const [models, setModels] = useState<IModel[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -387,6 +389,8 @@ const ModelServiceDetail: React.FC = () => {
         </div>
       }
     >
+      {yamlImportOpen && id && <ModelYamlImportModal key={id} provider={id}
+        onClose={() => setYamlImportOpen(false)} onSuccess={() => { setYamlImportOpen(false); fetchModels(); fetchProviderDetail(); }} />}
       <div className={styles.container}>
         <div className={styles.info}>
           <div className={styles.title}>
@@ -419,12 +423,16 @@ const ModelServiceDetail: React.FC = () => {
                 ）
               </span>
             </div>
+            <div className="flex gap-2">
+              {['dashscope', 'tongyi', 'qwen', 'deepseek'].includes((provider?.protocol || '').toLowerCase()) &&
+                <Button onClick={() => setYamlImportOpen(true)}>{$i18n.get('modelParams.importTitle')}</Button>}
             <Button type="link" onClick={handleAddModel}>
               {$i18n.get({
                 id: 'main.pages.Setting.ModelService.Detail.addModel',
                 dm: '新增模型',
               })}
             </Button>
+            </div>
           </div>
           {models.length > 0 ? (
             <Table

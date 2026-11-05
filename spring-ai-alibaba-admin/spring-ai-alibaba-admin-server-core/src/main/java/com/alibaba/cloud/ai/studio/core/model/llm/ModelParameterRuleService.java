@@ -126,6 +126,11 @@ public class ModelParameterRuleService {
                 continue;
             }
 
+            if (ModelYamlImportService.isImported(entity.getParameterRules())) {
+                detail.put("status", "preserved_yaml");
+                details.add(detail);
+                continue;
+            }
             try {
                 List<ParameterRule> previousRules = entity.getParameterRules() == null
                         ? List.of() : new ArrayList<>(entity.getParameterRules());

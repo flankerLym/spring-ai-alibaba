@@ -285,3 +285,17 @@ export async function getEnabledModels(): Promise<IApiResponse<Array<{
   });
   return response.data;
 }
+
+/** Batch import Dify model YAML data into the selected workspace/provider. */
+export async function importModelYaml(provider: string, files: File[], overwrite: boolean, dryRun: boolean) {
+  const data = new FormData();
+  files.forEach((file) => data.append('files', file));
+  data.append('overwrite', String(overwrite));
+  data.append('dry_run', String(dryRun));
+  const response = await request({
+    url: `/console/v1/providers/${encodeURIComponent(provider)}/models/import-yaml`,
+    method: 'POST', data,
+    // The browser supplies the multipart boundary and existing request auth/language headers.
+  });
+  return response.data as IApiResponse<import('@/types/modelService').IModelYamlImportResult> & { message?: string };
+}

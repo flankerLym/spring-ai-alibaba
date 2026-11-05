@@ -34,7 +34,10 @@ const isChinese = () => $i18n.getCurrentLanguage().toLowerCase().startsWith('zh'
 const hasChinese = (value: string) => /[\u3400-\u9fff]/.test(value);
 
 function parameterName(rule: Rule) {
-  return translated(`name.${rule.code}`)
+  const labels = rule.schema?.label;
+  const label = labels && typeof labels === 'object'
+    ? (isChinese() ? labels.zh_Hans || labels.zh_CN || labels.zh : labels.en_US || labels.en) : undefined;
+  return label || translated(`name.${rule.code}`)
     || (!isChinese() && hasChinese(rule.name || '') ? rule.code : rule.name || rule.code);
 }
 
@@ -88,13 +91,14 @@ function ParameterControls({
   disabled?: boolean;
   onChange: (next: Param[]) => void;
 }) {
+  const metadata = rules.find((rule) => rule.code === METADATA_KEY)?.default_value as any;
+  const imported = metadata?.parameter_source === 'uploaded_yaml';
   const visible = [
     ...rules.filter((rule) => !rule.code.startsWith('__') && !['model', 'messages', 'stream', 'input', 'result_format', 'incremental_output', 'multi_model'].includes(rule.code)),
-    ...params.filter((param) => !param.key.startsWith('__') && !rules.some((rule) => rule.code === param.key))
-      .map((param) => ({ code: param.key, name: param.key, type: param.type } as Rule)),
+    ...(imported ? [] : params.filter((param) => !param.key.startsWith('__') && !rules.some((rule) => rule.code === param.key))
+      .map((param) => ({ code: param.key, name: param.key, type: param.type } as Rule))),
   ];
   const [newKey, setNewKey] = useState('');
-  const metadata = rules.find((rule) => rule.code === METADATA_KEY)?.default_value as any;
 
   const update = (key: string, patch: Partial<Param>) => {
     const current = params || [];
@@ -214,7 +218,8 @@ function ParameterControls({
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             {text('hint')}
           </Typography.Text>
-          <div className="flex gap-2">
+          {imported && <Typography.Text type="secondary">{text('yamlHint')}</Typography.Text>}
+          {!imported && <div className="flex gap-2">
             <Input disabled={disabled} placeholder={text('extensionName')} value={newKey}
               onChange={(event) => setNewKey(event.target.value)} />
             <Button disabled={disabled} onClick={() => {
@@ -226,7 +231,7 @@ function ParameterControls({
               onChange([...params, { key, type: 'Object', value: {}, enable: false }]);
               setNewKey('');
             }}>{text('add')}</Button>
-          </div>
+          </div>}
         </div>
       }
     >
@@ -288,9 +293,18 @@ const ModelConfigForm = ({ value, onChange, onSelectedModelChange, disabled }: {
 
 
       const raw = systemRule.default_value as any;
-      const snapshot = { ...raw, raw_metadata: undefined };
+      const snapshot = { ...raw, raw_metadata: undefined, raw_yaml: undefined };
+      const imported = raw?.parameter_source === 'uploaded_yaml';
+      const nextParams = imported
+        ? fetched.filter((rule) => !rule.code.startsWith('__')).map((rule) => {
+          const old = previous.find((param) => param.key === rule.code);
+          return { key: rule.code, type: rule.type, value: old?.value ?? rule.default_value ?? null,
+            enable: Boolean(rule.required) || Boolean(old?.enable) } as Param;
+        })
+        : previous.filter((param) => param.key !== METADATA_KEY);
       const previousMetadata = previous.find((param) => param.key === METADATA_KEY)?.value;
-      if (JSON.stringify(previousMetadata) === JSON.stringify(snapshot)) return;
+      if (JSON.stringify(previousMetadata) === JSON.stringify(snapshot)
+          && JSON.stringify(previous.filter((param) => param.key !== METADATA_KEY)) === JSON.stringify(nextParams)) return;
       const metadataParam = {
         key: METADATA_KEY,
         type: 'Object',
@@ -304,7 +318,7 @@ const ModelConfigForm = ({ value, onChange, onSelectedModelChange, disabled }: {
       onChange({
         provider: value.provider,
         model_id: value.model_id,
-        params: [...previous.filter((param) => param.key !== METADATA_KEY), metadataParam],
+        params: [...nextParams, metadataParam],
       }, original as IModel);
     }).catch((error) => {
       if (!active) return;
