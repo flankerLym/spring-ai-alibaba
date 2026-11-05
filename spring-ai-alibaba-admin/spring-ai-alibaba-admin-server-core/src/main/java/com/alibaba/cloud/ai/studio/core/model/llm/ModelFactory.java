@@ -271,16 +271,18 @@ public class ModelFactory {
     }
 
     private ArkService createArkService(ModelCredential credential) {
+        // Retrofit requires a directory base URL; route() intentionally strips trailing slashes.
+        String baseUrl = credential.getEndpoint().trim().replaceAll("/+$", "") + "/";
         // Same official SDK interceptors and lifecycle; only the request serializer is extended.
         okhttp3.OkHttpClient client = new okhttp3.OkHttpClient.Builder()
                 .addInterceptor(new com.volcengine.ark.runtime.interceptor.AuthenticationInterceptor(credential.getApiKey()))
-                .addInterceptor(new com.volcengine.ark.runtime.interceptor.EncryptionInterceptor(credential.getApiKey(), credential.getEndpoint()))
+                .addInterceptor(new com.volcengine.ark.runtime.interceptor.EncryptionInterceptor(credential.getApiKey(), baseUrl))
                 .addInterceptor(new com.volcengine.ark.runtime.interceptor.RequestIdInterceptor())
                 .addInterceptor(new com.volcengine.ark.runtime.interceptor.RetryInterceptor(2))
                 .addInterceptor(new com.volcengine.ark.runtime.interceptor.BatchInterceptor())
                 .connectionPool(arkConnectionPool).readTimeout(Duration.ofMinutes(15))
                 .callTimeout(Duration.ofMinutes(15)).connectTimeout(Duration.ofMinutes(1)).build();
-        var retrofit = ArkService.defaultRetrofit(client, LosslessArkRequest.mapper(), credential.getEndpoint(), null);
+        var retrofit = ArkService.defaultRetrofit(client, LosslessArkRequest.mapper(), baseUrl, null);
         return new ArkService(retrofit.create(com.volcengine.ark.runtime.service.ArkApi.class),
                 client.dispatcher().executorService());
     }
