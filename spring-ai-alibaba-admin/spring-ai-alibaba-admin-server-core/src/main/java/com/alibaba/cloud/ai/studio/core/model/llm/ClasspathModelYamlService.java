@@ -18,23 +18,33 @@ package com.alibaba.cloud.ai.studio.core.model.llm;
 import com.alibaba.cloud.ai.studio.core.base.entity.ModelEntity;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.Resource;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.core.io.support.ResourcePatternResolver;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 
-/** Resolves bundled definitions for newly added models, including resources inside JARs. */
+/** External model YAML overrides bundled definitions for newly added models. */
 @Slf4j
 @Service
 public class ClasspathModelYamlService {
 
     private final ResourcePatternResolver resolver;
+
+    @Value("${saa.model.directory:./model}")
+    private String directory = "./model";
+
+    private record Candidate(String relative, Resource resource) { }
+
 
     public ClasspathModelYamlService() {
         this(new PathMatchingResourcePatternResolver());
@@ -49,27 +59,68 @@ public class ClasspathModelYamlService {
         if (!"llm".equalsIgnoreCase(entity.getType())) return false;
         String protocol = ModelProviderConfig.normalize(providerProtocol);
         String provider = Objects.toString(entity.getProvider(), "").toLowerCase(Locale.ROOT);
-        List<Resource> resources = new ArrayList<>();
+        ModelYamlParser.Definition match = find(externalResources(), entity.getModelId(), provider, protocol);
+        String origin = "external";
+        if (match == null) {
+            match = find(bundledResources(), entity.getModelId(), provider, protocol);
+            origin = "classpath";
+        }
+        if (match == null) return false;
+        ModelYamlImportService.applyDefinition(entity, match, entity.getProvider(), protocol);
+        log.info("Loaded model parameter YAML: provider={}, model={}, origin={}, file={}",
+                entity.getProvider(), entity.getModelId(), origin, match.filename());
+        return true;
+    }
+
+    private List<Candidate> externalResources() {
+        List<Candidate> result = new ArrayList<>();
+        if (directory == null || directory.isBlank()) return result;
         try {
-            resources.addAll(List.of(resolver.getResources("classpath*:model/**/*.yaml")));
-            resources.addAll(List.of(resolver.getResources("classpath*:model/**/*.yml")));
+            Path root = Path.of(directory.trim()).toAbsolutePath().normalize();
+            if (!Files.isDirectory(root)) return result;
+            try (var files = Files.walk(root)) {
+                files.filter(Files::isRegularFile).forEach(path -> {
+                    String relative = root.relativize(path).toString().replace('\\', '/');
+                    if (relative.toLowerCase(Locale.ROOT).matches(".*\\.ya?ml$"))
+                        result.add(new Candidate(relative, new FileSystemResource(path)));
+                });
+            }
+        }
+        catch (IOException | RuntimeException error) {
+            log.warn("Cannot scan external model YAML directory {}; falling back to bundled YAML", directory, error);
+            result.clear();
+        }
+        return result;
+    }
+
+    private List<Candidate> bundledResources() {
+        List<Candidate> result = new ArrayList<>();
+        try {
+            for (String pattern : List.of("classpath*:model/**/*.yaml", "classpath*:model/**/*.yml")) {
+                for (Resource resource : resolver.getResources(pattern)) {
+                    String url = resource.getURL().toExternalForm();
+                    int root = url.lastIndexOf("/model/");
+                    if (root >= 0) result.add(new Candidate(url.substring(root + "/model/".length()), resource));
+                }
+            }
         }
         catch (IOException error) {
             log.warn("Cannot scan bundled model YAML; using existing parameter configuration", error);
-            return false;
         }
-        resources.sort(Comparator.comparing(Resource::getDescription));
+        return result;
+    }
+
+    private ModelYamlParser.Definition find(List<Candidate> resources, String modelId, String provider, String protocol) {
+        resources.sort(Comparator.comparing(Candidate::relative));
         ModelYamlParser.Definition match = null;
         int bestPriority = -1;
         String duplicate = null;
-        for (Resource resource : resources) {
+        for (Candidate candidate : resources) {
+            Resource resource = candidate.resource();
             ModelYamlParser.Parsed parsed;
             int priority;
             try {
-                String url = resource.getURL().toExternalForm();
-                int root = url.lastIndexOf("/model/");
-                if (root < 0) continue;
-                String relative = url.substring(root + "/model/".length());
+                String relative = candidate.relative();
                 int slash = relative.indexOf('/');
                 String scope = slash < 0 ? "" : relative.substring(0, slash).toLowerCase(Locale.ROOT);
                 priority = scope.isEmpty() ? 0 : scope.equals(provider) ? 2 : scope.equals(protocol) ? 1 : -1;
@@ -81,11 +132,11 @@ public class ClasspathModelYamlService {
                 parsed = ModelYamlParser.parse(List.of(new ModelYamlParser.Source(relative, bytes)));
             }
             catch (IOException | IllegalArgumentException error) {
-                log.warn("Ignoring invalid bundled model YAML {}: {}", resource.getDescription(), error.getMessage());
+                log.warn("Ignoring invalid model YAML {}: {}", resource.getDescription(), error.getMessage());
                 continue;
             }
             for (var definition : parsed.models()) {
-                if (!entity.getModelId().equals(definition.modelId())) continue;
+                if (!Objects.equals(modelId, definition.modelId())) continue;
                 Object declaredProvider = definition.document().get("provider");
                 if (declaredProvider != null && !provider.equalsIgnoreCase(String.valueOf(declaredProvider))
                         && !protocol.equalsIgnoreCase(String.valueOf(declaredProvider))) continue;
@@ -99,11 +150,7 @@ public class ClasspathModelYamlService {
                 bestPriority = priority;
             }
         }
-        if (match == null) return false;
         if (duplicate != null) throw new IllegalArgumentException("同一供应商和模型存在重复 YAML: " + duplicate);
-        ModelYamlImportService.applyDefinition(entity, match, entity.getProvider(), protocol);
-        // Keep the existing YAML marker so refresh, workflow validation and front-end filtering work unchanged.
-        log.info("Loaded bundled parameter YAML: provider={}, model={}, file={}", entity.getProvider(), entity.getModelId(), match.filename());
-        return true;
+        return match;
     }
 }

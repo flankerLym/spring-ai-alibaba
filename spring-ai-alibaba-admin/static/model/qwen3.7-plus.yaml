@@ -1,14 +1,12 @@
-# this model corresponds to qwen3.8-flash, for more details
-# please refer to (https://help.aliyun.com/zh/model-studio/qwen3-8-flash)
-model: qwen3.8-flash
+# this model corresponds to qwen3.7-plus, for more details
+# please refer to (https://help.aliyun.com/zh/model-studio/getting-started/models#b356ab6cbdlyh)
+model: qwen3.7-plus
 label:
-  zh_Hans: qwen3.8-flash
-  en_US: qwen3.8-flash
+  zh_Hans: qwen3.7-plus
+  en_US: qwen3.7-plus
 model_type: llm
 features:
   - vision
-  - video
-  - structured-output
   - multi-tool-call
   - agent-thought
   - stream-tool-call
@@ -25,12 +23,12 @@ parameter_rules:
     help:
       zh_Hans: 用于控制随机性和多样性的程度。具体来说，temperature 值控制了生成文本时对每个候选词的概率分布进行平滑的程度。较高的 temperature 值会降低概率分布的峰值，使得更多的低概率词被选择，生成结果更加多样化；而较低的 temperature 值则会增强概率分布的峰值，使得高概率词更容易被选择，生成结果更加确定。
       en_US: Used to control the degree of randomness and diversity. Specifically, the temperature value controls the degree to which the probability distribution of each candidate word is smoothed when generating text. A higher temperature value will reduce the peak value of the probability distribution, allowing more low-probability words to be selected, and the generated results will be more diverse; while a lower temperature value will enhance the peak value of the probability distribution, making it easier for high-probability words to be selected, the generated results are more certain.
-  - name: max_completion_tokens
+  - name: max_tokens
     use_template: max_tokens
     type: int
     default: 8192
     min: 1
-    max: 131072
+    max: 65536
     help:
       zh_Hans: 用于指定模型在生成内容时 token 的最大数量，它定义了生成的上限，但不保证每次都会生成到这个数量。
       en_US: It is used to specify the maximum number of tokens when the model generates content. It defines the upper limit of generation, but does not guarantee that this number will be generated every time.
@@ -116,9 +114,6 @@ parameter_rules:
     options:
       - text
       - json_object
-      - json_schema
-  - name: json_schema
-    use_template: json_schema
   - name: extra_headers
     required: false
     type: string
@@ -129,7 +124,7 @@ parameter_rules:
       zh_Hans: 以 JSON 字符串格式输入额外的 HTTP 请求头，这些请求头将包含在 API 请求中。
       en_US: Enter extra HTTP headers in JSON string format, which will be included in the API request.
 pricing:
-  input: '0.0008'
-  output: '0.0027'
+  input: '0.002'
+  output: '0.008'
   unit: '0.001'
   currency: RMB

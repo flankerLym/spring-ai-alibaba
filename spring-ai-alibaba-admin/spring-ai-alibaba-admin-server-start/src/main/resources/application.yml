@@ -173,4 +173,6 @@ app:
         max-attempts: 3               # 最大重试次数
         backoff-delay: 500ms          # 初始退避延迟
         backoff-multiplier: 2.0       # 退避乘数
-
+saa:
+  model:
+    directory: ./static/model
