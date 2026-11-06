@@ -58,11 +58,16 @@ public class ClasspathModelYamlService {
     public boolean configure(ModelEntity entity, String providerProtocol) {
         if (!"llm".equalsIgnoreCase(entity.getType())) return false;
         String protocol = ModelProviderConfig.normalize(providerProtocol);
-        String provider = Objects.toString(entity.getProvider(), "").toLowerCase(Locale.ROOT);
-        ModelYamlParser.Definition match = find(externalResources(), entity.getModelId(), provider, protocol);
+        String provider = Objects.toString(entity.getProvider(), "");
+        if (provider.isBlank() || provider.equals(".") || provider.equals("..")
+                || provider.indexOf('/') >= 0 || provider.indexOf('\\') >= 0) {
+            log.warn("Provider ID cannot be used as a model directory: {}", provider);
+            return false;
+        }
+        ModelYamlParser.Definition match = find(externalResources(provider), entity.getModelId(), provider);
         String origin = "external";
         if (match == null) {
-            match = find(bundledResources(), entity.getModelId(), provider, protocol);
+            match = find(bundledResources(), entity.getModelId(), provider);
             origin = "classpath";
         }
         if (match == null) return false;
@@ -72,14 +77,21 @@ public class ClasspathModelYamlService {
         return true;
     }
 
-    private List<Candidate> externalResources() {
+    private List<Candidate> externalResources(String provider) {
         List<Candidate> result = new ArrayList<>();
         if (directory == null || directory.isBlank()) return result;
         try {
             Path root = Path.of(directory.trim()).toAbsolutePath().normalize();
-            if (!Files.isDirectory(root)) return result;
-            try (var files = Files.walk(root)) {
-                files.filter(Files::isRegularFile).forEach(path -> {
+            Path providerRoot = root.resolve(provider);
+            if (!Files.isDirectory(providerRoot)) return result;
+            Path realRoot = root.toRealPath();
+            Path realProviderRoot = providerRoot.toRealPath();
+            if (!realProviderRoot.startsWith(realRoot) || !realProviderRoot.getFileName().toString().equals(provider)) {
+                log.warn("Ignoring model provider directory outside its namespace: {}", providerRoot);
+                return result;
+            }
+            try (var files = Files.walk(providerRoot)) {
+                files.filter(path -> Files.isRegularFile(path, java.nio.file.LinkOption.NOFOLLOW_LINKS)).forEach(path -> {
                     String relative = root.relativize(path).toString().replace('\\', '/');
                     if (relative.toLowerCase(Locale.ROOT).matches(".*\\.ya?ml$"))
                         result.add(new Candidate(relative, new FileSystemResource(path)));
@@ -110,21 +122,17 @@ public class ClasspathModelYamlService {
         return result;
     }
 
-    private ModelYamlParser.Definition find(List<Candidate> resources, String modelId, String provider, String protocol) {
+    private ModelYamlParser.Definition find(List<Candidate> resources, String modelId, String provider) {
         resources.sort(Comparator.comparing(Candidate::relative));
         ModelYamlParser.Definition match = null;
-        int bestPriority = -1;
-        String duplicate = null;
+
         for (Candidate candidate : resources) {
             Resource resource = candidate.resource();
             ModelYamlParser.Parsed parsed;
-            int priority;
             try {
                 String relative = candidate.relative();
                 int slash = relative.indexOf('/');
-                String scope = slash < 0 ? "" : relative.substring(0, slash).toLowerCase(Locale.ROOT);
-                priority = scope.isEmpty() ? 0 : scope.equals(provider) ? 2 : scope.equals(protocol) ? 1 : -1;
-                if (priority < 0) continue;
+                if (slash < 0 || !relative.substring(0, slash).equals(provider)) continue;
                 byte[] bytes;
                 try (var input = resource.getInputStream()) {
                     bytes = input.readNBytes(ModelYamlParser.MAX_FILE_BYTES + 1);
@@ -138,19 +146,13 @@ public class ClasspathModelYamlService {
             for (var definition : parsed.models()) {
                 if (!Objects.equals(modelId, definition.modelId())) continue;
                 Object declaredProvider = definition.document().get("provider");
-                if (declaredProvider != null && !provider.equalsIgnoreCase(String.valueOf(declaredProvider))
-                        && !protocol.equalsIgnoreCase(String.valueOf(declaredProvider))) continue;
-                if (priority < bestPriority) continue;
-                if (priority == bestPriority) {
-                    duplicate = match.filename() + ", " + definition.filename();
-                    continue;
-                }
-                duplicate = null;
+                if (declaredProvider != null && !provider.equals(String.valueOf(declaredProvider))) continue;
+                if (match != null)
+                    throw new IllegalArgumentException("供应商 " + provider + " 的模型 " + modelId
+                            + " 存在重复 YAML: " + match.filename() + ", " + definition.filename());
                 match = definition;
-                bestPriority = priority;
             }
         }
-        if (duplicate != null) throw new IllegalArgumentException("同一供应商和模型存在重复 YAML: " + duplicate);
         return match;
     }
 }

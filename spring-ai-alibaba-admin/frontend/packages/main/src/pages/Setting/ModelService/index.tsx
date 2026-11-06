@@ -11,6 +11,7 @@ import { AlertDialog, Button, IconFont, message } from '@spark-ai/design';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'umi';
 import ModelServiceCard from './components/ModelServiceCard';
+import ModelYamlManager from './components/ModelYamlManager';
 import ModelServiceProviderModal from './components/ModelServiceProviderModal';
 import styles from './index.module.less';
 
@@ -19,6 +20,7 @@ const ModelService = () => {
   const [providers, setProviders] = useState<IProvider[]>([]);
   const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [yamlOpen, setYamlOpen] = useState(false);
 
   useEffect(() => {
     fetchProviders();
@@ -116,6 +118,9 @@ const ModelService = () => {
       ]}
       right={
         <>
+          <Button style={{ marginRight: 8 }} onClick={() => setYamlOpen(true)}>
+            {$i18n.getCurrentLanguage().toLowerCase().startsWith('zh') ? '参数配置管理' : 'Parameter configuration'}
+          </Button>
           <Button
             type="primary"
             icon={<IconFont type="spark-plus-line" />}
@@ -145,6 +150,7 @@ const ModelService = () => {
           ))}
         </CardList>
       </div>
+      <ModelYamlManager open={yamlOpen} onClose={() => setYamlOpen(false)} providers={providers} />
       <ModelServiceProviderModal
         open={isModalOpen}
         onCancel={() => setIsModalOpen(false)}
